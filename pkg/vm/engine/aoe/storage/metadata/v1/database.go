@@ -739,18 +739,9 @@ func (db *Database) String() string {
 func (db *Database) ToDatabaseLogEntry(info *CommitInfo) databaseLogEntry {
 	return databaseLogEntry{
 		BaseEntry: &BaseEntry{
-			Id: db.Id, 
-			CommitInfo: &CommitInfo{
-				CommitId: info.CommitId,
-				TranId: info.TranId,
-				Op: info.Op,
-				Size: info.Size,
-				LogIndex: info.LogIndex,
-				PrevIndex: info.PrevIndex,
-				LogRange: info.LogRange,
-				Indice: info.Indice,
-			}},
-		Database:  &Database{Name: db.Name},
+			Id:         db.Id,
+			CommitInfo: info.Clone()},
+		Database: &Database{Name: db.Name},
 	}
 }
 
@@ -913,7 +904,7 @@ func (db *Database) onReplayNewTable(entry *Table) error {
 		e := nn.GetTable()
 		// Conflict checks all committed and uncommitted entries.
 		if !e.IsDeleted() {
-			if entry.IsDeleted(){
+			if entry.IsDeleted() {
 				db.TableSet[entry.Id] = entry
 				nn.DeleteNode(e.Id)
 				nn.CreateNode(entry.Id)

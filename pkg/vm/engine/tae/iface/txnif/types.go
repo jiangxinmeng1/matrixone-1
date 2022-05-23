@@ -18,6 +18,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -156,6 +157,8 @@ type UpdateNode interface {
 	String() string
 	GetChain() UpdateChain
 	GetDLNode() *common.DLNode
+	GetMask() *roaring.Bitmap
+	GetValues() map[uint32]interface{}
 
 	UpdateLocked(row uint32, v interface{}) error
 }

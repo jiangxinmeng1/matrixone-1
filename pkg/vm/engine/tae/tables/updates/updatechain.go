@@ -86,8 +86,19 @@ func (chain *ColumnChain) TryUpdateNodeLocked(row uint32, v interface{}, n txnif
 	return
 }
 
-func (chain *ColumnChain) OnReplayUpdateNode(updateNode txnif.UpdateNode ){
+func (chain *ColumnChain) OnReplayUpdateNode(updateNode txnif.UpdateNode) {
 	updateNode.(*ColumnNode).AttachTo(chain)
+	mask := updateNode.GetMask()
+	vals := updateNode.GetValues()
+	iterator := mask.Iterator()
+	for iterator.HasNext() {
+		row := iterator.Next()
+		val := vals[row]
+		err := chain.TryUpdateNodeLocked(row, val, updateNode)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (chain *ColumnChain) AddNodeLocked(txn txnif.AsyncTxn) txnif.UpdateNode {

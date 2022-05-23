@@ -85,7 +85,7 @@ func (replayer *Replayer) OnReplayCmd(txncmd txnif.TxnCmd, idxCtx *wal.Index) {
 	case *txnimpl.AppendCmd:
 		replayer.db.onReplayAppendCmd(cmd)
 	case *updates.UpdateCmd:
-		err = replayer.db.onReplayUpdateCmd(cmd)
+		err = replayer.db.onReplayUpdateCmd(cmd, idxCtx)
 	}
 	if err != nil {
 		panic(err)
@@ -178,24 +178,25 @@ func (db *DB) window(attrs []string, data batch.IBatch, deletes *roaring.Bitmap,
 	return ret, nil
 }
 
-func (db *DB) onReplayUpdateCmd(cmd *updates.UpdateCmd) (err error) {
+func (db *DB) onReplayUpdateCmd(cmd *updates.UpdateCmd, idxCtx *wal.Index) (err error) {
 	switch cmd.GetType() {
 	case txnbase.CmdAppend:
-		db.onReplayAppend(cmd)
+		db.onReplayAppend(cmd, idxCtx)
 	case txnbase.CmdUpdate:
-		db.onReplayUpdate(cmd)
+		db.onReplayUpdate(cmd, idxCtx)
 	case txnbase.CmdDelete:
-		db.onReplayDelete(cmd)
+		db.onReplayDelete(cmd, idxCtx)
 	}
 	return
 }
 
-func (db *DB) onReplayDelete(cmd *updates.UpdateCmd) {
+func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
 	}
 	deleteNode := cmd.GetDeleteNode()
+	deleteNode.SetLogIndex(idxCtx)
 	id := deleteNode.GetID()
 	tb, err := database.GetTableEntryByID(id.TableID)
 	if err != nil {
@@ -213,22 +214,16 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd) {
 		return
 	}
 	datablk := blk.GetBlockData()
-	iterator := deleteNode.GetDeleteMaskLocked().Iterator()
-	for iterator.HasNext() {
-		row := iterator.Next()
-		err = datablk.OnReplayDelete(row, row)
-		if err != nil {
-			panic(err)
-		}
-	}
+	datablk.OnReplayDelete(deleteNode)
 }
 
-func (db *DB) onReplayAppend(cmd *updates.UpdateCmd) {
+func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
 	}
 	appendNode := cmd.GetAppendNode()
+	appendNode.SetLogIndex(idxCtx)
 	id := appendNode.GetID()
 	tb, err := database.GetTableEntryByID(id.TableID)
 	if err != nil {
@@ -254,12 +249,13 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd) {
 	appender.OnReplayAppendNode(cmd.GetAppendNode())
 }
 
-func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd) {
+func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
 	}
 	updateNode := cmd.GetUpdateNode()
+	updateNode.SetLogIndex(idxCtx)
 	id := updateNode.GetID()
 	tb, err := database.GetTableEntryByID(id.TableID)
 	if err != nil {
@@ -277,13 +273,8 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd) {
 		return
 	}
 	blkdata := blk.GetBlockData()
-	iterator := updateNode.GetMask().Iterator()
-	vals := updateNode.GetValues()
-	for iterator.HasNext() {
-		row := iterator.Next()
-		err = blkdata.OnReplayUpdate(row, id.Idx, vals[row])
+		err = blkdata.OnReplayUpdate(id.Idx,updateNode)
 		if err != nil {
 			panic(err)
 		}
-	}
 }

@@ -86,6 +86,10 @@ func (chain *ColumnChain) TryUpdateNodeLocked(row uint32, v interface{}, n txnif
 	return
 }
 
+func (chain *ColumnChain) OnReplayUpdateNode(updateNode txnif.UpdateNode ){
+	updateNode.(*ColumnNode).AttachTo(chain)
+}
+
 func (chain *ColumnChain) AddNodeLocked(txn txnif.AsyncTxn) txnif.UpdateNode {
 	node := NewColumnNode(txn, chain.id, nil)
 	node.AttachTo(chain)

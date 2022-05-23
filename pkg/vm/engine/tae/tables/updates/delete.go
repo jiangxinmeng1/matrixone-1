@@ -243,7 +243,9 @@ func (node *DeleteNode) ReadFrom(r io.Reader) (n int64, err error) {
 	err = node.mask.UnmarshalBinary(buf)
 	return
 }
-
+func (node *DeleteNode) SetLogIndex(idx *wal.Index){
+	node.logIndex=idx
+}
 func (node *DeleteNode) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
 	cmd = NewDeleteCmd(id, node)
 	return

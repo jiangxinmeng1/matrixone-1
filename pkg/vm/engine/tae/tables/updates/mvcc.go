@@ -161,6 +161,10 @@ func (n *MVCCHandle) CreateDeleteNode(txn txnif.AsyncTxn) txnif.DeleteNode {
 	return n.deletes.AddNodeLocked(txn)
 }
 
+func (n *MVCCHandle) OnReplayDeleteNode(deleteNode txnif.DeleteNode){
+	n.deletes.OnReplayNode(deleteNode.(*DeleteNode))
+}
+
 func (n *MVCCHandle) CreateUpdateNode(colIdx uint16, txn txnif.AsyncTxn) txnif.UpdateNode {
 	chain := n.columns[colIdx]
 	return chain.AddNodeLocked(txn)

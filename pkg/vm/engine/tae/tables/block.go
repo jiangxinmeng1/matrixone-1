@@ -462,18 +462,9 @@ func (blk *dataBlock) Update(txn txnif.AsyncTxn, row uint32, colIdx uint16, v in
 	return blk.updateWithFineLock(txn, row, colIdx, v)
 }
 
-func (blk *dataBlock) OnReplayUpdate(row uint32, colIdx uint16, v interface{}) (err error) {
-	blk.mvcc.RLock()
-	defer blk.mvcc.RUnlock()
-	if err == nil {
-		chain := blk.mvcc.GetColumnChain(colIdx)
-		chain.Lock()
-		node := chain.AddNodeLocked(nil)
-		if err = chain.TryUpdateNodeLocked(row, v, node); err != nil {
-			chain.DeleteNodeLocked(node.GetDLNode())
-		}
-		chain.Unlock()
-	}
+func (blk *dataBlock) OnReplayUpdate(colIdx uint16, node txnif.UpdateNode) (err error) {
+	chain := blk.mvcc.GetColumnChain(colIdx)
+	chain.OnReplayUpdateNode(node)
 	return
 }
 
@@ -512,9 +503,8 @@ func (blk *dataBlock) updateWithFineLock(txn txnif.AsyncTxn, row uint32, colIdx 
 	return
 }
 
-func (blk *dataBlock) OnReplayDelete(start, end uint32) (err error) {
-	node := blk.mvcc.CreateDeleteNode(nil)
-	node.RangeDeleteLocked(start, end)
+func (blk *dataBlock) OnReplayDelete(node txnif.DeleteNode) (err error) {
+	blk.mvcc.OnReplayDeleteNode(node)
 	return
 }
 

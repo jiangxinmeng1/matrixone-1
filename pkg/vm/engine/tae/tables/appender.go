@@ -76,6 +76,11 @@ func (appender *blockAppender) OnReplayAppendNode(an txnif.AppendNode) {
 	appender.node.block.mvcc.OnReplayAppendNode(appendNode)
 }
 func (appender *blockAppender) OnReplayInsertNode(bat *gbat.Batch, offset, length uint32, txn txnif.AsyncTxn) (node txnif.AppendNode, from uint32, err error) {
+	var h base.INodeHandle
+	if h, err = appender.node.TryPin(); err != nil {
+		return
+	}
+	defer h.Close()
 	err = appender.node.Expand(0, func() error {
 		var err error
 		from, err = appender.node.ApplyAppend(bat, offset, length, txn)

@@ -142,6 +142,10 @@ func (chain *DeleteChain) AddNodeLocked(txn txnif.AsyncTxn) txnif.DeleteNode {
 	node := NewDeleteNode(txn)
 	node.AttachTo(chain)
 	return node
+} 
+
+func (chain *DeleteChain) OnReplayNode(deleteNode *DeleteNode){
+	deleteNode.AttachTo(chain)
 }
 
 func (chain *DeleteChain) AddMergeNode() txnif.DeleteNode {

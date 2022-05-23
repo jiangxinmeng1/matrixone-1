@@ -174,8 +174,9 @@ func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, datafactory DataFactory, 
 
 func (catalog *Catalog) onReplayCreateDatabase(cmd *EntryCommand, idx *wal.Index, observer wal.ReplayObserver) {
 	var err error
-	_, err = catalog.GetDatabaseByID(cmd.entry.ID)
+	db, err := catalog.GetDatabaseByID(cmd.entry.ID)
 	if err == nil {
+		db.LogIndex = cmd.entry.LogIndex
 		return
 	}
 	err = catalog.AddEntryLocked(cmd.DB)
@@ -234,8 +235,9 @@ func (catalog *Catalog) onReplayCreateTable(cmd *EntryCommand, datafactory DataF
 	if err != nil {
 		panic(err)
 	}
-	_, err = db.GetTableEntryByID(cmd.Table.ID)
+	tbl, err := db.GetTableEntryByID(cmd.Table.ID)
 	if err == nil {
+		tbl.LogIndex = cmd.Table.LogIndex
 		return
 	}
 	cmd.Table.db = db
@@ -302,8 +304,9 @@ func (catalog *Catalog) onReplayCreateSegment(cmd *EntryCommand, datafactory Dat
 	if err != nil {
 		panic(err)
 	}
-	_, err = tbl.GetSegmentByID(cmd.Segment.ID)
+	seg, err := tbl.GetSegmentByID(cmd.Segment.ID)
 	if err == nil {
+		seg.LogIndex = cmd.entry.LogIndex
 		return
 	}
 	cmd.Segment.table = tbl
@@ -380,8 +383,9 @@ func (catalog *Catalog) onReplayCreateBlock(cmd *EntryCommand, datafactory DataF
 	if err != nil {
 		panic(err)
 	}
-	_, err = seg.GetBlockEntryByID(cmd.Block.ID)
+	blk, err := seg.GetBlockEntryByID(cmd.Block.ID)
 	if err == nil {
+		blk.LogIndex = cmd.entry.LogIndex
 		return
 	}
 	cmd.Block.RWMutex = new(sync.RWMutex)

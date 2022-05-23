@@ -93,6 +93,8 @@ func (node *AppendNode) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n = 4
+	n2, err := node.logIndex.WriteTo(w)
+	n += n2
 	return
 }
 
@@ -108,6 +110,9 @@ func (node *AppendNode) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 	n = 4
+	node.logIndex = &wal.Index{}
+	n2, err := node.logIndex.ReadFrom(r)
+	n += n2
 	return
 }
 

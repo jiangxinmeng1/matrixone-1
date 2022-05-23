@@ -44,7 +44,7 @@ type BlockAppender interface {
 	ApplyAppend(bat *batch.Batch, offset, length uint32, txn txnif.AsyncTxn) (txnif.AppendNode, uint32, error)
 	OnReplayInsertNode(bat *batch.Batch, offset, length uint32, txn txnif.AsyncTxn) (node txnif.AppendNode, from uint32, err error)
 	IsAppendable() bool
-	OnReplayAppendNode(maxrow uint32)
+	OnReplayAppendNode(an txnif.AppendNode) 
 }
 
 type Block interface {

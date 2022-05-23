@@ -461,6 +461,7 @@ func TestReplay2(t *testing.T) {
 	err = rel.Append(bats[1])
 	assert.Nil(t, err)
 	assert.Nil(t, txn.Commit())
+	dataTs := txn.GetCommitTS()
 
 	t.Log(tae2.Catalog.SimplePPString(common.PPL1))
 	tae2.Close()
@@ -490,6 +491,21 @@ func TestReplay2(t *testing.T) {
 	assert.Equal(t, int32(33), val)
 	_, err = rel.GetValue(id, row+1, 0)
 	assert.NotNil(t, err)
+	assert.Nil(t, txn.Commit())
+
+	txn, _ = tae3.StartTxn(nil)
+	db, err = txn.GetDatabase("db")
+	assert.Nil(t, err)
+	rel, err = db.GetRelationByName(schema.Name)
+	assert.Nil(t, err)
+	blkIterator = rel.MakeBlockIt()
+	for blkIterator.Valid() {
+		blk := blkIterator.GetBlock()
+		blkdata := blk.GetMeta().(*catalog.BlockEntry).GetBlockData()
+		f := blkdata.CheckpointWALClosure(dataTs)
+		err := f()
+		assert.Nil(t, err)
+	}
 	assert.Nil(t, txn.Commit())
 
 	tae3.Close()

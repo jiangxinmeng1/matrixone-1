@@ -20,6 +20,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/access/acif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/updates"
 )
 
 type blockAppender struct {
@@ -70,8 +71,9 @@ func (appender *blockAppender) PrepareAppend(rows uint32) (n uint32, err error) 
 	appender.placeholder += n
 	return
 }
-func (appender *blockAppender) OnReplayAppendNode(maxrow uint32) {
-	appender.node.block.mvcc.AddAppendNodeLocked(nil, maxrow)
+func (appender *blockAppender) OnReplayAppendNode(an txnif.AppendNode) {
+	appendNode:=an.(*updates.AppendNode)
+	appender.node.block.mvcc.OnReplayAppendNode(appendNode)
 }
 func (appender *blockAppender) OnReplayInsertNode(bat *gbat.Batch, offset, length uint32, txn txnif.AsyncTxn) (node txnif.AppendNode, from uint32, err error) {
 	err = appender.node.Expand(0, func() error {

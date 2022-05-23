@@ -195,7 +195,10 @@ func (n *MVCCHandle) GetColumnChain(colIdx uint16) *ColumnChain {
 func (n *MVCCHandle) GetDeleteChain() *DeleteChain {
 	return n.deletes
 }
-
+func (n *MVCCHandle) OnReplayAppendNode(an *AppendNode) {
+	an.controller = n
+	n.appends = append(n.appends, an)
+}
 func (n *MVCCHandle) AddAppendNodeLocked(txn txnif.AsyncTxn, maxRow uint32) *AppendNode {
 	an := NewAppendNode(txn, maxRow, n)
 	n.appends = append(n.appends, an)

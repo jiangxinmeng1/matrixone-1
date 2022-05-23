@@ -251,7 +251,7 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd) {
 	if err != nil {
 		panic(err)
 	}
-	appender.OnReplayAppendNode(cmd.GetAppendNode().GetMaxRow())
+	appender.OnReplayAppendNode(cmd.GetAppendNode())
 }
 
 func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd) {

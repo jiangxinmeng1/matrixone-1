@@ -352,14 +352,15 @@ func TestReplay1(t *testing.T) {
 
 // 1. Create db and tbl, append data
 // 2. Update and delete.
-// 3. Get id and row of data
-// 4. Delete first blk
+// 3. Delete first blk
 // replay (catalog and data not ckp, catalog softdelete)
 // check 1. blk not exist, 2. id and row of data
 // 1. Checkpoint catalog
-// 2. Append, update and delete
+// 2. Append
 // replay (catalog ckp, data not ckp)
 // check id and row of data
+// 1. Checkpoint data
+// replay
 func TestReplay2(t *testing.T) {
 	tae := initDB(t, nil)
 	schema := catalog.MockSchema(2)
@@ -507,4 +508,8 @@ func TestReplay2(t *testing.T) {
 	assert.Nil(t, txn.Commit())
 
 	tae3.Close()
+
+	tae4, err := Open(tae.Dir, nil)
+	assert.Nil(t, err)
+	tae4.Close()
 }

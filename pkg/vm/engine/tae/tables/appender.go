@@ -71,27 +71,25 @@ func (appender *blockAppender) PrepareAppend(rows uint32) (n uint32, err error) 
 	return
 }
 func (appender *blockAppender) OnReplayAppendNode(an txnif.AppendNode) {
-	appendNode:=an.(*updates.AppendNode)
+	appendNode := an.(*updates.AppendNode)
 	appender.node.block.mvcc.OnReplayAppendNode(appendNode)
 }
 func (appender *blockAppender) OnReplayInsertNode(bat *gbat.Batch, offset, length uint32, txn txnif.AsyncTxn) (node txnif.AppendNode, from uint32, err error) {
-	var h base.INodeHandle
-	if h, err = appender.node.TryPin(); err != nil {
-		return
-	}
-	defer h.Close()
-	err = appender.node.Expand(0, func() error {
-		var err error
-		from, err = appender.node.ApplyAppend(bat, offset, length, txn)
-		return err
-	})
+	err = appender.node.DoWithPin(func() (err error) {
+		err = appender.node.Expand(0, func() error {
+			var err error
+			from, err = appender.node.ApplyAppend(bat, offset, length, txn)
+			return err
+		})
 
-	pks := bat.Vecs[appender.node.block.meta.GetSchema().PrimaryKey]
-	// logutil.Infof("Append into %d: %s", appender.node.meta.GetID(), pks.String())
-	err = appender.indexAppender.BatchInsert(pks, offset, int(length), from, false)
-	if err != nil {
-		panic(err)
-	}
+		pks := bat.Vecs[appender.node.block.meta.GetSchema().PrimaryKey]
+		// logutil.Infof("Append into %d: %s", appender.node.meta.GetID(), pks.String())
+		err = appender.indexAppender.BatchInsert(pks, offset, int(length), from, false)
+		if err != nil {
+			panic(err)
+		}
+		return
+	})
 
 	return
 }

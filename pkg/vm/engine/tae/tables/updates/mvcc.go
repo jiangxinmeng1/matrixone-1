@@ -209,7 +209,7 @@ func (n *MVCCHandle) GetDeleteChain() *DeleteChain {
 	return n.deletes
 }
 func (n *MVCCHandle) OnReplayAppendNode(an *AppendNode) {
-	an.controller = n
+	an.mvcc = n
 	n.appends = append(n.appends, an)
 }
 func (n *MVCCHandle) AddAppendNodeLocked(txn txnif.AsyncTxn, maxRow uint32) *AppendNode {

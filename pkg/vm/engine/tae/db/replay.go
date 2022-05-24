@@ -214,7 +214,10 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 		return
 	}
 	datablk := blk.GetBlockData()
-	datablk.OnReplayDelete(deleteNode)
+	err = datablk.OnReplayDelete(deleteNode)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
@@ -273,8 +276,8 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 		return
 	}
 	blkdata := blk.GetBlockData()
-		err = blkdata.OnReplayUpdate(id.Idx,updateNode)
-		if err != nil {
-			panic(err)
-		}
+	err = blkdata.OnReplayUpdate(id.Idx, updateNode)
+	if err != nil {
+		panic(err)
+	}
 }

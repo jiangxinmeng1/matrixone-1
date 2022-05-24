@@ -135,6 +135,12 @@ func (mgr *TxnManager) onPreparCommit(txn txnif.AsyncTxn) {
 	txn.SetError(txn.PrepareCommit())
 }
 
+func (mgr *TxnManager) onPreApplyCommit(txn txnif.AsyncTxn) {
+	if err := txn.PreApplyCommit(); err != nil {
+		mgr.OnException(err)
+	}
+}
+
 func (mgr *TxnManager) onPreparRollback(txn txnif.AsyncTxn) {
 	_ = txn.PrepareRollback()
 }
@@ -171,6 +177,8 @@ func (mgr *TxnManager) onPreparing(items ...interface{}) {
 				_ = op.Txn.ToRollbackingLocked(ts)
 				op.Txn.Unlock()
 				mgr.onPreparRollback(op.Txn)
+			} else {
+				mgr.onPreApplyCommit(op.Txn)
 			}
 		} else {
 			mgr.onPreparRollback(op.Txn)
@@ -184,42 +192,40 @@ func (mgr *TxnManager) onPreparing(items ...interface{}) {
 
 // TODO
 func (mgr *TxnManager) onCommit(items ...interface{}) {
+	var err error
 	now := time.Now()
 	for _, item := range items {
 		op := item.(*OpTxn)
 		switch op.Op {
 		case OpCommit:
-			if err := op.Txn.ApplyCommit(); err != nil {
-				panic(err)
+			if err = op.Txn.ApplyCommit(); err != nil {
+				mgr.OnException(err)
+				logutil.Warnf("ApplyCommit %s: %v", op.Txn.Repr(), err)
 			}
 		case OpRollback:
-			if err := op.Txn.ApplyRollback(); err != nil {
-				panic(err)
+			if err = op.Txn.ApplyRollback(); err != nil {
+				mgr.OnException(err)
+				logutil.Warnf("ApplyRollback %s: %v", op.Txn.Repr(), err)
 			}
 		}
 		// Here only wait the txn to be done. The err returned can be access via op.Txn.GetError()
-		_ = op.Txn.WaitDone()
+		_ = op.Txn.WaitDone(err)
 		logutil.Debugf("%s Done", op.Repr())
 	}
 	logutil.Infof("Commit %d Txns Takes: %s", len(items), time.Since(now))
 }
 
-func (mgr *TxnManager) TryStoreException(new error) (err error) {
+func (mgr *TxnManager) OnException(new error) {
 	old := mgr.Exception.Load()
 	for old == nil {
 		if mgr.Exception.CompareAndSwap(old, new) {
-			err = new
 			break
 		}
 		old = mgr.Exception.Load()
-		if old != nil {
-			err = old.(error)
-		}
 	}
-	return
 }
 
 func (mgr *TxnManager) Stop() {
 	mgr.StateMachine.Stop()
-	_ = mgr.TryStoreException(common.ClosedErr)
+	mgr.OnException(common.ClosedErr)
 }

@@ -72,6 +72,16 @@ func (node *appendableNode) TryPin() (base.INodeHandle, error) {
 	return node.mgr.TryPin(node.Node, time.Second)
 }
 
+func (node *appendableNode) DoWithPin(do func() error) (err error) {
+	h, err := node.TryPin()
+	if err != nil {
+		return
+	}
+	defer h.Close()
+	err = do()
+	return
+}
+
 func (node *appendableNode) Rows(txn txnif.AsyncTxn, coarse bool) uint32 {
 	if coarse {
 		readLock := node.block.mvcc.GetSharedLock()
@@ -174,16 +184,27 @@ func (node *appendableNode) flushData(ts uint64, colData batch.IBatch) (err erro
 		chain := mvcc.GetColumnChain(uint16(i))
 
 		chain.RLock()
-		updateMask, updateVals := chain.CollectUpdatesLocked(ts)
+		updateMask, updateVals, err := chain.CollectUpdatesLocked(ts)
 		chain.RUnlock()
+		if err != nil {
+			break
+		}
 		if updateMask != nil {
 			masks[uint16(i)] = updateMask
 			vals[uint16(i)] = updateVals
 		}
 	}
+	if err != nil {
+		readLock.Unlock()
+		return
+	}
 	deleteChain := mvcc.GetDeleteChain()
-	dnode := deleteChain.CollectDeletesLocked(ts, false).(*updates.DeleteNode)
+	n, err := deleteChain.CollectDeletesLocked(ts, false)
 	readLock.Unlock()
+	if err != nil {
+		return
+	}
+	dnode := n.(*updates.DeleteNode)
 	logutil.Infof("[TS=%d] Unloading block %s", ts, node.block.meta.AsCommonID().String())
 	var deletes *roaring.Bitmap
 	if dnode != nil {

@@ -79,8 +79,7 @@ func (seg *localSegment) registerInsertNode() {
 	seg.nodes = append(seg.nodes, n)
 }
 
-func (seg *localSegment) ApplyAppend() {
-	var err error
+func (seg *localSegment) ApplyAppend() (err error) {
 	for _, ctx := range seg.appends {
 		var (
 			destOff    uint32
@@ -102,6 +101,7 @@ func (seg *localSegment) ApplyAppend() {
 	if seg.tableHandle != nil {
 		seg.table.entry.GetTableData().ApplyHandle(seg.tableHandle)
 	}
+	return
 }
 
 func (seg *localSegment) PrepareApply() (err error) {
@@ -312,7 +312,11 @@ func (seg *localSegment) Rows() uint32 {
 }
 
 func (seg *localSegment) GetByFilter(filter *handle.Filter) (id *common.ID, offset uint32, err error) {
-	offset, err = seg.index.Find(filter.Val)
+	if v, ok := filter.Val.([]byte); ok {
+		offset, err = seg.index.Find(string(v))
+	} else {
+		offset, err = seg.index.Find(filter.Val)
+	}
 	if err == nil {
 		id = seg.entry.AsCommonID()
 	}

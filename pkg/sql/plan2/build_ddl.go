@@ -35,7 +35,7 @@ func buildCreateTable(stmt *tree.CreateTable, ctx CompilerContext) (*Plan, error
 
 	// get database name
 	if len(stmt.Table.SchemaName) == 0 {
-		createTable.Database = ctx.DefaultDatabase()
+		createTable.Database = ""
 	} else {
 		createTable.Database = string(stmt.Table.SchemaName)
 	}
@@ -217,6 +217,7 @@ func buildTableDefs(defs tree.TableDefs, ctx CompilerContext, tableDef *TableDef
 			},
 		})
 	}
+
 	return nil
 }
 

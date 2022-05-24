@@ -85,7 +85,7 @@ func (replayer *Replayer) OnReplayCmd(txncmd txnif.TxnCmd, idxCtx *wal.Index) {
 	case *txnimpl.AppendCmd:
 		replayer.db.onReplayAppendCmd(cmd)
 	case *updates.UpdateCmd:
-		err = replayer.db.onReplayUpdateCmd(cmd, idxCtx)
+		err = replayer.db.onReplayUpdateCmd(cmd, idxCtx, replayer)
 	}
 	if err != nil {
 		panic(err)
@@ -178,19 +178,19 @@ func (db *DB) window(attrs []string, data batch.IBatch, deletes *roaring.Bitmap,
 	return ret, nil
 }
 
-func (db *DB) onReplayUpdateCmd(cmd *updates.UpdateCmd, idxCtx *wal.Index) (err error) {
+func (db *DB) onReplayUpdateCmd(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) (err error) {
 	switch cmd.GetType() {
 	case txnbase.CmdAppend:
-		db.onReplayAppend(cmd, idxCtx)
+		db.onReplayAppend(cmd, idxCtx, observer)
 	case txnbase.CmdUpdate:
-		db.onReplayUpdate(cmd, idxCtx)
+		db.onReplayUpdate(cmd, idxCtx, observer)
 	case txnbase.CmdDelete:
-		db.onReplayDelete(cmd, idxCtx)
+		db.onReplayDelete(cmd, idxCtx, observer)
 	}
 	return
 }
 
-func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
+func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
@@ -218,9 +218,12 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 	if err != nil {
 		panic(err)
 	}
+	if observer != nil {
+		observer.OnTimeStamp(deleteNode.GetCommitTSLocked())
+	}
 }
 
-func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
+func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
@@ -250,9 +253,12 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 		panic(err)
 	}
 	appender.OnReplayAppendNode(cmd.GetAppendNode())
+	if observer != nil {
+		observer.OnTimeStamp(appendNode.GetCommitTS())
+	}
 }
 
-func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
+func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) {
 	database, err := db.Catalog.GetDatabaseByID(cmd.GetDBID())
 	if err != nil {
 		panic(err)
@@ -279,5 +285,8 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index) {
 	err = blkdata.OnReplayUpdate(id.Idx, updateNode)
 	if err != nil {
 		panic(err)
+	}
+	if observer != nil {
+		observer.OnTimeStamp(updateNode.GetCommitTSLocked())
 	}
 }

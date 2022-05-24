@@ -119,8 +119,8 @@ type UpdateChain interface {
 	AddNodeLocked(txn AsyncTxn) UpdateNode
 	PrepareUpdate(uint32, UpdateNode) error
 
-	GetValueLocked(row uint32, ts uint64) (interface{}, error)
-	TryUpdateNodeLocked(row uint32, v interface{}, n UpdateNode) error
+	GetValueLocked(row uint32, ts uint64) (any, error)
+	TryUpdateNodeLocked(row uint32, v any, n UpdateNode) error
 	// CheckDeletedLocked(start, end uint32, txn AsyncTxn) error
 	// CheckColumnUpdatedLocked(row uint32, colIdx uint16, txn AsyncTxn) error
 }
@@ -151,6 +151,7 @@ type DeleteNode interface {
 	RangeDeleteLocked(start, end uint32)
 	GetCardinalityLocked() uint32
 	IsDeletedLocked(row uint32) bool
+	GetInvisibilityMapRefLocked() *roaring.Bitmap
 	OnApply() error
 }
 
@@ -163,7 +164,7 @@ type UpdateNode interface {
 	GetMask() *roaring.Bitmap
 	GetValues() map[uint32]interface{}
 
-	UpdateLocked(row uint32, v interface{}) error
+	UpdateLocked(row uint32, v any) error
 }
 
 type TxnStore interface {
@@ -178,11 +179,11 @@ type TxnStore interface {
 	Append(dbId, id uint64, data *batch.Batch) error
 
 	RangeDelete(dbId uint64, id *common.ID, start, end uint32) error
-	Update(dbId uint64, id *common.ID, row uint32, col uint16, v interface{}) error
+	Update(dbId uint64, id *common.ID, row uint32, col uint16, v any) error
 	GetByFilter(dbId uint64, id uint64, filter *handle.Filter) (*common.ID, uint32, error)
-	GetValue(dbId uint64, id *common.ID, row uint32, col uint16) (interface{}, error)
+	GetValue(dbId uint64, id *common.ID, row uint32, col uint16) (any, error)
 
-	CreateRelation(dbId uint64, def interface{}) (handle.Relation, error)
+	CreateRelation(dbId uint64, def any) (handle.Relation, error)
 	DropRelationByName(dbId uint64, name string) (handle.Relation, error)
 	GetRelationByName(dbId uint64, name string) (handle.Relation, error)
 

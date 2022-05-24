@@ -281,3 +281,7 @@ func (node *DeleteNode) OnApply() (err error) {
 	err = listener(node.mask.Iterator())
 	return
 }
+
+func (node *DeleteNode) GetInvisibilityMapRefLocked() *roaring.Bitmap {
+	return node.mask
+}

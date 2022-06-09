@@ -22,7 +22,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/container/compute"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/jobs"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils/config"
@@ -128,7 +128,7 @@ func TestGCTable(t *testing.T) {
 
 	dbEntry, _ := tae.Catalog.GetDatabaseByID(db.GetID())
 	now := time.Now()
-	testutils.WaitExpect(1000, func() bool {
+	testutils.WaitExpect(2000, func() bool {
 		return dbEntry.CoarseTableCnt() == 0
 	})
 	assert.Equal(t, 0, dbEntry.CoarseTableCnt())
@@ -141,7 +141,7 @@ func TestGCTable(t *testing.T) {
 	// 3. Create a table and append 7 rows
 	db, _ = createRelationAndAppend(t, tae, "db", schema, bats[0], false)
 
-	names := getSegmentFileNames(tae.Dir)
+	names := getSegmentFileNames(tae)
 	assert.Equal(t, 1, len(names))
 
 	// 4. Drop the table
@@ -149,18 +149,18 @@ func TestGCTable(t *testing.T) {
 
 	dbEntry, _ = tae.Catalog.GetDatabaseByID(db.GetID())
 	now = time.Now()
-	testutils.WaitExpect(1000, func() bool {
+	testutils.WaitExpect(2000, func() bool {
 		return dbEntry.CoarseTableCnt() == 0
 	})
 	assert.Equal(t, 0, dbEntry.CoarseTableCnt())
 	t.Logf("Takes: %s", time.Since(now))
 	printCheckpointStats(t, tae)
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 
 	// 5. Create a table and append 3 block
 	db, _ = createRelationAndAppend(t, tae, "db", schema, bat, false)
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	t.Log(names)
 	assert.Equal(t, 2, len(names))
 	printCheckpointStats(t, tae)
@@ -169,14 +169,14 @@ func TestGCTable(t *testing.T) {
 
 	// 6. Drop the table
 	dropRelation(t, tae, "db", schema.Name)
-	testutils.WaitExpect(200, func() bool {
+	testutils.WaitExpect(2000, func() bool {
 		return dbEntry.CoarseTableCnt() == 0
 	})
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	printCheckpointStats(t, tae)
 	t.Log(names)
 	assert.Equal(t, 0, dbEntry.CoarseTableCnt())
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 
 	// 7. Create a table
@@ -207,7 +207,7 @@ func TestGCTable(t *testing.T) {
 	})
 	printCheckpointStats(t, tae)
 	assert.Equal(t, 0, dbEntry.CoarseTableCnt())
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 	// t.Log(common.GPool.String())
 }
@@ -230,7 +230,7 @@ func TestGCDB(t *testing.T) {
 	createRelation(t, tae, "db", schema1, true)
 	createRelation(t, tae, "db", schema2, false)
 	dropDB(t, tae, "db")
-	testutils.WaitExpect(1000, func() bool {
+	testutils.WaitExpect(2000, func() bool {
 		return tae.Catalog.CoarseDBCnt() == 1
 	})
 	printCheckpointStats(t, tae)
@@ -250,7 +250,7 @@ func TestGCDB(t *testing.T) {
 	})
 	t.Log(tae.Catalog.SimplePPString(common.PPL1))
 	assert.Equal(t, 1, tae.Catalog.CoarseDBCnt())
-	names := getSegmentFileNames(tae.Dir)
+	names := getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 
 	createRelation(t, tae, "db", schema1, true)
@@ -265,7 +265,7 @@ func TestGCDB(t *testing.T) {
 		return tae.Catalog.CoarseDBCnt() == 1
 	})
 	assert.Equal(t, 1, tae.Catalog.CoarseDBCnt())
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 
 	createDB(t, tae, "db")
@@ -314,7 +314,7 @@ func TestGCDB(t *testing.T) {
 		return tae.Catalog.CoarseDBCnt() == 1
 	})
 	assert.Equal(t, 1, tae.Catalog.CoarseDBCnt())
-	names = getSegmentFileNames(tae.Dir)
+	names = getSegmentFileNames(tae)
 	assert.Equal(t, 0, len(names))
 	t.Log(tae.Catalog.SimplePPString(common.PPL1))
 	printCheckpointStats(t, tae)

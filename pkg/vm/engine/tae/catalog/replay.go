@@ -18,6 +18,7 @@ import (
 	"bytes"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
 const DefaultReplayCacheSize = 2 * common.M
@@ -26,13 +27,15 @@ type Replayer struct {
 	dataFactory DataFactory
 	catalog     *Catalog
 	cache       *bytes.Buffer
+	observer    wal.ReplayObserver
 }
 
-func NewReplayer(dataFactory DataFactory, catalog *Catalog) *Replayer {
+func NewReplayer(dataFactory DataFactory, catalog *Catalog, observer wal.ReplayObserver) *Replayer {
 	return &Replayer{
 		dataFactory: dataFactory,
 		catalog:     catalog,
 		cache:       bytes.NewBuffer(make([]byte, DefaultReplayCacheSize)),
+		observer:    observer,
 	}
 }
 
@@ -49,7 +52,7 @@ func (replayer *Replayer) ReplayerHandle(group uint32, commitId uint64, payload 
 	checkpoint.MaxTS = e.MaxTS
 	checkpoint.LSN = e.MaxIndex.LSN
 	for _, cmd := range e.Entries {
-		replayer.catalog.ReplayCmd(cmd, replayer.dataFactory, nil, nil, replayer.cache)
+		replayer.catalog.ReplayCmd(cmd, replayer.dataFactory, nil, replayer.observer, replayer.cache)
 	}
 	if len(replayer.catalog.checkpoints) == 0 {
 		replayer.catalog.checkpoints = append(replayer.catalog.checkpoints, checkpoint)

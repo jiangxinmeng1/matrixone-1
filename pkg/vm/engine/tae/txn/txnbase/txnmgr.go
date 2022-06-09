@@ -66,6 +66,16 @@ func (mgr *TxnManager) Init(prevTxnId uint64, prevTs uint64) error {
 	return nil
 }
 
+func (mgr *TxnManager) TryUpdateTsAndID(prevTxnId uint64, prevTs uint64) error {
+	if mgr.IdAlloc.Get() < prevTxnId {
+		mgr.IdAlloc.SetStart(prevTxnId)
+	}
+	if mgr.TsAlloc.Get() < prevTs {
+		mgr.TsAlloc.SetStart(prevTs)
+	}
+	return nil
+}
+
 func (mgr *TxnManager) StatActiveTxnCnt() int {
 	mgr.RLock()
 	defer mgr.RUnlock()

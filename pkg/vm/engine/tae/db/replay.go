@@ -19,6 +19,26 @@ import (
 
 const DefaultReplayCacheSize = 2 * common.M
 
+type TsObserver struct {
+	maxTs uint64
+}
+
+func newTsObserver() *TsObserver {
+	return &TsObserver{}
+}
+
+func (observer *TsObserver) OnTimeStamp(ts uint64) {
+	if ts > observer.maxTs {
+		observer.maxTs = ts
+	}
+}
+
+func (observer *TsObserver) GetMaxTS() uint64 {
+	return observer.maxTs
+}
+
+func (observer *TsObserver) OnStaleIndex(*wal.Index) {}
+
 type Replayer struct {
 	DataFactory  *tables.DataFactory
 	db           *DB

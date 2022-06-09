@@ -79,7 +79,7 @@ func MockCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 	return catalog
 }
 
-func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskScheduler, dataFactory DataFactory) (*Catalog, error) {
+func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskScheduler, dataFactory DataFactory, observer wal.ReplayObserver) (*Catalog, error) {
 	driver, err := store.NewBaseStore(dir, name, cfg)
 	if err != nil {
 		panic(err)
@@ -95,7 +95,7 @@ func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 		scheduler:   scheduler,
 	}
 	catalog.InitSystemDB()
-	replayer := NewReplayer(dataFactory, catalog)
+	replayer := NewReplayer(dataFactory, catalog, observer)
 	err = catalog.store.Replay(replayer.ReplayerHandle)
 	return catalog, err
 }
@@ -134,7 +134,7 @@ func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, datafactory DataFactory, 
 		}
 	case CmdLogBlock:
 		cmd := txncmd.(*EntryCommand)
-		catalog.onReplayBlock(cmd, datafactory)
+		catalog.onReplayBlock(cmd, datafactory, observer)
 	case CmdLogSegment:
 		cmd := txncmd.(*EntryCommand)
 		catalog.onReplaySegment(cmd, datafactory, cache)
@@ -395,6 +395,13 @@ func (catalog *Catalog) onReplayCreateBlock(cmd *EntryCommand, datafactory DataF
 	cmd.Block.CurrOp = OpCreate
 	cmd.Block.segment = seg
 	cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
+	if observer != nil {
+		ts, err := cmd.Block.blkData.GetBlockFile().ReadTS()
+		if err != nil {
+			panic(err)
+		}
+		observer.OnTimeStamp(ts)
+	}
 	// cmd.Block.blkData.ReplayData()
 	catalog.OnReplayBlockID(cmd.Block.ID)
 	cmd.Block.LogIndex = idx
@@ -430,7 +437,7 @@ func (catalog *Catalog) onReplayDropBlock(cmd *EntryCommand, idx *wal.Index, obs
 	}
 }
 
-func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory) {
+func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory, observer wal.ReplayObserver) {
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
 		panic(err)
@@ -446,6 +453,13 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory
 	cmd.Block.segment = seg
 	if cmd.Block.CurrOp == OpCreate {
 		cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
+		if observer != nil {
+			ts, err := cmd.Block.blkData.GetBlockFile().ReadTS()
+			if err != nil {
+				panic(err)
+			}
+			observer.OnTimeStamp(ts)
+		}
 		// cmd.Block.blkData.ReplayData()
 		catalog.OnReplayBlockID(cmd.Block.ID)
 		seg.AddEntryLocked(cmd.Block)

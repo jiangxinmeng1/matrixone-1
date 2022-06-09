@@ -171,14 +171,7 @@ func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd) {
 		if err != nil {
 			panic(err)
 		}
-		if blk.CurrOp == catalog.OpSoftDelete {
-			continue
-		}
-		fileTs, err := blk.GetFileTs()
-		if err != nil {
-			panic(err)
-		}
-		if fileTs > cmd.Ts {
+		if blk.GetMaxTsReplayed() > cmd.Ts {
 			continue
 		}
 		start := info.GetSrcOff()
@@ -256,18 +249,11 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.CurrOp == catalog.OpSoftDelete {
+	if blk.GetMaxTsReplayed() > deleteNode.GetCommitTSLocked() {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	fileTs, err := blk.GetFileTs()
-	if err != nil {
-		panic(err)
-	}
-	if fileTs > deleteNode.GetCommitTSLocked() {
-		observer.OnStaleIndex(idxCtx)
-		return
-	}
+	blk.OnReplayTs(deleteNode.GetCommitTSLocked())
 	datablk := blk.GetBlockData()
 	err = datablk.OnReplayDelete(deleteNode)
 	if err != nil {
@@ -298,18 +284,11 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.CurrOp == catalog.OpSoftDelete {
+	if blk.GetMaxTsReplayed() > appendNode.GetCommitTS() {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	fileTs, err := blk.GetFileTs()
-	if err != nil {
-		panic(err)
-	}
-	if fileTs > appendNode.GetCommitTS() {
-		observer.OnStaleIndex(idxCtx)
-		return
-	}
+	blk.OnReplayTs(appendNode.GetCommitTS())
 	datablk := blk.GetBlockData()
 
 	appender, err := datablk.MakeAppender()
@@ -342,18 +321,11 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.CurrOp == catalog.OpSoftDelete {
+	if blk.GetMaxTsReplayed() > updateNode.GetCommitTSLocked() {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	fileTs, err := blk.GetFileTs()
-	if err != nil {
-		panic(err)
-	}
-	if fileTs > updateNode.GetCommitTSLocked() {
-		observer.OnStaleIndex(idxCtx)
-		return
-	}
+	blk.OnReplayTs(updateNode.GetCommitTSLocked())
 	blkdata := blk.GetBlockData()
 	err = blkdata.OnReplayUpdate(id.Idx, updateNode)
 	if err != nil {

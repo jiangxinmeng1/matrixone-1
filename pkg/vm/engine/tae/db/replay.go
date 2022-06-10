@@ -174,13 +174,15 @@ func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd, observer wal.ReplayObser
 		if err != nil {
 			panic(err)
 		}
-		if blk.GetMaxTsReplayed() > cmd.Ts {
+		if blk.CurrOp == catalog.OpSoftDelete {
 			continue
 		}
 		if observer != nil {
 			observer.OnTimeStamp(blk.GetBlockData().GetMaxCheckpointTS())
 		}
-		blk.OnReplayTs(cmd.Ts)
+		if cmd.Ts <= blk.GetBlockData().GetMaxCheckpointTS() {
+			continue
+		}
 		start := info.GetSrcOff()
 		end := start + info.GetSrcLen() - 1
 		bat, err := db.window(blk.GetSchema(), data, deletes, start, end)
@@ -248,11 +250,14 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.GetMaxTsReplayed() > deleteNode.GetCommitTSLocked() {
+	if blk.CurrOp == catalog.OpSoftDelete {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	blk.OnReplayTs(deleteNode.GetCommitTSLocked())
+	if deleteNode.GetCommitTSLocked() <= blk.GetBlockData().GetMaxCheckpointTS() {
+		observer.OnStaleIndex(idxCtx)
+		return
+	}
 	datablk := blk.GetBlockData()
 	err = datablk.OnReplayDelete(deleteNode)
 	if err != nil {
@@ -275,11 +280,14 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.GetMaxTsReplayed() > appendNode.GetCommitTS() {
+	if blk.CurrOp == catalog.OpSoftDelete {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	blk.OnReplayTs(appendNode.GetCommitTS())
+	if appendNode.GetCommitTS() <= blk.GetBlockData().GetMaxCheckpointTS() {
+		observer.OnStaleIndex(idxCtx)
+		return
+	}
 	datablk := blk.GetBlockData()
 
 	appender, err := datablk.MakeAppender()
@@ -304,11 +312,14 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	if err != nil {
 		panic(err)
 	}
-	if blk.GetMaxTsReplayed() > updateNode.GetCommitTSLocked() {
+	if blk.CurrOp == catalog.OpSoftDelete {
 		observer.OnStaleIndex(idxCtx)
 		return
 	}
-	blk.OnReplayTs(updateNode.GetCommitTSLocked())
+	if updateNode.GetCommitTSLocked() <= blk.GetBlockData().GetMaxCheckpointTS() {
+		observer.OnStaleIndex(idxCtx)
+		return
+	}
 	blkdata := blk.GetBlockData()
 	err = blkdata.OnReplayUpdate(id.Idx, updateNode)
 	if err != nil {

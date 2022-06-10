@@ -448,15 +448,10 @@ func (catalog *Catalog) onReplayCreateBlock(cmd *EntryCommand, datafactory DataF
 	cmd.Block.segment = seg
 	cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
 	ts := cmd.Block.blkData.GetMaxCheckpointTS()
-	cmd.Block.OnReplayTs(cmd.Block.blkData.GetMaxCheckpointTS())
-	if err != nil {
-		panic(err)
-	}
 	if observer != nil {
 		observer.OnTimeStamp(ts)
 	}
 	// cmd.Block.blkData.ReplayData()
-	cmd.Block.OnReplayTs(cmd.Block.CreateAt)
 	catalog.OnReplayBlockID(cmd.Block.ID)
 	cmd.Block.LogIndex = idx
 	seg.AddEntryLocked(cmd.Block)
@@ -488,7 +483,6 @@ func (catalog *Catalog) onReplayDropBlock(cmd *EntryCommand, idx *wal.Index, obs
 	if err != nil {
 		panic(err)
 	}
-	blk.OnReplayTs(cmd.entry.DeleteAt)
 	err = blk.ApplyDeleteCmd(cmd.entry.DeleteAt, idx)
 	if observer != nil {
 		observer.OnTimeStamp(cmd.entry.DeleteAt)
@@ -514,13 +508,7 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory
 	cmd.Block.segment = seg
 	if cmd.Block.CurrOp == OpCreate {
 		cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
-		ts := cmd.Block.blkData.GetMaxCheckpointTS()
-		if err != nil {
-			panic(err)
-		}
-		cmd.Block.OnReplayTs(ts)
 		// cmd.Block.blkData.ReplayData()
-		cmd.Block.OnReplayTs(cmd.Block.CreateAt)
 		catalog.OnReplayBlockID(cmd.Block.ID)
 		seg.AddEntryLocked(cmd.Block)
 	} else {
@@ -530,7 +518,6 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory
 				panic(err)
 			}
 		}
-		cmd.Block.OnReplayTs(cmd.Block.DeleteAt)
 		seg.AddEntryLocked(cmd.Block)
 	}
 }

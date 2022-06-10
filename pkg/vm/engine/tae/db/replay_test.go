@@ -334,6 +334,7 @@ func TestReplay1(t *testing.T) {
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.Nil(t, err)
 	assert.Equal(t, uint64(9999), rel.GetMeta().(*catalog.TableEntry).GetRows())
+	getColumnRowsByScan(t,rel,1,false)
 	filter = new(handle.Filter)
 	filter.Op = handle.FilterEq
 	filter.Val = int32(5)

@@ -132,7 +132,7 @@ func (replayer *Replayer) OnReplayCmd(txncmd txnif.TxnCmd, idxCtx *wal.Index) {
 	case *catalog.EntryCommand:
 		replayer.db.Catalog.ReplayCmd(txncmd, replayer.DataFactory, idxCtx, replayer, replayer.cache)
 	case *txnimpl.AppendCmd:
-		replayer.db.onReplayAppendCmd(cmd)
+		replayer.db.onReplayAppendCmd(cmd, replayer)
 	case *updates.UpdateCmd:
 		err = replayer.db.onReplayUpdateCmd(cmd, idxCtx, replayer)
 	}
@@ -141,7 +141,7 @@ func (replayer *Replayer) OnReplayCmd(txncmd txnif.TxnCmd, idxCtx *wal.Index) {
 	}
 }
 
-func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd) {
+func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd, observer wal.ReplayObserver) {
 	var data batch.IBatch
 	var deletes *roaring.Bitmap
 	for _, subTxnCmd := range cmd.Cmds {
@@ -170,29 +170,20 @@ func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd) {
 			panic(err)
 		}
 		id := info.GetDest()
-		tb, err := database.GetTableEntryByID(id.TableID)
-		if err != nil {
-			panic(err)
-		}
-		// attrs := make([]string, len(tb.GetSchema().ColDefs))
-		// for i := range attrs {
-		// 	attrs[i] = tb.GetSchema().ColDefs[i].Name
-		// }
-		seg, err := tb.GetSegmentByID(id.SegmentID)
-		if err != nil {
-			panic(err)
-		}
-		blk, err := seg.GetBlockEntryByID(id.BlockID)
+		blk, err := database.GetBlockEntryByID(id)
 		if err != nil {
 			panic(err)
 		}
 		if blk.GetMaxTsReplayed() > cmd.Ts {
 			continue
 		}
+		if observer != nil {
+			observer.OnTimeStamp(blk.GetBlockData().GetMaxCheckpointTS())
+		}
 		blk.OnReplayTs(cmd.Ts)
 		start := info.GetSrcOff()
 		end := start + info.GetSrcLen() - 1
-		bat, err := db.window(tb.GetSchema(), data, deletes, start, end)
+		bat, err := db.window(blk.GetSchema(), data, deletes, start, end)
 		if err != nil {
 			panic(err)
 		}
@@ -253,15 +244,7 @@ func (db *DB) onReplayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	deleteNode := cmd.GetDeleteNode()
 	deleteNode.SetLogIndex(idxCtx)
 	id := deleteNode.GetID()
-	tb, err := database.GetTableEntryByID(id.TableID)
-	if err != nil {
-		panic(err)
-	}
-	seg, err := tb.GetSegmentByID(id.SegmentID)
-	if err != nil {
-		panic(err)
-	}
-	blk, err := seg.GetBlockEntryByID(id.BlockID)
+	blk, err := database.GetBlockEntryByID(id)
 	if err != nil {
 		panic(err)
 	}
@@ -288,15 +271,7 @@ func (db *DB) onReplayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	appendNode := cmd.GetAppendNode()
 	appendNode.SetLogIndex(idxCtx)
 	id := appendNode.GetID()
-	tb, err := database.GetTableEntryByID(id.TableID)
-	if err != nil {
-		panic(err)
-	}
-	seg, err := tb.GetSegmentByID(id.SegmentID)
-	if err != nil {
-		panic(err)
-	}
-	blk, err := seg.GetBlockEntryByID(id.BlockID)
+	blk, err := database.GetBlockEntryByID(id)
 	if err != nil {
 		panic(err)
 	}
@@ -325,15 +300,7 @@ func (db *DB) onReplayUpdate(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer
 	updateNode := cmd.GetUpdateNode()
 	updateNode.SetLogIndex(idxCtx)
 	id := updateNode.GetID()
-	tb, err := database.GetTableEntryByID(id.TableID)
-	if err != nil {
-		panic(err)
-	}
-	seg, err := tb.GetSegmentByID(id.SegmentID)
-	if err != nil {
-		panic(err)
-	}
-	blk, err := seg.GetBlockEntryByID(id.BlockID)
+	blk, err := database.GetBlockEntryByID(id)
 	if err != nil {
 		panic(err)
 	}

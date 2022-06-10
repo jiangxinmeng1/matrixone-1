@@ -66,8 +66,7 @@ func Open(dirname string, opts *options.Options) (db *DB, err error) {
 	db.Wal = wal.NewDriver(dirname, WALDir, nil)
 	db.Scheduler = newTaskScheduler(db, db.Opts.SchedulerCfg.AsyncWorkers, db.Opts.SchedulerCfg.IOWorkers)
 	dataFactory := tables.NewDataFactory(db.FileFactory, mutBufMgr, db.Scheduler, db.Dir)
-	tsObserver := newTsObserver()
-	if db.Opts.Catalog, err = catalog.OpenCatalog(dirname, CATALOGDir, nil, db.Scheduler, dataFactory, tsObserver); err != nil {
+	if db.Opts.Catalog, err = catalog.OpenCatalog(dirname, CATALOGDir, nil, db.Scheduler, dataFactory); err != nil {
 		return
 	}
 	db.Catalog = db.Opts.Catalog
@@ -78,7 +77,6 @@ func Open(dirname string, opts *options.Options) (db *DB, err error) {
 	db.TxnMgr = txnbase.NewTxnManager(txnStoreFactory, txnFactory)
 
 	db.Replay(dataFactory)
-	db.TxnMgr.TryUpdateTsAndID(0, tsObserver.GetMaxTS())
 	db.Catalog.ReplayTableRows()
 
 	db.TxnMgr.Start()

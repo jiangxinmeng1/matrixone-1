@@ -83,7 +83,7 @@ func MockCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 	return catalog
 }
 
-func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskScheduler, dataFactory DataFactory, observer wal.ReplayObserver) (*Catalog, error) {
+func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskScheduler, dataFactory DataFactory) (*Catalog, error) {
 	driver, err := store.NewBaseStore(dir, name, cfg)
 	if err != nil {
 		panic(err)
@@ -99,7 +99,7 @@ func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 		scheduler:   scheduler,
 	}
 	catalog.InitSystemDB()
-	replayer := NewReplayer(dataFactory, catalog, observer)
+	replayer := NewReplayer(dataFactory, catalog)
 	err = catalog.store.Replay(replayer.ReplayerHandle)
 	return catalog, err
 }
@@ -138,7 +138,7 @@ func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, datafactory DataFactory, 
 		}
 	case CmdLogBlock:
 		cmd := txncmd.(*EntryCommand)
-		catalog.onReplayBlock(cmd, datafactory, observer)
+		catalog.onReplayBlock(cmd, datafactory)
 	case CmdLogSegment:
 		cmd := txncmd.(*EntryCommand)
 		catalog.onReplaySegment(cmd, datafactory, cache)
@@ -236,6 +236,9 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 		var db *DBEntry
 		db, err = catalog.GetDatabaseByID(cmd.DB.ID)
 		if err == nil {
+			cmd.DB.entries = db.entries
+			cmd.DB.link = db.link
+			cmd.DB.nameNodes = db.nameNodes
 			if err = catalog.RemoveEntry(db); err != nil {
 				panic(err)
 			}
@@ -313,6 +316,8 @@ func (catalog *Catalog) onReplayTable(cmd *EntryCommand, datafactory DataFactory
 	} else {
 		rel, _ := db.GetTableEntryByID(cmd.Table.ID)
 		if rel != nil {
+			cmd.Table.entries = rel.entries
+			cmd.Table.link = rel.link
 			if err = db.RemoveEntry(rel); err != nil {
 				panic(err)
 			}
@@ -405,7 +410,7 @@ func (catalog *Catalog) onReplaySegment(cmd *EntryCommand, datafactory DataFacto
 	} else {
 		seg, _ := rel.GetSegmentByID(cmd.Segment.ID)
 		if seg != nil {
-			cmd.Segment.entries=seg.entries
+			cmd.Segment.entries = seg.entries
 			if err = rel.deleteEntryLocked(seg); err != nil {
 				panic(err)
 			}
@@ -442,8 +447,8 @@ func (catalog *Catalog) onReplayCreateBlock(cmd *EntryCommand, datafactory DataF
 	cmd.Block.CurrOp = OpCreate
 	cmd.Block.segment = seg
 	cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
-	ts, err := cmd.Block.blkData.GetBlockFile().ReadTS()
-	cmd.Block.OnReplayTs(ts)
+	ts := cmd.Block.blkData.GetMaxCheckpointTS()
+	cmd.Block.OnReplayTs(cmd.Block.blkData.GetMaxCheckpointTS())
 	if err != nil {
 		panic(err)
 	}
@@ -493,7 +498,7 @@ func (catalog *Catalog) onReplayDropBlock(cmd *EntryCommand, idx *wal.Index, obs
 	}
 }
 
-func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory, observer wal.ReplayObserver) {
+func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory) {
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
 		panic(err)
@@ -509,14 +514,11 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, datafactory DataFactory
 	cmd.Block.segment = seg
 	if cmd.Block.CurrOp == OpCreate {
 		cmd.Block.blkData = datafactory.MakeBlockFactory(seg.segData.GetSegmentFile())(cmd.Block)
-		ts, err := cmd.Block.blkData.GetBlockFile().ReadTS()
+		ts := cmd.Block.blkData.GetMaxCheckpointTS()
 		if err != nil {
 			panic(err)
 		}
 		cmd.Block.OnReplayTs(ts)
-		if observer != nil {
-			observer.OnTimeStamp(ts)
-		}
 		// cmd.Block.blkData.ReplayData()
 		cmd.Block.OnReplayTs(cmd.Block.CreateAt)
 		catalog.OnReplayBlockID(cmd.Block.ID)

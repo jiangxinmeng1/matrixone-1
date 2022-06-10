@@ -23,7 +23,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 )
 
-type noopObserver struct {}
+type noopObserver struct{}
 
 func (o *noopObserver) OnNewEntry(_ int) {
 }

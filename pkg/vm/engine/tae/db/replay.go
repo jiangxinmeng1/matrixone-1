@@ -189,6 +189,7 @@ func (db *DB) onReplayAppendCmd(cmd *txnimpl.AppendCmd) {
 		if blk.GetMaxTsReplayed() > cmd.Ts {
 			continue
 		}
+		blk.OnReplayTs(cmd.Ts)
 		start := info.GetSrcOff()
 		end := start + info.GetSrcLen() - 1
 		bat, err := db.window(tb.GetSchema(), data, deletes, start, end)

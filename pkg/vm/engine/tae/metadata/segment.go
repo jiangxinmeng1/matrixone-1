@@ -13,27 +13,53 @@ type Segment struct {
 	sync.RWMutex
 	BaseEntry
 	Id      uint64
-	Entries map[uint64]*Block
+	Entries map[uint64]*common.DLNode
 	Link    *common.Link
-	Txn     txnif.AsyncTxn
 }
 
 func NewTxnSegment(id uint64, txn txnif.AsyncTxn) *Segment {
 	return &Segment{
 		BaseEntry: BaseEntry{
 			CreatedAt: txn.GetStartTS(),
+			Txn:       txn,
 		},
-		Entries: make(map[uint64]*Block),
+		Entries: make(map[uint64]*common.DLNode),
 		Link:    new(common.Link),
-		Txn:     txn,
 	}
 }
 
-func (e *Segment) AddAppendNode(txn txnif.AsyncTxn, id uint64) (n INode, err error) {
-	blk := NewBlock(id, txn, e)
-	e.Link.Insert(blk)
-	e.Entries[id] = blk
-	n = blk
+// func (e *Segment) DropBlockEntry(id uint64, txn txnif.AsyncTxn) (deleted *Block, err error) {
+// 	blk, err := e.GetBlockEntryByID(id)
+// }
+
+func (e *Segment) GetBlockEntryByID(id uint64) (blk *Block, err error) {
+	e.RLock()
+	defer e.RUnlock()
+	n := e.Entries[id]
+	if blk == nil {
+		err = ErrNotFound
+		return
+	}
+	blk = n.GetPayload().(*Block)
+	return
+}
+
+func (e *Segment) RemoveEntry(blkId uint64) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	if n, ok := e.Entries[blkId]; !ok {
+		return ErrNotFound
+	} else {
+		e.Link.Delete(n)
+		delete(e.Entries, blkId)
+	}
+	return
+}
+
+func (e *Segment) CreateBlock(id uint64, txn txnif.AsyncTxn) (created *Block, err error) {
+	created = NewBlock(id, txn, e)
+	node := e.Link.Insert(created)
+	e.Entries[id] = node
 	return
 }
 

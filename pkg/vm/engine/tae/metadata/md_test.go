@@ -12,26 +12,25 @@ func TestSegment(t *testing.T) {
 	txn := txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 1, nil)
 	seg := NewTxnSegment(1, txn)
 
-	n, err := seg.AddAppendNode(txn, 1)
+	blk, err := seg.CreateBlock(1, txn)
 	assert.NoError(t, err)
-	ub := n.(*Block).BaseEntry
+	ub := blk.BaseEntry
 	ub.MetaLoc = "meta/c"
-	err = n.ApplyUpdate(&ub)
+	err = blk.ApplyUpdate(&ub)
 	assert.NoError(t, err)
-	t.Log(n.String())
+	t.Log(blk.String())
 	err = txn.ToCommittingLocked(10)
 	assert.NoError(t, err)
 
-	err = n.ApplyCommit(nil)
+	err = blk.ApplyCommit(nil)
 	assert.NoError(t, err)
-	t.Log(n.String())
+	t.Log(blk.String())
 
-	blk := n.(*Block)
 	ub = blk.BaseEntry
 	ub.DeltaLoc = "meta/d1"
 	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 20, nil)
 
-	n, err = blk.Update(txn, &ub)
+	n, err := blk.Update(txn, &ub)
 	assert.NoError(t, err)
 	t.Log(n.String())
 

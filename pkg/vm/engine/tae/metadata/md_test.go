@@ -14,7 +14,7 @@ func TestSegment(t *testing.T) {
 
 	blk, err := seg.CreateBlock(1, txn)
 	assert.NoError(t, err)
-	ub := blk.BaseEntry
+	ub := *blk.GetBaseEntry()
 	ub.MetaLoc = "meta/c"
 	err = blk.ApplyUpdate(&ub)
 	assert.NoError(t, err)
@@ -26,7 +26,7 @@ func TestSegment(t *testing.T) {
 	assert.NoError(t, err)
 	t.Log(blk.String())
 
-	ub = blk.BaseEntry
+	ub = *blk.GetBaseEntry()
 	ub.DeltaLoc = "meta/d1"
 	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 20, nil)
 
@@ -47,10 +47,14 @@ func TestSegment(t *testing.T) {
 
 	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 40, nil)
 
-	ub = blk.BaseEntry
+	ub = *blk.GetBaseEntry()
 	ub.DeltaLoc = "meta/d2"
 	n, err = blk.Update(txn, &ub)
 	assert.NoError(t, err)
 	t.Log(seg.PPString(common.PPL1, 0, ""))
 
+	_ = txn.ToCommittingLocked(50)
+	err = n.ApplyCommit(nil)
+	assert.NoError(t, err)
+	t.Log(seg.PPString(common.PPL1, 0, ""))
 }

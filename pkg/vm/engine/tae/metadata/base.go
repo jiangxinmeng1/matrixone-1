@@ -11,104 +11,127 @@ import (
 )
 
 type BaseEntry struct {
-	*sync.RWMutex
-	CreatedAt uint64
-	DeletedAt uint64
-	MetaLoc   string
-	DeltaLoc  string
-
-	State      TxnState
-	Start, End uint64
-	Txn        txnif.AsyncTxn
-	LogIndex   *wal.Index
-	Deleted    bool
+	sync.RWMutex
+	Id   uint64
+	MVCC *common.Link
 }
 
-func (e *BaseEntry) HasDropped() bool { return e.DeletedAt != 0 }
+func NewBaseEntry(id uint64) *BaseEntry {
+	return &BaseEntry{
+		Id:   id,
+		MVCC: new(common.Link),
+	}
+}
 
-func (e *BaseEntry) String() string {
+func (e *BaseEntry) StringLocked() string {
 	var w bytes.Buffer
-	_, _ = w.WriteString(
-		fmt.Sprintf("[%v,%v][C=%v,D=%v][%v][Loc1=%s,Loc2=%s]",
-			e.Start,
-			e.End,
-			e.CreatedAt,
-			e.DeletedAt,
-			e.State,
-			e.MetaLoc,
-			e.DeltaLoc))
+
+	_, _ = w.WriteString(fmt.Sprintf("BLOCK[%d]", e.Id))
+	it := common.NewLinkIt(nil, e.MVCC, false)
+	for it.Valid() {
+		version := it.Get().GetPayload().(*UpdateNode)
+		_, _ = w.WriteString(" -> ")
+		_, _ = w.WriteString(version.String())
+		it.Next()
+	}
 	return w.String()
 }
+func (e *BaseEntry) String() string {
+	e.RLock()
+	defer e.RUnlock()
+	return e.StringLocked()
+}
 
-func (e *BaseEntry) ApplyUpdate(be *BaseEntry) (err error) {
-	if e.Deleted {
-		// TODO
+func (e *BaseEntry) PPString(level common.PPLevel, depth int, prefix string) string {
+	s := fmt.Sprintf("%s%s%s", common.RepeatStr("\t", depth), prefix, e.StringLocked())
+	return s
+}
+
+func (e *BaseEntry) Delete(txn txnif.AsyncTxn, impl INode) (node INode, err error) {
+	e.Lock()
+	defer e.Unlock()
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	if be.Txn == nil {
+		if be.HasDropped() {
+			err = ErrNotFound
+			return
+		}
+		nbe := *be
+		nbe.Start = txn.GetStartTS()
+		nbe.End = 0
+		nbe.Txn = txn
+		e.MVCC.Insert(&nbe)
+		node = impl
+		err = nbe.ApplyDeleteLocked()
+		return
+	} else {
+		err = txnif.ErrTxnWWConflict
 	}
-	e.CreatedAt = be.CreatedAt
-	e.DeletedAt = be.DeletedAt
-	e.MetaLoc = be.MetaLoc
-	e.DeltaLoc = be.DeltaLoc
 	return
 }
 
-func (e *BaseEntry) ApplyDeleteLocked() (err error) {
-	if e.Deleted {
-		panic("cannot apply delete to deleted node")
-	}
-	e.Deleted = true
+func (e *BaseEntry) GetUpdateNode() *UpdateNode {
+	e.RLock()
+	defer e.RUnlock()
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	return be
+}
+
+func (e *BaseEntry) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
 	return
+}
+func (e *BaseEntry) ApplyRollback() (err error) {
+	return
+}
+
+func (e *BaseEntry) ApplyUpdate(data *UpdateNode) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	return be.ApplyUpdate(data)
 }
 
 func (e *BaseEntry) ApplyDelete() (err error) {
-	err = e.ApplyDeleteLocked()
+	e.Lock()
+	defer e.Unlock()
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	return be.ApplyDelete()
+}
+
+func (e *BaseEntry) Update(txn txnif.AsyncTxn, data *UpdateNode, impl INode) (node INode, err error) {
+	e.Lock()
+	defer e.Unlock()
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	if be.Txn == nil {
+		nbe := *data
+		nbe.Start = txn.GetStartTS()
+		nbe.End = 0
+		nbe.Txn = txn
+		node = impl
+		e.MVCC.Insert(&nbe)
+		return
+	} else {
+		err = txnif.ErrTxnWWConflict
+	}
 	return
 }
 
-func (e *BaseEntry) DoCompre(o *BaseEntry) int {
-	if e.CreatedAt != 0 && o.CreatedAt != 0 {
-		if e.CreatedAt > o.CreatedAt {
-			return 1
-		} else if e.CreatedAt < o.CreatedAt {
-			return -1
-		}
-		return 0
-	} else if e.CreatedAt != 0 {
-		return -1
-	}
-	return 1
-}
-
-func (e *BaseEntry) Compare(o common.NodePayload) int {
-	oe := o.(*BaseEntry)
-	return e.DoCompre(oe)
-}
-
-func (e *BaseEntry) ApplyCommitLocked(index *wal.Index) (err error) {
-	if e.Deleted {
-		e.DeletedAt = e.Txn.GetCommitTS()
-	}
-	e.End = e.Txn.GetCommitTS()
-	e.Txn = nil
-	e.LogIndex = index
-	e.State = STCommitted
+func (e *BaseEntry) PrepareCommit() (err error) {
 	return
 }
 
 func (e *BaseEntry) ApplyCommit(index *wal.Index) (err error) {
 	e.Lock()
 	defer e.Unlock()
-	return e.ApplyCommitLocked(index)
+	head := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	return head.ApplyCommitLocked(index)
 }
 
-func (e *BaseEntry) ApplyRollback() (err error) {
-	return
-}
-
-func (e *BaseEntry) PrepareCommit() (err error) {
-	e.Start = e.Txn.GetStartTS()
-	return
-}
-
-func (e *BaseEntry) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
-	return
+func (e *BaseEntry) Compare(o common.NodePayload) int {
+	oe := o.(*BaseEntry)
+	e.RLock()
+	defer e.RUnlock()
+	oe.RLock()
+	defer oe.RUnlock()
+	return e.GetUpdateNode().Compare(oe.GetUpdateNode())
 }

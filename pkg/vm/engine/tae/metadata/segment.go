@@ -11,7 +11,7 @@ import (
 
 type Segment struct {
 	sync.RWMutex
-	BaseEntry
+	UpdateNode
 	Id      uint64
 	Entries map[uint64]*common.DLNode
 	Link    *common.Link
@@ -19,7 +19,7 @@ type Segment struct {
 
 func NewTxnSegment(id uint64, txn txnif.AsyncTxn) *Segment {
 	return &Segment{
-		BaseEntry: BaseEntry{
+		UpdateNode: UpdateNode{
 			CreatedAt: txn.GetStartTS(),
 			Txn:       txn,
 		},
@@ -70,7 +70,7 @@ func (e *Segment) MakeBlockIt(reverse bool) *common.LinkIt {
 }
 
 func (e *Segment) StringLocked() string {
-	return fmt.Sprintf("SEGMENT%s", e.BaseEntry.String())
+	return fmt.Sprintf("SEGMENT%s", e.UpdateNode.String())
 }
 
 func (e *Segment) String() string {

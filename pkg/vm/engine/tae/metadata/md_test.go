@@ -16,10 +16,42 @@ func TestSegment(t *testing.T) {
 	assert.NoError(t, err)
 	ub := n.(*Block).BaseEntry
 	ub.MetaLoc = "meta/c"
-	n.ApplyUpdate(&ub)
+	err = n.ApplyUpdate(&ub)
+	assert.NoError(t, err)
 	t.Log(n.String())
-	ub = n.(*Block).BaseEntry
-	ub.DeletedAt = 2
-	n.ApplyUpdate(&ub)
+	err = txn.ToCommittingLocked(10)
+	assert.NoError(t, err)
+
+	err = n.ApplyCommit(nil)
+	assert.NoError(t, err)
 	t.Log(n.String())
+
+	blk := n.(*Block)
+	ub = blk.BaseEntry
+	ub.DeltaLoc = "meta/d1"
+	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 20, nil)
+
+	n, err = blk.Update(txn, &ub)
+	assert.NoError(t, err)
+	t.Log(n.String())
+
+	err = n.ApplyDelete()
+	assert.NoError(t, err)
+	t.Log(n.String())
+
+	_ = txn.ToCommittingLocked(30)
+	err = n.ApplyCommit(nil)
+	assert.NoError(t, err)
+	t.Log(n.String())
+
+	t.Log(seg.PPString(common.PPL1, 0, ""))
+
+	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 40, nil)
+
+	ub = blk.BaseEntry
+	ub.DeltaLoc = "meta/d2"
+	n, err = blk.Update(txn, &ub)
+	assert.NoError(t, err)
+	t.Log(seg.PPString(common.PPL1, 0, ""))
+
 }

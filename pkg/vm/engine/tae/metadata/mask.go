@@ -3,7 +3,7 @@ package metadata
 type TxnState uint8
 
 const (
-	STActive TxnState = 0
+	STActive TxnState = iota + 0
 	STAborted
 	STCommitted
 )

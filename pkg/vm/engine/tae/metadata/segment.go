@@ -3,29 +3,31 @@ package metadata
 import (
 	"bytes"
 	"fmt"
-	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
 type Segment struct {
-	sync.RWMutex
-	UpdateNode
-	Id      uint64
+	*BaseEntry
 	Entries map[uint64]*common.DLNode
 	Link    *common.Link
+	Host    *Table
 }
 
-func NewTxnSegment(id uint64, txn txnif.AsyncTxn) *Segment {
-	return &Segment{
-		UpdateNode: UpdateNode{
-			CreatedAt: txn.GetStartTS(),
-			Txn:       txn,
-		},
-		Entries: make(map[uint64]*common.DLNode),
-		Link:    new(common.Link),
+func NewTxnSegment(id uint64, txn txnif.AsyncTxn, host *Table) *Segment {
+	seg := &Segment{
+		BaseEntry: NewBaseEntry(id),
+		Entries:   make(map[uint64]*common.DLNode),
+		Link:      new(common.Link),
+		Host:      host,
 	}
+	n := &UpdateNode{
+		Txn:   txn,
+		Start: txn.GetStartTS(),
+	}
+	seg.MVCC.Insert(n)
+	return seg
 }
 
 // func (e *Segment) DropBlockEntry(id uint64, txn txnif.AsyncTxn) (deleted *Block, err error) {
@@ -70,7 +72,7 @@ func (e *Segment) MakeBlockIt(reverse bool) *common.LinkIt {
 }
 
 func (e *Segment) StringLocked() string {
-	return fmt.Sprintf("SEGMENT%s", e.UpdateNode.String())
+	return fmt.Sprintf("SEGMENT%s", e.BaseEntry.String())
 }
 
 func (e *Segment) String() string {

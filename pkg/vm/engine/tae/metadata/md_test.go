@@ -8,9 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSegment(t *testing.T) {
+func TestTable(t *testing.T) {
 	txn := txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 1, nil)
-	seg := NewTxnSegment(1, txn)
+	table := NewTable(1)
+	seg, err := table.AddSegment(1, txn)
+	assert.NoError(t, err)
 
 	blk, err := seg.CreateBlock(1, txn)
 	assert.NoError(t, err)
@@ -56,5 +58,5 @@ func TestSegment(t *testing.T) {
 	_ = txn.ToCommittingLocked(50)
 	err = n.ApplyCommit(nil)
 	assert.NoError(t, err)
-	t.Log(seg.PPString(common.PPL1, 0, ""))
+	t.Log(table.PPString(common.PPL1, 0, ""))
 }

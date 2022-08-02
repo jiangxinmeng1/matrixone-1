@@ -26,7 +26,7 @@ func NewBaseEntry(id uint64) *BaseEntry {
 func (e *BaseEntry) StringLocked() string {
 	var w bytes.Buffer
 
-	_, _ = w.WriteString(fmt.Sprintf("BLOCK[%d]", e.Id))
+	_, _ = w.WriteString(fmt.Sprintf("[%d]", e.Id))
 	it := common.NewLinkIt(nil, e.MVCC, false)
 	for it.Valid() {
 		version := it.Get().GetPayload().(*UpdateNode)

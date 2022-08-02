@@ -24,7 +24,21 @@ func NewTable(id uint64) *Table {
 	}
 }
 
+func (e *Table) RemoveEntry(id uint64) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	if n, ok := e.Entries[id]; !ok {
+		return ErrNotFound
+	} else {
+		e.Link.Delete(n)
+		delete(e.Entries, id)
+	}
+	return
+}
+
 func (e *Table) AddSegment(id uint64, txn txnif.AsyncTxn) (added *Segment, err error) {
+	e.Lock()
+	defer e.Unlock()
 	added = NewTxnSegment(id, txn, e)
 	node := e.Link.Insert(added)
 	e.Entries[id] = node

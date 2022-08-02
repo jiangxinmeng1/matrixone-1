@@ -14,6 +14,7 @@ type INode interface {
 	txnif.TxnEntry
 	ApplyUpdate(*UpdateNode) error
 	ApplyDelete() error
+	GetUpdateNode() *UpdateNode
 	String() string
 }
 
@@ -45,6 +46,16 @@ func (e *UpdateNode) String() string {
 			e.MetaLoc,
 			e.DeltaLoc))
 	return w.String()
+}
+
+func (e *UpdateNode) UpdateMetaLoc(loc string) (err error) {
+	e.MetaLoc = loc
+	return
+}
+
+func (e *UpdateNode) UpdateDeltaLoc(loc string) (err error) {
+	e.DeltaLoc = loc
+	return
 }
 
 func (e *UpdateNode) ApplyUpdate(be *UpdateNode) (err error) {
@@ -91,6 +102,9 @@ func (e *UpdateNode) Compare(o common.NodePayload) int {
 }
 
 func (e *UpdateNode) ApplyCommitLocked(index *wal.Index) (err error) {
+	if e.CreatedAt == 0 {
+		e.CreatedAt = e.Txn.GetCommitTS()
+	}
 	if e.Deleted {
 		e.DeletedAt = e.Txn.GetCommitTS()
 	}

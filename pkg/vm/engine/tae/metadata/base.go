@@ -98,12 +98,12 @@ func (e *BaseEntry) ApplyDelete() (err error) {
 	return be.ApplyDelete()
 }
 
-func (e *BaseEntry) Update(txn txnif.AsyncTxn, data *UpdateNode, impl INode) (node INode, err error) {
+func (e *BaseEntry) Update(txn txnif.AsyncTxn, impl INode) (node INode, err error) {
 	e.Lock()
 	defer e.Unlock()
 	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
 	if be.Txn == nil {
-		nbe := *data
+		nbe := *be
 		nbe.Start = txn.GetStartTS()
 		nbe.End = 0
 		nbe.Txn = txn

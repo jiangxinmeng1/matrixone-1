@@ -3,6 +3,7 @@ package metadata
 import (
 	"fmt"
 
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
@@ -24,6 +25,15 @@ func NewBlock(id uint64, txn txnif.AsyncTxn, seg *Segment) *Block {
 	}
 	blk.MVCC.Insert(n)
 	return blk
+}
+
+func (e *Block) Compare(o common.NodePayload) int {
+	oe := o.(*Block)
+	e.RLock()
+	defer e.RUnlock()
+	oe.RLock()
+	defer oe.RUnlock()
+	return e.GetUpdateNode().Compare(oe.GetUpdateNode())
 }
 
 func (e *Block) StringLocked() string {

@@ -30,6 +30,23 @@ func NewTxnSegment(id uint64, txn txnif.AsyncTxn, host *Table) *Segment {
 	return seg
 }
 
+func (e *Segment) Compare(o common.NodePayload) int {
+	oe := o.(*Segment)
+	return e.GetUpdateNode().Compare(oe.GetUpdateNode())
+}
+
+func (e *Segment) PrepareRollback() (err error) {
+	e.Lock()
+	defer e.Unlock()
+	e.MVCC.Delete(e.MVCC.GetHead())
+	if e.MVCC.GetHead() == nil && e.Host != nil {
+		if err = e.Host.RemoveEntry(e.Id); err != nil {
+			return
+		}
+	}
+	return
+}
+
 // func (e *Segment) DropBlockEntry(id uint64, txn txnif.AsyncTxn) (deleted *Block, err error) {
 // 	blk, err := e.GetBlockEntryByID(id)
 // }
@@ -60,6 +77,8 @@ func (e *Segment) RemoveEntry(blkId uint64) (err error) {
 
 func (e *Segment) CreateBlock(id uint64, txn txnif.AsyncTxn) (created *Block, err error) {
 	created = NewBlock(id, txn, e)
+	e.Lock()
+	defer e.Unlock()
 	node := e.Link.Insert(created)
 	e.Entries[id] = node
 	return

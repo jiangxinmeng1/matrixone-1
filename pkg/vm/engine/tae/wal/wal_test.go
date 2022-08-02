@@ -232,3 +232,8 @@ func TestCheckpoint2(t *testing.T) {
 	_, err = driver.LoadEntry(GroupC, lsn)
 	assert.NotNil(t, err)
 }
+
+func TestLalala(t *testing.T) {
+	b:=[]byte{0,1}
+	t.log
+}

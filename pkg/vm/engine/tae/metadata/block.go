@@ -27,6 +27,16 @@ func NewBlock(id uint64, txn txnif.AsyncTxn, seg *Segment) *Block {
 	return blk
 }
 
+func (e *Block) CloneCommittedInRange(start, end uint64) (ret *Block) {
+	be := e.BaseEntry.CloneCommittedInRange(start, end)
+	if be == nil {
+		return
+	}
+	return &Block{
+		BaseEntry: be,
+	}
+}
+
 func (e *Block) Compare(o common.NodePayload) int {
 	oe := o.(*Block)
 	e.RLock()

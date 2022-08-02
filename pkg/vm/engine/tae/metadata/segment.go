@@ -30,6 +30,47 @@ func NewTxnSegment(id uint64, txn txnif.AsyncTxn, host *Table) *Segment {
 	return seg
 }
 
+func (e *Segment) ApplyAddBlock(blk *Block, force bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	old := e.Entries[blk.Id]
+	if old != nil {
+		if !force {
+			err = ErrDuplicate
+			return
+		}
+		e.RemoveEntryLocked(blk.Id)
+	}
+	n := e.Link.Insert(blk)
+	e.Entries[blk.Id] = n
+	return
+}
+
+func (e *Segment) CloneCommittedInRange(start, end uint64) (ret *Segment) {
+	be := e.BaseEntry.CloneCommittedInRange(start, end)
+	if be == nil {
+		return
+	}
+	ret = &Segment{
+		BaseEntry: be,
+		Entries:   make(map[uint64]*common.DLNode),
+		Link:      new(common.Link),
+	}
+	it := e.MakeBlockIt(false)
+	for it.Valid() {
+		blk := it.Get().GetPayload().(*Block)
+		blk.RLock()
+		cloned := blk.CloneCommittedInRange(start, end)
+		blk.RUnlock()
+		if cloned != nil {
+			cloned.Segment = ret
+			_ = cloned.Segment.ApplyAddBlock(cloned, true)
+		}
+		it.Next()
+	}
+	return
+}
+
 func (e *Segment) Compare(o common.NodePayload) int {
 	oe := o.(*Segment)
 	return e.GetUpdateNode().Compare(oe.GetUpdateNode())
@@ -66,6 +107,10 @@ func (e *Segment) GetBlockEntryByID(id uint64) (blk *Block, err error) {
 func (e *Segment) RemoveEntry(blkId uint64) (err error) {
 	e.Lock()
 	defer e.Unlock()
+	return e.RemoveEntryLocked(blkId)
+}
+
+func (e *Segment) RemoveEntryLocked(blkId uint64) (err error) {
 	if n, ok := e.Entries[blkId]; !ok {
 		return ErrNotFound
 	} else {

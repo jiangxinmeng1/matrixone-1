@@ -24,9 +24,47 @@ func NewTable(id uint64) *Table {
 	}
 }
 
+// [start, end]
+func (e *Table) CollectUpdatesInRange(start, end uint64) (ret *Table) {
+	ret = NewTable(e.Id)
+	segIt := e.MakeSegmentIt(false)
+	for segIt.Valid() {
+		seg := segIt.Get().GetPayload().(*Segment)
+		seg.RLock()
+		cloned := seg.CloneCommittedInRange(start, end)
+		seg.RUnlock()
+		if cloned != nil {
+			cloned.Host = ret
+			_ = cloned.Host.ApplyAddSegment(cloned, true)
+		}
+		segIt.Next()
+	}
+	return
+}
+
+func (e *Table) ApplyAddSegment(seg *Segment, force bool) (err error) {
+	e.Lock()
+	defer e.Unlock()
+	old := e.Entries[seg.Id]
+	if old != nil {
+		if !force {
+			err = ErrDuplicate
+			return
+		}
+		e.RemoveEntryLocked(seg.Id)
+	}
+	n := e.Link.Insert(seg)
+	e.Entries[seg.Id] = n
+	return
+}
+
 func (e *Table) RemoveEntry(id uint64) (err error) {
 	e.Lock()
 	defer e.Unlock()
+	return e.RemoveEntryLocked(id)
+}
+
+func (e *Table) RemoveEntryLocked(id uint64) (err error) {
 	if n, ok := e.Entries[id]; !ok {
 		return ErrNotFound
 	} else {

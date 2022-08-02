@@ -31,6 +31,18 @@ type UpdateNode struct {
 	Deleted    bool
 }
 
+func (e UpdateNode) CloneAll() *UpdateNode {
+	n := e.CloneData()
+	n.State = e.State
+	n.Start = e.Start
+	n.End = e.End
+	n.Deleted = e.Deleted
+	if e.LogIndex != nil {
+		n.LogIndex = e.LogIndex.Clone()
+	}
+	return n
+}
+
 func (e *UpdateNode) CloneData() *UpdateNode {
 	return &UpdateNode{
 		CreatedAt: e.CreatedAt,
@@ -51,9 +63,9 @@ func (e *UpdateNode) IsDroppedUncommitted() bool {
 
 func (e *UpdateNode) IsDroppedCommitted() bool { return e.DeletedAt != 0 }
 func (e *UpdateNode) HasActiveTxn() bool       { return e.Txn != nil }
-func (e *UpdateNode) IsActiveTxn(txn txnif.AsyncTxn) bool {
+func (e *UpdateNode) IsActiveTxn(ts uint64) bool {
 	if e.Txn != nil {
-		return e.Txn.GetStartTS() == txn.GetStartTS()
+		return e.Txn.GetStartTS() == ts
 	}
 	return false
 }
@@ -94,16 +106,12 @@ func (e *UpdateNode) IsPreparing() bool {
 	return false
 }
 
-func (e UpdateNode) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok bool, err error) {
+func (e UpdateNode) TxnCanRead(ts uint64, rwlocker *sync.RWMutex) (ok bool, err error) {
 	eTxn := e.Txn
-	if txn == nil {
-		ok, err = true, nil
-		return
-	}
 	// No active txn on this node
 	if !e.HasActiveTxn() {
 		// Skip if created after or deleted before txn start ts
-		if e.CreateAfter(txn.GetStartTS()) || e.DeleteBefore(txn.GetStartTS()) {
+		if e.CreateAfter(ts) || e.DeleteBefore(ts) {
 			ok, err = false, nil
 		} else {
 			ok, err = true, nil
@@ -112,16 +120,16 @@ func (e UpdateNode) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok b
 	}
 
 	// If txn is the active txn
-	if e.IsActiveTxn(txn) {
+	if e.IsActiveTxn(ts) {
 		// Skip if it was dropped by the same txn
 		ok = !e.IsDroppedUncommitted()
 		return
 	}
 
 	// If this txn is uncommitted or committing after txn start ts
-	if eTxn.GetCommitTS() > txn.GetStartTS() {
-		if e.CreateAfter(txn.GetStartTS()) ||
-			e.DeleteBefore(txn.GetStartTS()) ||
+	if eTxn.GetCommitTS() > ts {
+		if e.CreateAfter(ts) ||
+			e.DeleteBefore(ts) ||
 			e.MinUncommitted() {
 			ok = false
 		} else {
@@ -142,7 +150,7 @@ func (e UpdateNode) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok b
 		ok, err = false, txnif.ErrTxnInternal
 		return
 	}
-	if e.CreateAfter(txn.GetStartTS()) || e.DeleteBefore(txn.GetStartTS()) || e.MinUncommitted() {
+	if e.CreateAfter(ts) || e.DeleteBefore(ts) || e.MinUncommitted() {
 		ok = false
 	} else {
 		ok = true

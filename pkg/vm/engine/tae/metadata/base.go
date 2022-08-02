@@ -23,9 +23,32 @@ func NewBaseEntry(id uint64) *BaseEntry {
 	}
 }
 
-func (e *BaseEntry) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok bool, err error) {
+func (e *BaseEntry) CloneCommittedInRange(start, end uint64) (ret *BaseEntry) {
+	e.MVCC.Loop(func(n *common.DLNode) bool {
+		un := n.GetPayload().(*UpdateNode)
+		if un.MinUncommitted() {
+			return true
+		}
+		// 1. Committed
+		if !un.HasActiveTxn() {
+			if un.End >= start && un.End <= end {
+				if ret == nil {
+					ret = NewBaseEntry(e.Id)
+				}
+				ret.MVCC.Insert(un.CloneAll())
+			} else if un.End > end {
+				return false
+			}
+			return true
+		}
+		return false
+	}, true)
+	return
+}
+
+func (e *BaseEntry) TxnCanRead(ts uint64, rwlocker *sync.RWMutex) (ok bool, err error) {
 	n := e.GetUpdateNodeLocked()
-	return n.TxnCanRead(txn, rwlocker)
+	return n.TxnCanRead(ts, rwlocker)
 }
 
 func (e *BaseEntry) StringLocked() string {

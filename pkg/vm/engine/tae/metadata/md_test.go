@@ -129,7 +129,7 @@ func TestTable2(t *testing.T) {
 		seg := it.Get().GetPayload().(*Segment)
 		var n *UpdateNode
 		seg.RLock()
-		ok, _ := seg.TxnCanRead(txn, &seg.RWMutex)
+		ok, _ := seg.TxnCanRead(txn.GetStartTS(), &seg.RWMutex)
 		if ok {
 			n = seg.GetExactUpdateNode(txn.GetStartTS())
 		}
@@ -139,4 +139,7 @@ func TestTable2(t *testing.T) {
 		}
 		it.Next()
 	}
+
+	cloned := tbl.CollectUpdatesInRange(51, 1000)
+	t.Log(cloned.PPString(common.PPL1, 0, ""))
 }

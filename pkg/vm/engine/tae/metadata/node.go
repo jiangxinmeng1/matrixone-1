@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"fmt"
+	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
@@ -30,7 +31,124 @@ type UpdateNode struct {
 	Deleted    bool
 }
 
+func (e *UpdateNode) CloneData() *UpdateNode {
+	return &UpdateNode{
+		CreatedAt: e.CreatedAt,
+		DeletedAt: e.DeletedAt,
+		MetaLoc:   e.MetaLoc,
+		DeltaLoc:  e.DeltaLoc,
+	}
+}
+
 func (e *UpdateNode) HasDropped() bool { return e.DeletedAt != 0 }
+
+func (e *UpdateNode) IsDroppedUncommitted() bool {
+	if e.Txn != nil {
+		return e.Deleted
+	}
+	return false
+}
+
+func (e *UpdateNode) IsDroppedCommitted() bool { return e.DeletedAt != 0 }
+func (e *UpdateNode) HasActiveTxn() bool       { return e.Txn != nil }
+func (e *UpdateNode) IsActiveTxn(txn txnif.AsyncTxn) bool {
+	if e.Txn != nil {
+		return e.Txn.GetStartTS() == txn.GetStartTS()
+	}
+	return false
+}
+func (e *UpdateNode) CreateBefore(ts uint64) bool {
+	if e.CreatedAt != 0 {
+		return e.CreatedAt < ts
+	}
+	return false
+}
+
+// First node to be committed or to be rollbacked
+func (e *UpdateNode) MinUncommitted() bool {
+	return e.CreatedAt == 0 && e.DeletedAt == 0
+}
+func (e *UpdateNode) CreateAfter(ts uint64) bool {
+	if e.CreatedAt != 0 {
+		return e.CreatedAt > ts
+	}
+	return false
+}
+func (e *UpdateNode) DeleteBefore(ts uint64) bool {
+	if e.DeletedAt != 0 {
+		return e.DeletedAt < ts
+	}
+	return false
+}
+func (e *UpdateNode) DeleteAfter(ts uint64) bool {
+	if e.DeletedAt != 0 {
+		return e.DeletedAt > ts
+	}
+	return false
+}
+
+func (e *UpdateNode) IsPreparing() bool {
+	if e.Txn != nil && e.Txn.GetCommitTS() != txnif.UncommitTS {
+		return true
+	}
+	return false
+}
+
+func (e UpdateNode) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok bool, err error) {
+	eTxn := e.Txn
+	if txn == nil {
+		ok, err = true, nil
+		return
+	}
+	// No active txn on this node
+	if !e.HasActiveTxn() {
+		// Skip if created after or deleted before txn start ts
+		if e.CreateAfter(txn.GetStartTS()) || e.DeleteBefore(txn.GetStartTS()) {
+			ok, err = false, nil
+		} else {
+			ok, err = true, nil
+		}
+		return
+	}
+
+	// If txn is the active txn
+	if e.IsActiveTxn(txn) {
+		// Skip if it was dropped by the same txn
+		ok = !e.IsDroppedUncommitted()
+		return
+	}
+
+	// If this txn is uncommitted or committing after txn start ts
+	if eTxn.GetCommitTS() > txn.GetStartTS() {
+		if e.CreateAfter(txn.GetStartTS()) ||
+			e.DeleteBefore(txn.GetStartTS()) ||
+			e.MinUncommitted() {
+			ok = false
+		} else {
+			ok = true
+		}
+		return
+	}
+
+	if rwlocker != nil {
+		rwlocker.RLock()
+	}
+	state := e.Txn.GetTxnState(true)
+	if rwlocker != nil {
+		rwlocker.RUnlock()
+	}
+
+	if state == txnif.TxnStateUnknown {
+		ok, err = false, txnif.ErrTxnInternal
+		return
+	}
+	if e.CreateAfter(txn.GetStartTS()) || e.DeleteBefore(txn.GetStartTS()) || e.MinUncommitted() {
+		ok = false
+	} else {
+		ok = true
+	}
+	return
+}
 
 func (e *UpdateNode) String() string {
 	var w bytes.Buffer

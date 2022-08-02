@@ -23,6 +23,11 @@ func NewBaseEntry(id uint64) *BaseEntry {
 	}
 }
 
+func (e *BaseEntry) TxnCanRead(txn txnif.AsyncTxn, rwlocker *sync.RWMutex) (ok bool, err error) {
+	n := e.GetUpdateNodeLocked()
+	return n.TxnCanRead(txn, rwlocker)
+}
+
 func (e *BaseEntry) StringLocked() string {
 	var w bytes.Buffer
 
@@ -56,17 +61,41 @@ func (e *BaseEntry) Delete(txn txnif.AsyncTxn, impl INode) (node INode, err erro
 			err = ErrNotFound
 			return
 		}
-		nbe := *be
+		nbe := be.CloneData()
 		nbe.Start = txn.GetStartTS()
 		nbe.End = 0
 		nbe.Txn = txn
-		e.MVCC.Insert(&nbe)
+		e.MVCC.Insert(nbe)
 		node = impl
 		err = nbe.ApplyDeleteLocked()
 		return
 	} else {
 		err = txnif.ErrTxnWWConflict
 	}
+	return
+}
+
+func (e *BaseEntry) GetUpdateNodeLocked() *UpdateNode {
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+	return be
+}
+
+func (e *BaseEntry) GetExactUpdateNode(ts uint64) (node *UpdateNode) {
+	e.MVCC.Loop(func(n *common.DLNode) bool {
+		un := n.GetPayload().(*UpdateNode)
+		if un.Txn != nil {
+			if un.Txn.GetStartTS() > ts {
+				return true
+			}
+			node = un
+			return false
+		}
+		if un.Start > ts {
+			return true
+		}
+		node = un
+		return false
+	}, false)
 	return
 }
 
@@ -103,12 +132,12 @@ func (e *BaseEntry) Update(txn txnif.AsyncTxn, impl INode) (node INode, err erro
 	defer e.Unlock()
 	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
 	if be.Txn == nil {
-		nbe := *be
+		nbe := be.CloneData()
 		nbe.Start = txn.GetStartTS()
 		nbe.End = 0
 		nbe.Txn = txn
 		node = impl
-		e.MVCC.Insert(&nbe)
+		e.MVCC.Insert(nbe)
 		return
 	} else {
 		err = txnif.ErrTxnWWConflict

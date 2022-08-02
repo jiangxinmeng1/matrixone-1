@@ -122,4 +122,21 @@ func TestTable2(t *testing.T) {
 		assert.NoError(t, err)
 	}
 	t.Log(tbl.PPString(common.PPL1, 0, ""))
+
+	txn = txnbase.NewTxn(nil, nil, common.NextGlobalSeqNum(), 61, nil)
+	it = tbl.MakeSegmentIt(false)
+	for it.Valid() {
+		seg := it.Get().GetPayload().(*Segment)
+		var n *UpdateNode
+		seg.RLock()
+		ok, _ := seg.TxnCanRead(txn, &seg.RWMutex)
+		if ok {
+			n = seg.GetExactUpdateNode(txn.GetStartTS())
+		}
+		seg.RUnlock()
+		if n != nil {
+			t.Log(n.String())
+		}
+		it.Next()
+	}
 }

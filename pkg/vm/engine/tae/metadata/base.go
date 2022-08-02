@@ -124,7 +124,7 @@ func (e *BaseEntry) ApplyCommit(index *wal.Index) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	head := e.MVCC.GetHead().GetPayload().(*UpdateNode)
-	return head.ApplyCommitLocked(index)
+	return head.ApplyCommit(index)
 }
 
 func (e *BaseEntry) Compare(o common.NodePayload) int {

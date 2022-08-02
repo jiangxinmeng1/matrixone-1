@@ -3,7 +3,6 @@ package metadata
 import (
 	"bytes"
 	"fmt"
-	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
@@ -19,7 +18,6 @@ type INode interface {
 }
 
 type UpdateNode struct {
-	*sync.RWMutex
 	CreatedAt uint64
 	DeletedAt uint64
 	MetaLoc   string
@@ -101,7 +99,7 @@ func (e *UpdateNode) Compare(o common.NodePayload) int {
 	return e.DoCompre(oe)
 }
 
-func (e *UpdateNode) ApplyCommitLocked(index *wal.Index) (err error) {
+func (e *UpdateNode) ApplyCommit(index *wal.Index) (err error) {
 	if e.CreatedAt == 0 {
 		e.CreatedAt = e.Txn.GetCommitTS()
 	}
@@ -113,12 +111,6 @@ func (e *UpdateNode) ApplyCommitLocked(index *wal.Index) (err error) {
 	e.LogIndex = index
 	e.State = STCommitted
 	return
-}
-
-func (e *UpdateNode) ApplyCommit(index *wal.Index) (err error) {
-	e.Lock()
-	defer e.Unlock()
-	return e.ApplyCommitLocked(index)
 }
 
 func (e *UpdateNode) ApplyRollback() (err error) {

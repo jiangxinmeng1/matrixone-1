@@ -66,7 +66,7 @@ func (replayer *Replayer) PreReplayWal() {
 			return catalog.ErrStopCurrRecur
 		}
 		dropCommit := entry.TreeMaxDropCommitEntry()
-		if dropCommit != nil && dropCommit.LogIndex.LSN <= replayer.db.Wal.GetCheckpointed() {
+		if dropCommit != nil && dropCommit.GetLogIndex().LSN <= replayer.db.Wal.GetCheckpointed() {
 			return catalog.ErrStopCurrRecur
 		}
 		entry.InitData(replayer.DataFactory)

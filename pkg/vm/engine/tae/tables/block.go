@@ -260,7 +260,7 @@ func (blk *dataBlock) MutationInfo() string {
 func (blk *dataBlock) EstimateScore() int {
 	if blk.meta.IsAppendable() && blk.Rows(nil, true) == int(blk.meta.GetSchema().BlockMaxRows) {
 		blk.meta.RLock()
-		if blk.meta.IsDroppedCommitted() || blk.meta.IsDroppedUncommitted() {
+		if blk.meta.HasDropped() {
 			blk.meta.RUnlock()
 			return 0
 		}
@@ -284,7 +284,7 @@ func (blk *dataBlock) BuildCompactionTaskFactory() (
 	err error) {
 	blk.meta.RLock()
 	dropped := blk.meta.IsDroppedCommitted()
-	inTxn := blk.meta.HasActiveTxn()
+	inTxn := blk.meta.IsActive()
 	blk.meta.RUnlock()
 	if dropped || inTxn {
 		return

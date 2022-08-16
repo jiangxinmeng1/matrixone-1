@@ -18,18 +18,18 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
 type BlockDataFactory = func(meta *BlockEntry) data.Block
 
 type BlockEntry struct {
-	*BaseEntry
+	*MVCCBaseEntry
 	segment *SegmentEntry
 	state   EntryState
 	blkData data.Block
@@ -37,59 +37,41 @@ type BlockEntry struct {
 
 func NewReplayBlockEntry() *BlockEntry {
 	return &BlockEntry{
-		BaseEntry: new(BaseEntry),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
 	}
 }
 
 func NewBlockEntry(segment *SegmentEntry, txn txnif.AsyncTxn, state EntryState, dataFactory BlockDataFactory) *BlockEntry {
 	id := segment.GetTable().GetDB().catalog.NextBlock()
 	e := &BlockEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				Txn:    txn,
-				CurrOp: OpCreate,
-			},
-			RWMutex: new(sync.RWMutex),
-			ID:      id,
-		},
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
 		segment: segment,
 		state:   state,
 	}
 	if dataFactory != nil {
 		e.blkData = dataFactory(e)
 	}
+	e.MVCCBaseEntry.CreateWithTxn(txn)
 	return e
 }
 
 func NewStandaloneBlock(segment *SegmentEntry, id uint64, ts uint64) *BlockEntry {
 	e := &BlockEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				CurrOp: OpCreate,
-			},
-			RWMutex:  new(sync.RWMutex),
-			ID:       id,
-			CreateAt: ts,
-		},
+		MVCCBaseEntry:NewMVCCBaseEntry(id),
 		segment: segment,
 		state:   ES_Appendable,
 	}
+	e.MVCCBaseEntry.CreateWithTS(ts)
 	return e
 }
 
 func NewSysBlockEntry(segment *SegmentEntry, id uint64) *BlockEntry {
 	e := &BlockEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				CurrOp: OpCreate,
-			},
-			RWMutex:  new(sync.RWMutex),
-			ID:       id,
-			CreateAt: 1,
-		},
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
 		segment: segment,
 		state:   ES_Appendable,
 	}
+	e.MVCCBaseEntry.CreateWithTS(1)
 	return e
 }
 
@@ -104,17 +86,14 @@ func (entry *BlockEntry) GetSegment() *SegmentEntry {
 }
 
 func (entry *BlockEntry) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
-	cmdType := CmdCreateBlock
+	cmdType := CmdUpdateBlock
 	entry.RLock()
 	defer entry.RUnlock()
-	if entry.CurrOp == OpSoftDelete {
-		cmdType = CmdDropBlock
-	}
 	return newBlockCmd(id, cmdType, entry), nil
 }
 
 func (entry *BlockEntry) Compare(o common.NodePayload) int {
-	oe := o.(*BlockEntry).BaseEntry
+	oe := o.(*BlockEntry).MVCCBaseEntry
 	return entry.DoCompre(oe)
 }
 
@@ -135,7 +114,7 @@ func (entry *BlockEntry) String() string {
 }
 
 func (entry *BlockEntry) StringLocked() string {
-	return fmt.Sprintf("[%s]BLOCK%s", entry.state.Repr(), entry.BaseEntry.String())
+	return fmt.Sprintf("[%s]BLOCK%s", entry.state.Repr(), entry.MVCCBaseEntry.String())
 }
 
 func (entry *BlockEntry) AsCommonID() *common.ID {
@@ -159,22 +138,23 @@ func (entry *BlockEntry) GetFileTs() (uint64, error) {
 	return entry.GetBlockData().GetBlockFile().ReadTS()
 }
 func (entry *BlockEntry) PrepareRollback() (err error) {
-	entry.RLock()
-	currOp := entry.CurrOp
-	entry.RUnlock()
-	if currOp == OpCreate {
+	entry.Lock()
+	err=entry.MVCCBaseEntry.PrepareRollback()
+	if err!= nil{
+		panic(err)
+	}
+	empty:=entry.IsEmpty()
+	entry.Unlock()
+	if empty {
 		if err = entry.GetSegment().RemoveEntry(entry); err != nil {
 			return
 		}
-	}
-	if err = entry.BaseEntry.PrepareRollback(); err != nil {
-		return
 	}
 	return
 }
 
 func (entry *BlockEntry) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = entry.BaseEntry.WriteTo(w); err != nil {
+	if n, err = entry.MVCCBaseEntry.WriteAllTo(w); err != nil {
 		return
 	}
 	if err = binary.Write(w, binary.BigEndian, entry.state); err != nil {
@@ -185,7 +165,7 @@ func (entry *BlockEntry) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (entry *BlockEntry) ReadFrom(r io.Reader) (n int64, err error) {
-	if n, err = entry.BaseEntry.ReadFrom(r); err != nil {
+	if n, err = entry.MVCCBaseEntry.ReadAllFrom(r); err != nil {
 		return
 	}
 	err = binary.Read(r, binary.BigEndian, &entry.state)
@@ -196,23 +176,19 @@ func (entry *BlockEntry) ReadFrom(r io.Reader) (n int64, err error) {
 func (entry *BlockEntry) MakeLogEntry() *EntryCommand {
 	return newBlockCmd(0, CmdLogBlock, entry)
 }
-
-func (entry *BlockEntry) Clone() CheckpointItem {
-	cloned := &BlockEntry{
-		BaseEntry: entry.BaseEntry.Clone(),
-		state:     entry.state,
-		segment:   entry.segment,
+func (entry *BlockEntry) GetCheckpointItems(start,end uint64)CheckpointItems{
+	ret:=entry.CloneCommittedInRange(start,end)
+	if ret== nil{
+		return nil
 	}
-	return cloned
+	return &BlockEntry{
+		MVCCBaseEntry: ret,
+		state: entry.state,
+		segment: entry.segment,
+	}
 }
-
-func (entry *BlockEntry) CloneCreate() CheckpointItem {
-	cloned := &BlockEntry{
-		BaseEntry: entry.BaseEntry.CloneCreate(),
-		state:     entry.state,
-		segment:   entry.segment,
-	}
-	return cloned
+func (entry *BlockEntry) GetIndexes()[]*wal.Index{
+	return entry.MVCCBaseEntry.GetIndexes()
 }
 
 func (entry *BlockEntry) DestroyData() (err error) {
@@ -245,29 +221,23 @@ func (entry *BlockEntry) GetTerminationTS() (ts uint64, terminated bool) {
 	dbEntry := tableEntry.GetDB()
 
 	dbEntry.RLock()
-	terminated = dbEntry.IsDroppedCommitted()
+	terminated,ts = dbEntry.TryGetTerminatedTS(true)
 	if terminated {
-		ts = dbEntry.DeleteAt
-	}
-	dbEntry.RUnlock()
-	if terminated {
+		dbEntry.RUnlock()
 		return
 	}
+	dbEntry.RUnlock()
 
 	tableEntry.RLock()
-	terminated = tableEntry.IsDroppedCommitted()
+	terminated,ts = tableEntry.TryGetTerminatedTS(true)
 	if terminated {
-		ts = tableEntry.DeleteAt
+		tableEntry.RUnlock()
+		return
 	}
 	tableEntry.RUnlock()
+
+	segmentEntry.RLock()
+	terminated,ts = segmentEntry.TryGetTerminatedTS(true)
+	segmentEntry.RUnlock()
 	return
-	// segmentEntry.RLock()
-	// terminated = segmentEntry.IsDroppedCommitted()
-	// if terminated {
-	// 	ts = segmentEntry.DeleteAt
-	// }
-	// segmentEntry.RUnlock()
-	// if terminated {
-	// 	return
-	// }
 }

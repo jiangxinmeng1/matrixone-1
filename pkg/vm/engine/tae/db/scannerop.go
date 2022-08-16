@@ -94,7 +94,7 @@ func (processor *calibrationOp) onBlock(blockEntry *catalog.BlockEntry) (err err
 		blockEntry.RUnlock()
 		return nil
 	}
-	if blockEntry.GetSegment().IsAppendable() && catalog.ActiveWithNoTxnFilter(blockEntry.BaseEntry) && catalog.NonAppendableBlkFilter(blockEntry) {
+	if blockEntry.GetSegment().IsAppendable() && catalog.ActiveWithNoTxnFilter(blockEntry.MVCCBaseEntry) && catalog.NonAppendableBlkFilter(blockEntry) {
 		processor.blkCntOfSegment++
 	}
 	blockEntry.RUnlock()
@@ -174,7 +174,7 @@ func (monitor *catalogStatsMonitor) PostExecute() error {
 }
 
 func (monitor *catalogStatsMonitor) onBlock(entry *catalog.BlockEntry) (err error) {
-	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.BaseEntry, monitor.minTs, monitor.maxTs) {
+	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.MVCCBaseEntry, monitor.minTs, monitor.maxTs) {
 		monitor.unCheckpointedCnt++
 		return
 	}
@@ -214,7 +214,7 @@ func (monitor *catalogStatsMonitor) onBlock(entry *catalog.BlockEntry) (err erro
 }
 
 func (monitor *catalogStatsMonitor) onSegment(entry *catalog.SegmentEntry) (err error) {
-	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.BaseEntry, monitor.minTs, monitor.maxTs) {
+	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.MVCCBaseEntry, monitor.minTs, monitor.maxTs) {
 		monitor.unCheckpointedCnt++
 		return
 	}
@@ -245,7 +245,7 @@ func (monitor *catalogStatsMonitor) onSegment(entry *catalog.SegmentEntry) (err 
 }
 
 func (monitor *catalogStatsMonitor) onTable(entry *catalog.TableEntry) (err error) {
-	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.BaseEntry, monitor.minTs, monitor.maxTs) {
+	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.MVCCBaseEntry, monitor.minTs, monitor.maxTs) {
 		monitor.unCheckpointedCnt++
 		return
 	}
@@ -275,7 +275,7 @@ func (monitor *catalogStatsMonitor) onTable(entry *catalog.TableEntry) (err erro
 }
 
 func (monitor *catalogStatsMonitor) onDatabase(entry *catalog.DBEntry) (err error) {
-	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.BaseEntry, monitor.minTs, monitor.maxTs) {
+	if monitor.minTs <= monitor.maxTs && catalog.CheckpointSelectOp(entry.MVCCBaseEntry, monitor.minTs, monitor.maxTs) {
 		monitor.unCheckpointedCnt++
 		return
 	}

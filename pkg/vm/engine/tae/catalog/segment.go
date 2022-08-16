@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -31,7 +30,7 @@ import (
 type SegmentDataFactory = func(meta *SegmentEntry) data.Segment
 
 type SegmentEntry struct {
-	*BaseEntry
+	*MVCCBaseEntry
 	table   *TableEntry
 	entries map[uint64]*common.DLNode
 	link    *common.Link
@@ -42,19 +41,13 @@ type SegmentEntry struct {
 func NewSegmentEntry(table *TableEntry, txn txnif.AsyncTxn, state EntryState, dataFactory SegmentDataFactory) *SegmentEntry {
 	id := table.GetDB().catalog.NextSegment()
 	e := &SegmentEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				Txn:    txn,
-				CurrOp: OpCreate,
-			},
-			RWMutex: new(sync.RWMutex),
-			ID:      id,
-		},
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
 		table:   table,
 		link:    new(common.Link),
 		entries: make(map[uint64]*common.DLNode),
 		state:   state,
 	}
+	e.CreateWithTxn(txn)
 	if dataFactory != nil {
 		e.segData = dataFactory(e)
 	}
@@ -63,7 +56,7 @@ func NewSegmentEntry(table *TableEntry, txn txnif.AsyncTxn, state EntryState, da
 
 func NewReplaySegmentEntry() *SegmentEntry {
 	e := &SegmentEntry{
-		BaseEntry: new(BaseEntry),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
 		link:      new(common.Link),
 		entries:   make(map[uint64]*common.DLNode),
 	}
@@ -72,37 +65,25 @@ func NewReplaySegmentEntry() *SegmentEntry {
 
 func NewStandaloneSegment(table *TableEntry, id uint64, ts uint64) *SegmentEntry {
 	e := &SegmentEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				CurrOp: OpCreate,
-			},
-			RWMutex:  new(sync.RWMutex),
-			ID:       id,
-			CreateAt: ts,
-		},
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
 		table:   table,
 		link:    new(common.Link),
 		entries: make(map[uint64]*common.DLNode),
 		state:   ES_Appendable,
 	}
+	e.CreateWithTS(ts)
 	return e
 }
 
 func NewSysSegmentEntry(table *TableEntry, id uint64) *SegmentEntry {
 	e := &SegmentEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				CurrOp: OpCreate,
-			},
-			RWMutex:  new(sync.RWMutex),
-			ID:       id,
-			CreateAt: 1,
-		},
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
 		table:   table,
 		link:    new(common.Link),
 		entries: make(map[uint64]*common.DLNode),
 		state:   ES_Appendable,
 	}
+	e.CreateWithTS(1)
 	var bid uint64
 	if table.schema.Name == SystemTableSchema.Name {
 		bid = SystemBlock_Table_ID
@@ -135,12 +116,9 @@ func (entry *SegmentEntry) GetBlockEntryByIDLocked(id uint64) (blk *BlockEntry, 
 }
 
 func (entry *SegmentEntry) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
-	cmdType := CmdCreateSegment
+	cmdType := CmdUpdateSegment
 	entry.RLock()
 	defer entry.RUnlock()
-	if entry.CurrOp == OpSoftDelete {
-		cmdType = CmdDropSegment
-	}
 	return newSegmentCmd(id, cmdType, entry), nil
 }
 
@@ -163,7 +141,7 @@ func (entry *SegmentEntry) PPString(level common.PPLevel, depth int, prefix stri
 }
 
 func (entry *SegmentEntry) StringLocked() string {
-	return fmt.Sprintf("[%s]SEGMENT%s", entry.state.Repr(), entry.BaseEntry.String())
+	return fmt.Sprintf("[%s]SEGMENT%s", entry.state.Repr(), entry.MVCCBaseEntry.String())
 }
 
 func (entry *SegmentEntry) Repr() string {
@@ -190,7 +168,7 @@ func (entry *SegmentEntry) GetTable() *TableEntry {
 }
 
 func (entry *SegmentEntry) Compare(o common.NodePayload) int {
-	oe := o.(*SegmentEntry).BaseEntry
+	oe := o.(*SegmentEntry).MVCCBaseEntry
 	return entry.DoCompre(oe)
 }
 
@@ -234,6 +212,12 @@ func (entry *SegmentEntry) DropBlockEntry(id uint64, txn txnif.AsyncTxn) (delete
 	}
 	blk.Lock()
 	defer blk.Unlock()
+	needWait,waitTxn:=blk.NeedWaitCommitting(txn.GetStartTS())
+	if needWait{
+		blk.Unlock()
+		waitTxn.GetTxnState(true)
+		blk.Lock()
+	}
 	err = blk.DropEntryLocked(txn)
 	if err == nil {
 		deleted = blk
@@ -280,6 +264,22 @@ func (entry *SegmentEntry) deleteEntryLocked(block *BlockEntry) error {
 	return nil
 }
 
+// func (entry *SegmentEntry) Unlock(){
+// 	logutil.Infof("unlock %p",entry.RWMutex)
+// 	entry.MVCCBaseEntry.Unlock()
+// }
+// func (entry *SegmentEntry) RUnlock(){
+// 	logutil.Infof("runlock %p ",entry.RWMutex)
+// 	entry.MVCCBaseEntry.RUnlock()
+// }
+// func (entry *SegmentEntry) RLock(){
+// 	logutil.Infof("rlock %p %s",entry.RWMutex,debug.Stack())
+// 	entry.MVCCBaseEntry.RLock()
+// }
+// func (entry *SegmentEntry) Lock(){
+// 	logutil.Infof("lock %p",entry.RWMutex)
+// 	entry.MVCCBaseEntry.Lock()
+// }
 func (entry *SegmentEntry) RemoveEntry(block *BlockEntry) (err error) {
 	logutil.Debug("[Catalog]", common.OperationField("remove"),
 		common.OperandField(block.String()))
@@ -290,10 +290,12 @@ func (entry *SegmentEntry) RemoveEntry(block *BlockEntry) (err error) {
 
 func (entry *SegmentEntry) PrepareRollback() (err error) {
 	entry.RLock()
-	currOp := entry.CurrOp
 	logutil.Infof("PrepareRollback %s", entry.StringLocked())
-	entry.RUnlock()
-	if currOp == OpCreate {
+	defer entry.RUnlock()
+	if err = entry.MVCCBaseEntry.PrepareRollback(); err != nil {
+		return
+	}
+	if entry.MVCCBaseEntry.IsEmpty(){
 		if err = entry.GetTable().RemoveEntry(entry); err != nil {
 			return
 		}
@@ -304,15 +306,12 @@ func (entry *SegmentEntry) PrepareRollback() (err error) {
 			return
 		}
 	}
-	if err = entry.BaseEntry.PrepareRollback(); err != nil {
-		return
-	}
 	return
 }
 
 func (entry *SegmentEntry) WriteTo(w io.Writer) (n int64, err error) {
 	sn := int64(0)
-	if sn, err = entry.BaseEntry.WriteTo(w); err != nil {
+	if sn, err = entry.MVCCBaseEntry.WriteAllTo(w); err != nil {
 		return
 	}
 	if err = binary.Write(w, binary.BigEndian, entry.state); err != nil {
@@ -323,7 +322,7 @@ func (entry *SegmentEntry) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (entry *SegmentEntry) ReadFrom(r io.Reader) (n int64, err error) {
-	if n, err = entry.BaseEntry.ReadFrom(r); err != nil {
+	if n, err = entry.MVCCBaseEntry.ReadAllFrom(r); err != nil {
 		return
 	}
 	err = binary.Read(r, binary.BigEndian, &entry.state)
@@ -335,36 +334,18 @@ func (entry *SegmentEntry) MakeLogEntry() *EntryCommand {
 	return newSegmentCmd(0, CmdLogSegment, entry)
 }
 
-func (entry *SegmentEntry) Clone() CheckpointItem {
-	cloned := &SegmentEntry{
-		BaseEntry: entry.BaseEntry.Clone(),
-		state:     entry.state,
-		table:     entry.table,
-	}
-	return cloned
-}
-
-func (entry *SegmentEntry) CloneCreate() CheckpointItem {
-	cloned := &SegmentEntry{
-		BaseEntry: entry.BaseEntry.CloneCreate(),
-		state:     entry.state,
-		table:     entry.table,
-	}
-	return cloned
-}
-
 func (entry *SegmentEntry) GetScheduler() tasks.TaskScheduler {
 	return entry.GetTable().GetCatalog().GetScheduler()
 }
 
-func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *BaseEntry) bool, blockFilter func(be *BlockEntry) bool) []*BlockEntry {
+func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *MVCCBaseEntry) bool, blockFilter func(be *BlockEntry) bool) []*BlockEntry {
 	blks := make([]*BlockEntry, 0)
 	blkIt := entry.MakeBlockIt(true)
 	for blkIt.Valid() {
 		blk := blkIt.Get().GetPayload().(*BlockEntry)
 		blk.RLock()
 		if commitFilter != nil && blockFilter != nil {
-			if commitFilter(blk.BaseEntry) && blockFilter(blk) {
+			if commitFilter(blk.MVCCBaseEntry) && blockFilter(blk) {
 				blks = append(blks, blk)
 			}
 		} else if blockFilter != nil {
@@ -372,7 +353,7 @@ func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *BaseEntry) 
 				blks = append(blks, blk)
 			}
 		} else if commitFilter != nil {
-			if commitFilter(blk.BaseEntry) {
+			if commitFilter(blk.MVCCBaseEntry) {
 				blks = append(blks, blk)
 			}
 		}
@@ -401,17 +382,29 @@ func (entry *SegmentEntry) IsActive() bool {
 	return !dropped
 }
 
-func (entry *SegmentEntry) TreeMaxDropCommitEntry() *BaseEntry {
+func (entry *SegmentEntry) TreeMaxDropCommitEntry() *MVCCBaseEntry {
 	table := entry.GetTable()
 	db := table.GetDB()
 	if db.IsDroppedCommitted() {
-		return db.BaseEntry
+		return db.MVCCBaseEntry
 	}
 	if table.IsDroppedCommitted() {
-		return table.BaseEntry
+		return table.MVCCBaseEntry
 	}
 	if entry.IsDroppedCommitted() {
-		return entry.BaseEntry
+		return entry.MVCCBaseEntry
 	}
 	return nil
+}
+
+func (entry *SegmentEntry) GetCheckpointItems(start,end uint64)CheckpointItems{
+	ret:=entry.CloneCommittedInRange(start,end)
+	if ret== nil{
+		return nil
+	}
+	return &SegmentEntry{
+		MVCCBaseEntry: ret,
+		state: entry.state,
+		table: entry.table,
+	}
 }

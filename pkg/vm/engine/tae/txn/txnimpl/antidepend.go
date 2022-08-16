@@ -86,7 +86,7 @@ func (checker *warChecker) ReadBlock(dbId uint64, id *common.ID) {
 }
 
 func (checker *warChecker) check() (err error) {
-	var entry *catalog.BaseEntry
+	var entry *catalog.MVCCBaseEntry
 	for key := range checker.symTable {
 		keyt, did, tid, sid, bid := txnbase.KeyEncoder.Decode([]byte(key))
 		db, err := checker.catalog.GetDatabaseByID(did)
@@ -95,13 +95,13 @@ func (checker *warChecker) check() (err error) {
 		}
 		switch keyt {
 		case txnbase.KeyT_DBEntry:
-			entry = db.BaseEntry
+			entry = db.MVCCBaseEntry
 		case txnbase.KeyT_TableEntry:
 			tb, err := db.GetTableEntryByID(tid)
 			if err != nil {
 				panic(err)
 			}
-			entry = tb.BaseEntry
+			entry = tb.MVCCBaseEntry
 		case txnbase.KeyT_SegmentEntry:
 			tb, err := db.GetTableEntryByID(tid)
 			if err != nil {
@@ -111,7 +111,7 @@ func (checker *warChecker) check() (err error) {
 			if err != nil {
 				panic(err)
 			}
-			entry = seg.BaseEntry
+			entry = seg.MVCCBaseEntry
 		case txnbase.KeyT_BlockEntry:
 			tb, err := db.GetTableEntryByID(tid)
 			if err != nil {
@@ -125,7 +125,7 @@ func (checker *warChecker) check() (err error) {
 			if err != nil {
 				panic(err)
 			}
-			entry = blk.BaseEntry
+			entry = blk.MVCCBaseEntry
 		}
 		if entry != nil {
 			commitTs := checker.txn.GetCommitTS()

@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"sync"
 	"sync/atomic"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
@@ -30,7 +29,7 @@ import (
 type TableDataFactory = func(meta *TableEntry) data.Table
 
 type TableEntry struct {
-	*BaseEntry
+	*MVCCBaseEntry
 	db        *DBEntry
 	schema    *Schema
 	entries   map[uint64]*common.DLNode
@@ -42,19 +41,13 @@ type TableEntry struct {
 func NewTableEntry(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn, dataFactory TableDataFactory) *TableEntry {
 	id := db.catalog.NextTable()
 	e := &TableEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				Txn:    txnCtx,
-				CurrOp: OpCreate,
-			},
-			RWMutex: new(sync.RWMutex),
-			ID:      id,
-		},
-		db:      db,
-		schema:  schema,
-		link:    new(common.Link),
-		entries: make(map[uint64]*common.DLNode),
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		db:            db,
+		schema:        schema,
+		link:          new(common.Link),
+		entries:       make(map[uint64]*common.DLNode),
 	}
+	e.CreateWithTxn(txnCtx)
 	if dataFactory != nil {
 		e.tableData = dataFactory(e)
 	}
@@ -63,19 +56,13 @@ func NewTableEntry(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn, dataFacto
 
 func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 	e := &TableEntry{
-		BaseEntry: &BaseEntry{
-			CommitInfo: CommitInfo{
-				CurrOp: OpCreate,
-			},
-			RWMutex:  new(sync.RWMutex),
-			ID:       id,
-			CreateAt: 1,
-		},
-		db:      db,
-		schema:  schema,
-		link:    new(common.Link),
-		entries: make(map[uint64]*common.DLNode),
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		db:            db,
+		schema:        schema,
+		link:          new(common.Link),
+		entries:       make(map[uint64]*common.DLNode),
 	}
+	e.CreateWithTS(1)
 	var sid uint64
 	if schema.Name == SystemTableSchema.Name {
 		sid = SystemSegment_Table_ID
@@ -93,22 +80,19 @@ func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 
 func NewReplayTableEntry() *TableEntry {
 	e := &TableEntry{
-		BaseEntry: new(BaseEntry),
-		link:      new(common.Link),
-		entries:   make(map[uint64]*common.DLNode),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
+		link:          new(common.Link),
+		entries:       make(map[uint64]*common.DLNode),
 	}
 	return e
 }
 
 func MockStaloneTableEntry(id uint64, schema *Schema) *TableEntry {
 	return &TableEntry{
-		BaseEntry: &BaseEntry{
-			RWMutex: new(sync.RWMutex),
-			ID:      id,
-		},
-		schema:  schema,
-		link:    new(common.Link),
-		entries: make(map[uint64]*common.DLNode),
+		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		schema:        schema,
+		link:          new(common.Link),
+		entries:       make(map[uint64]*common.DLNode),
 	}
 }
 
@@ -158,12 +142,9 @@ func (entry *TableEntry) CreateSegment(txn txnif.AsyncTxn, state EntryState, dat
 }
 
 func (entry *TableEntry) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
-	cmdType := CmdCreateTable
+	cmdType := CmdUpdateTable
 	entry.RLock()
 	defer entry.RUnlock()
-	if entry.CurrOp == OpSoftDelete {
-		cmdType = CmdDropTable
-	}
 	return newTableCmd(id, cmdType, entry), nil
 }
 
@@ -187,7 +168,7 @@ func (entry *TableEntry) GetSchema() *Schema {
 }
 
 func (entry *TableEntry) Compare(o common.NodePayload) int {
-	oe := o.(*TableEntry).BaseEntry
+	oe := o.(*TableEntry).MVCCBaseEntry
 	return entry.DoCompre(oe)
 }
 
@@ -218,7 +199,7 @@ func (entry *TableEntry) String() string {
 }
 
 func (entry *TableEntry) StringLocked() string {
-	return fmt.Sprintf("TABLE%s[name=%s]", entry.BaseEntry.String(), entry.schema.Name)
+	return fmt.Sprintf("TABLE%s[name=%s]", entry.MVCCBaseEntry.String(), entry.schema.Name)
 }
 
 func (entry *TableEntry) GetCatalog() *Catalog { return entry.db.catalog }
@@ -287,6 +268,12 @@ func (entry *TableEntry) DropSegmentEntry(id uint64, txn txnif.AsyncTxn) (delete
 	}
 	seg.Lock()
 	defer seg.Unlock()
+	needWait,waitTxn:=seg.NeedWaitCommitting(txn.GetStartTS())
+	if needWait{
+		seg.Unlock()
+		waitTxn.GetTxnState(true)
+		seg.Lock()
+	}
 	err = seg.DropEntryLocked(txn)
 	if err == nil {
 		deleted = seg
@@ -303,22 +290,21 @@ func (entry *TableEntry) RemoveEntry(segment *SegmentEntry) (err error) {
 }
 
 func (entry *TableEntry) PrepareRollback() (err error) {
-	entry.RLock()
-	currOp := entry.CurrOp
-	entry.RUnlock()
-	if currOp == OpCreate {
-		if err = entry.GetDB().RemoveEntry(entry); err != nil {
+	err = entry.MVCCBaseEntry.PrepareRollback()
+	if err != nil {
+		return
+	}
+	if entry.MVCCBaseEntry.IsEmpty() {
+		err = entry.GetDB().RemoveEntry(entry)
+		if err != nil {
 			return
 		}
 	}
-	if err = entry.BaseEntry.PrepareRollback(); err != nil {
-		return
-	}
-	return
+	return nil
 }
 
 func (entry *TableEntry) WriteTo(w io.Writer) (n int64, err error) {
-	if n, err = entry.BaseEntry.WriteTo(w); err != nil {
+	if n, err = entry.MVCCBaseEntry.WriteAllTo(w); err != nil {
 		return
 	}
 	buf, err := entry.schema.Marshal()
@@ -332,7 +318,7 @@ func (entry *TableEntry) WriteTo(w io.Writer) (n int64, err error) {
 }
 
 func (entry *TableEntry) ReadFrom(r io.Reader) (n int64, err error) {
-	if n, err = entry.BaseEntry.ReadFrom(r); err != nil {
+	if n, err = entry.MVCCBaseEntry.ReadAllFrom(r); err != nil {
 		return
 	}
 	if entry.schema == nil {
@@ -348,36 +334,6 @@ func (entry *TableEntry) MakeLogEntry() *EntryCommand {
 	return newTableCmd(0, CmdLogTable, entry)
 }
 
-func (entry *TableEntry) Clone() CheckpointItem {
-	cloned := &TableEntry{
-		BaseEntry: entry.BaseEntry.Clone(),
-		schema:    entry.schema,
-		db:        entry.db,
-	}
-	return cloned
-}
-
-func (entry *TableEntry) CloneCreate() CheckpointItem {
-	cloned := &TableEntry{
-		BaseEntry: entry.BaseEntry.CloneCreate(),
-		schema:    entry.schema,
-		db:        entry.db,
-	}
-	return cloned
-}
-
-// CloneCreateEntry is for collect commands
-func (entry *TableEntry) CloneCreateEntry() *TableEntry {
-	cloned := &TableEntry{
-		BaseEntry: entry.BaseEntry.Clone(),
-		schema:    entry.schema,
-		db:        entry.db,
-	}
-	cloned.CurrOp = OpCreate
-	cloned.RWMutex = &sync.RWMutex{}
-	return cloned
-}
-
 // IsActive is coarse API: no consistency check
 func (entry *TableEntry) IsActive() bool {
 	db := entry.GetDB()
@@ -388,4 +344,21 @@ func (entry *TableEntry) IsActive() bool {
 	dropped := entry.IsDroppedCommitted()
 	entry.RUnlock()
 	return !dropped
+}
+
+func (entry *TableEntry) GetCheckpointItems(start,end uint64)CheckpointItems{
+	ret:=entry.CloneCommittedInRange(start,end)
+	if ret== nil{
+		return nil
+	}
+	return &TableEntry{
+		MVCCBaseEntry: ret,
+		schema: entry.schema,
+		db: entry.db,
+	}
+}
+func (entry *TableEntry) CloneCreateEntry()*TableEntry{
+	return &TableEntry{
+		MVCCBaseEntry: entry.MVCCBaseEntry.CloneCreateEntry(),
+	}
 }

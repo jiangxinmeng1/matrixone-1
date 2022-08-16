@@ -40,92 +40,35 @@ type CheckpointItem interface {
 	StringLocked() string
 }
 
-func CheckpointSelectOp(entry *BaseEntry, minTs, maxTs uint64) bool {
+func CheckpointSelectOp(entry *MVCCBaseEntry, minTs, maxTs uint64) bool {
 	entry.RLock()
 	defer entry.RUnlock()
 	if entry.InTxnOrRollbacked() {
 		return false
 	}
-	// 1. entry was created after maxTs. Skip it
-	if entry.CreateAfter(maxTs) {
-		return false
-	}
-	// 2. entry was deleted before minTs. Skip it
-	if entry.DeleteBefore(minTs) {
-		return false
-	}
-	// 3. entry was created in (0, minTs)
-	if entry.CreateBefore(minTs) {
-		// 3.1 entry was not deleted. Skip it
-		if !entry.HasDropped() {
-			return false
-		}
-		// 3.2 entry was deleted in (maxTs, +inf). Skip it
-		if entry.DeleteAfter(maxTs) {
-			return false
-		}
-	}
-	return true
+	return entry.ExistUpdate(minTs,maxTs)
 }
 
-func CheckpointOp(ckpEntry *CheckpointEntry, entry *BaseEntry, item CheckpointItem, minTs, maxTs uint64) {
+type CatalogEntry interface{
+	GetCheckpointItems(start,end uint64) CheckpointItems//check committing, must clone here
+	RLock()
+	RUnlock()
+}
+
+type CheckpointItems interface{
+	GetIndexes()[]*wal.Index
+	MakeLogEntry()*EntryCommand
+}
+
+func CheckpointOp(ckpEntry *CheckpointEntry, entry CatalogEntry, minTs, maxTs uint64) {
 	entry.RLock()
-	if entry.InTxnOrRollbacked() {
+	ckpItem:=entry.GetCheckpointItems(minTs,maxTs)
 		entry.RUnlock()
+	if ckpItem==nil {
 		return
 	}
-	// 1. entry was created in (maxTs, +inf). Skip it
-	if entry.CreateAfter(maxTs) {
-		entry.RUnlock()
-		return
-	}
-	// 2. entry was deleted in (0, minTs). Skip it
-	if entry.DeleteBefore(minTs) {
-		entry.RUnlock()
-		return
-	}
-	// 3. entry was created in (0, minTs)
-	if entry.CreateBefore(minTs) {
-		// 3.1 entry was not deleted. skip it
-		if !entry.HasDropped() {
-			entry.RUnlock()
-			return
-		}
-		// 3.2 entry was deleted (maxTs, inf). Skip it
-		if entry.DeleteAfter(maxTs) {
-			entry.RUnlock()
-			return
-		}
-		// 3.3 entry was deleted in [minTs, maxTs]
-		ckpEntry.AddIndex(entry.LogIndex)
-		cloned := item.Clone()
-		entry.RUnlock()
-		ckpEntry.AddCommand(cloned.MakeLogEntry())
-		return
-	}
-	// 4. entry was created at|after minTs
-	// 4.1 entry was deleted at|before maxTs
-	if entry.DeleteBefore(maxTs + 1) {
-		ckpEntry.AddIndex(entry.LogIndex)
-		ckpEntry.AddIndex(entry.PrevCommit.LogIndex)
-		cloned := item.Clone()
-		entry.RUnlock()
-		ckpEntry.AddCommand(cloned.MakeLogEntry())
-		return
-	}
-	// 4.2 entry was not deleted
-	if !entry.HasDropped() {
-		ckpEntry.AddIndex(entry.LogIndex)
-		cloned := item.Clone()
-		entry.RUnlock()
-		ckpEntry.AddCommand(cloned.MakeLogEntry())
-		return
-	}
-	// 4.3 entry was deleted after maxTs
-	ckpEntry.AddIndex(entry.PrevCommit.LogIndex)
-	cloned := item.CloneCreate()
-	entry.RUnlock()
-	ckpEntry.AddCommand(cloned.MakeLogEntry())
+	ckpEntry.AddCommand(ckpItem.MakeLogEntry())
+	ckpEntry.AddIndexes(ckpItem.GetIndexes())
 }
 
 type Checkpoint struct {
@@ -175,6 +118,12 @@ func (e *CheckpointEntry) AddIndex(index *wal.Index) {
 		e.MaxIndex = *index
 	}
 	e.LogIndexes = append(e.LogIndexes, index)
+}
+
+func (e *CheckpointEntry) AddIndexes(indexes []*wal.Index) {
+	for _,idx:= range indexes{
+		e.AddIndex(idx)
+	}
 }
 
 func (e *CheckpointEntry) GetMaxIndex() *wal.Index {

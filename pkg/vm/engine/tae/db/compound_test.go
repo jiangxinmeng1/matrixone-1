@@ -17,6 +17,7 @@ package db
 import (
 	"testing"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
@@ -81,6 +82,7 @@ func TestCompoundPK1(t *testing.T) {
 	assert.NoError(t, txn.Commit())
 
 	txn, _ = tae.StartTxn(nil)
+	logutil.Infof("start at %d, ctlg is %v",txn.GetStartTS(),tae.Catalog.SimplePPString(3))
 	db, _ = txn.GetDatabase("db")
 	rel, _ = db.GetRelationByName(schema.Name)
 	err = rel.Append(bat)

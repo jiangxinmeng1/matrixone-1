@@ -236,8 +236,8 @@ func (entry *BlockEntry) GetTerminationTS() (ts uint64, terminated bool) {
 	}
 	tableEntry.RUnlock()
 
-	segmentEntry.RLock()
-	terminated,ts = segmentEntry.TryGetTerminatedTS(true)
-	segmentEntry.RUnlock()
+	// segmentEntry.RLock()
+	// terminated,ts = segmentEntry.TryGetTerminatedTS(true)
+	// segmentEntry.RUnlock()
 	return
 }

@@ -284,7 +284,7 @@ func (blk *dataBlock) BuildCompactionTaskFactory() (
 	err error) {
 	blk.meta.RLock()
 	dropped := blk.meta.IsDroppedCommitted()
-	inTxn := blk.meta.IsActive()
+	inTxn := blk.meta.InTxnOrRollbacked()
 	blk.meta.RUnlock()
 	if dropped || inTxn {
 		return

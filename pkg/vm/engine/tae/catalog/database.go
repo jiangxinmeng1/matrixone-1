@@ -96,11 +96,11 @@ func (e *DBEntry) GetName() string { return e.name }
 func (e *DBEntry) String() string {
 	e.RLock()
 	defer e.RUnlock()
-	return fmt.Sprintf("DB%s[name=%s]", e.MVCCBaseEntry.String(), e.name)
+	return fmt.Sprintf("DB%s[name=%s]", e.MVCCBaseEntry.StringLocked(), e.name)
 }
 
 func (e *DBEntry) StringLocked() string {
-	return fmt.Sprintf("DB%s[name=%s]", e.MVCCBaseEntry.String(), e.name)
+	return fmt.Sprintf("DB%s[name=%s]", e.MVCCBaseEntry.StringLocked(), e.name)
 }
 
 func (e *DBEntry) MakeTableIt(reverse bool) *common.LinkIt {
@@ -311,10 +311,14 @@ func (e *DBEntry) RecurLoop(processor Processor) (err error) {
 }
 
 func (e *DBEntry) PrepareRollback() (err error) {
-	if err = e.MVCCBaseEntry.PrepareRollback(); err != nil {
+	e.Lock()
+	if err = e.MVCCBaseEntry.PrepareRollbackLocked(); err != nil {
+		e.Unlock()
 		return
 	}
-	if e.MVCCBaseEntry.IsEmpty() {
+	isEmpty := e.MVCCBaseEntry.IsEmpty()
+	e.Unlock()
+	if isEmpty {
 		if err = e.catalog.RemoveEntry(e); err != nil {
 			return
 		}
@@ -326,7 +330,7 @@ func (e *DBEntry) WriteTo(w io.Writer) (n int64, err error) {
 	if n, err = e.MVCCBaseEntry.WriteAllTo(w); err != nil {
 		return
 	}
-	buf:=[]byte(e.name)
+	buf := []byte(e.name)
 	if err = binary.Write(w, binary.BigEndian, uint16(len(buf))); err != nil {
 		return
 	}
@@ -378,7 +382,7 @@ func (entry *DBEntry) GetCheckpointItems(start, end uint64) CheckpointItems {
 	}
 }
 
-func (entry *DBEntry) CloneCreateEntry()*DBEntry{
+func (entry *DBEntry) CloneCreateEntry() *DBEntry {
 	return &DBEntry{
 		MVCCBaseEntry: entry.MVCCBaseEntry.CloneCreateEntry(),
 	}

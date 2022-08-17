@@ -23,7 +23,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
 type BlockDataFactory = func(meta *BlockEntry) data.Block
@@ -114,7 +113,7 @@ func (entry *BlockEntry) String() string {
 }
 
 func (entry *BlockEntry) StringLocked() string {
-	return fmt.Sprintf("[%s]BLOCK%s", entry.state.Repr(), entry.MVCCBaseEntry.String())
+	return fmt.Sprintf("[%s]BLOCK%s", entry.state.Repr(), entry.MVCCBaseEntry.StringLocked())
 }
 
 func (entry *BlockEntry) AsCommonID() *common.ID {
@@ -139,7 +138,7 @@ func (entry *BlockEntry) GetFileTs() (uint64, error) {
 }
 func (entry *BlockEntry) PrepareRollback() (err error) {
 	entry.Lock()
-	err=entry.MVCCBaseEntry.PrepareRollback()
+	err=entry.MVCCBaseEntry.PrepareRollbackLocked()
 	if err!= nil{
 		panic(err)
 	}
@@ -186,9 +185,6 @@ func (entry *BlockEntry) GetCheckpointItems(start,end uint64)CheckpointItems{
 		state: entry.state,
 		segment: entry.segment,
 	}
-}
-func (entry *BlockEntry) GetIndexes()[]*wal.Index{
-	return entry.MVCCBaseEntry.GetIndexes()
 }
 
 func (entry *BlockEntry) DestroyData() (err error) {

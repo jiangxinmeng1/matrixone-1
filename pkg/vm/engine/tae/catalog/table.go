@@ -199,7 +199,7 @@ func (entry *TableEntry) String() string {
 }
 
 func (entry *TableEntry) StringLocked() string {
-	return fmt.Sprintf("TABLE%s[name=%s]", entry.MVCCBaseEntry.String(), entry.schema.Name)
+	return fmt.Sprintf("TABLE%s[name=%s]", entry.MVCCBaseEntry.StringLocked(), entry.schema.Name)
 }
 
 func (entry *TableEntry) GetCatalog() *Catalog { return entry.db.catalog }
@@ -268,8 +268,8 @@ func (entry *TableEntry) DropSegmentEntry(id uint64, txn txnif.AsyncTxn) (delete
 	}
 	seg.Lock()
 	defer seg.Unlock()
-	needWait,waitTxn:=seg.NeedWaitCommitting(txn.GetStartTS())
-	if needWait{
+	needWait, waitTxn := seg.NeedWaitCommitting(txn.GetStartTS())
+	if needWait {
 		seg.Unlock()
 		waitTxn.GetTxnState(true)
 		seg.Lock()
@@ -290,11 +290,15 @@ func (entry *TableEntry) RemoveEntry(segment *SegmentEntry) (err error) {
 }
 
 func (entry *TableEntry) PrepareRollback() (err error) {
-	err = entry.MVCCBaseEntry.PrepareRollback()
+	entry.Lock()
+	err = entry.MVCCBaseEntry.PrepareRollbackLocked()
 	if err != nil {
+		entry.Unlock()
 		return
 	}
-	if entry.MVCCBaseEntry.IsEmpty() {
+	isEmpty := entry.MVCCBaseEntry.IsEmpty()
+	entry.Unlock()
+	if isEmpty {
 		err = entry.GetDB().RemoveEntry(entry)
 		if err != nil {
 			return
@@ -346,18 +350,18 @@ func (entry *TableEntry) IsActive() bool {
 	return !dropped
 }
 
-func (entry *TableEntry) GetCheckpointItems(start,end uint64)CheckpointItems{
-	ret:=entry.CloneCommittedInRange(start,end)
-	if ret== nil{
+func (entry *TableEntry) GetCheckpointItems(start, end uint64) CheckpointItems {
+	ret := entry.CloneCommittedInRange(start, end)
+	if ret == nil {
 		return nil
 	}
 	return &TableEntry{
 		MVCCBaseEntry: ret,
-		schema: entry.schema,
-		db: entry.db,
+		schema:        entry.schema,
+		db:            entry.db,
 	}
 }
-func (entry *TableEntry) CloneCreateEntry()*TableEntry{
+func (entry *TableEntry) CloneCreateEntry() *TableEntry {
 	return &TableEntry{
 		MVCCBaseEntry: entry.MVCCBaseEntry.CloneCreateEntry(),
 	}

@@ -96,7 +96,7 @@ func (be *MVCCBaseEntry) GetIndexes() []*wal.Index {
 	be.MVCC.Loop(func(n *common.DLNode) bool {
 		un := n.GetPayload().(*UpdateNode)
 		ret = append(ret, un.LogIndex)
-		return false
+		return true
 	}, true)
 	return ret
 }
@@ -350,8 +350,8 @@ func (be *MVCCBaseEntry) DoCompre(oe *MVCCBaseEntry) int {
 }
 
 func (be *MVCCBaseEntry) IsEmpty() bool {
-	node := be.GetUpdateNodeLocked()
-	return node == nil
+	head := be.MVCC.GetHead()
+	return head == nil
 }
 func (be *MVCCBaseEntry) ApplyRollback() error {
 	return nil
@@ -486,11 +486,9 @@ func (be *MVCCBaseEntry) PrepareCommit() error {
 	return be.GetUpdateNodeLocked().PrepareCommit()
 }
 
-func (be *MVCCBaseEntry) PrepareRollback() error {
-	be.Lock()
+func (be *MVCCBaseEntry) PrepareRollbackLocked() error {
 	node := be.MVCC.GetHead()
 	be.MVCC.Delete(node)
-	be.Unlock()
 	return nil
 }
 func (be *MVCCBaseEntry) DeleteAfter(ts uint64) bool {

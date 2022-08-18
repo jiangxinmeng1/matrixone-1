@@ -540,7 +540,7 @@ func (tbl *txnTable) UncommittedRows() uint32 {
 }
 
 func (tbl *txnTable) PreCommitDedup() (err error) {
-	if tbl.localSegment == nil || !tbl.schema.HasPK() {
+	if tbl.localSegment == nil || !tbl.schema.HasPK(){
 		return
 	}
 	pks := tbl.localSegment.GetPKColumn()
@@ -558,6 +558,12 @@ func (tbl *txnTable) DoDedup(pks containers.Vector, preCommit bool) (err error) 
 		}
 		{
 			seg.RLock()
+			needwait,txnToWait:=seg.NeedWaitCommitting(tbl.store.txn.GetStartTS())
+			if needwait{
+				seg.RUnlock()
+				txnToWait.GetTxnState(true)
+				seg.RLock()
+			}
 			invalid := seg.IsDroppedCommitted() || seg.InTxnOrRollbacked()
 			seg.RUnlock()
 			if invalid {
@@ -583,6 +589,12 @@ func (tbl *txnTable) DoDedup(pks containers.Vector, preCommit bool) (err error) 
 			}
 			{
 				blk.RLock()
+				needwait,txnToWait:=blk.NeedWaitCommitting(tbl.store.txn.GetStartTS())
+				if needwait{
+					blk.RUnlock()
+					txnToWait.GetTxnState(true)
+					blk.RLock()
+				}
 				invalid := blk.IsDroppedCommitted() || blk.InTxnOrRollbacked()
 				blk.RUnlock()
 				if invalid {

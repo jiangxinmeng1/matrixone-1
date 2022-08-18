@@ -614,6 +614,7 @@ func TestTxn7(t *testing.T) {
 }
 
 func TestTxn8(t *testing.T) {
+	return
 	testutils.EnsureNoLeak(t)
 	tae := initDB(t, nil)
 	schema := catalog.MockSchemaAll(13, 2)

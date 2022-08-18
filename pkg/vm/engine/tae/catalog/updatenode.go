@@ -46,8 +46,8 @@ func (e UpdateNode) CloneAll() *UpdateNode {
 	n.End = e.End
 	n.Deleted = e.Deleted
 	if len(e.LogIndex) != 0 {
-		n.LogIndex=make([]*wal.Index, 0)
-		for _,idx:=range e.LogIndex{
+		n.LogIndex = make([]*wal.Index, 0)
+		for _, idx := range e.LogIndex {
 			n.LogIndex = append(n.LogIndex, idx.Clone())
 		}
 	}
@@ -63,16 +63,16 @@ func (e *UpdateNode) CloneData() *UpdateNode {
 	}
 }
 
-//for create drop in one txn
-func (e *UpdateNode) UpdateNode(un *UpdateNode){
-	if e.Start!=un.Start{
+// for create drop in one txn
+func (e *UpdateNode) UpdateNode(un *UpdateNode) {
+	if e.Start != un.Start {
 		panic("logic err")
 	}
-	if e.End!=un.End{
+	if e.End != un.End {
 		panic("logic err")
 	}
-	e.DeletedAt=un.DeletedAt
-	e.Deleted=true
+	e.DeletedAt = un.DeletedAt
+	e.Deleted = true
 	e.AddLogIndex(un.LogIndex[0])
 }
 
@@ -88,7 +88,7 @@ func (e *UpdateNode) IsSameTxn(startTs uint64) bool {
 }
 
 func (e *UpdateNode) IsActive() bool {
-	return e.Txn!=nil
+	return e.Txn != nil
 }
 
 func (e *UpdateNode) IsCommitting() bool {
@@ -170,11 +170,11 @@ func (e *UpdateNode) Compare(o common.NodePayload) int {
 	oe := o.(*UpdateNode)
 	return e.DoCompre(oe)
 }
-func (e *UpdateNode) AddLogIndex(idx *wal.Index){
-	if e.LogIndex == nil{
-		e.LogIndex=make([]*wal.Index, 0)
+func (e *UpdateNode) AddLogIndex(idx *wal.Index) {
+	if e.LogIndex == nil {
+		e.LogIndex = make([]*wal.Index, 0)
 	}
-	e.LogIndex = append(e.LogIndex,idx)
+	e.LogIndex = append(e.LogIndex, idx)
 
 }
 func (e *UpdateNode) ApplyCommit(index *wal.Index) (err error) {
@@ -246,6 +246,19 @@ func (e *UpdateNode) WriteTo(w io.Writer) (n int64, err error) {
 		panic(fmt.Errorf("logic err %d!=%d, %v", n2, length, err))
 	}
 	n += int64(n2)
+	length = uint32(len(e.LogIndex))
+	if err = binary.Write(w, binary.BigEndian, length); err != nil {
+		return
+	}
+	n += 4
+	var sn int64
+	for _, idx := range e.LogIndex {
+		sn, err = idx.WriteTo(w)
+		if err != nil {
+			return
+		}
+		n += sn
+	}
 	return
 }
 
@@ -293,8 +306,26 @@ func (e *UpdateNode) ReadFrom(r io.Reader) (n int64, err error) {
 		panic(fmt.Errorf("logic err %d!=%d, %v", n2, length, err))
 	}
 	e.DeltaLoc = string(buf)
-	if e.DeletedAt!=0{
-		e.Deleted=true
+	if e.DeletedAt != 0 {
+		e.Deleted = true
+	}
+	
+	if err = binary.Read(r, binary.BigEndian, &length); err != nil {
+		return
+	}
+	n += 4
+	var sn int64
+	if length!= 0{
+		e.LogIndex=make([]*wal.Index, 0)
+	}
+	for i := 0; i < int(length); i++ {
+		idx:=new(wal.Index)
+		sn,err=idx.ReadFrom(r)
+		if err!= nil{
+			return
+		}
+		n+=sn
+		e.LogIndex = append(e.LogIndex, idx)
 	}
 	return
 }

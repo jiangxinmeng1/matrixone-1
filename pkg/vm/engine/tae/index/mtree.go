@@ -15,6 +15,7 @@
 package index
 
 import (
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/types"
 	art "github.com/plar/go-adaptive-radix-tree"
 )
@@ -87,6 +88,7 @@ func (art *mvART) Insert(key any, row uint32) (err error) {
 	} else {
 		n := v.(*RowsNode)
 		if n.HasRow(row) {
+			logutil.Infof("lalala duplicate")
 			err = ErrDuplicate
 		} else {
 			n.Ids = append(n.Ids, row)

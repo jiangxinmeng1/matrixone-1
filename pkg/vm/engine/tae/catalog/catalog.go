@@ -124,7 +124,7 @@ func (catalog *Catalog) InitSystemDB() {
 	}
 }
 
-func (catalog *Catalog) GetStore() store.Store { return catalog.store }
+func (catalog *Catalog) Gettore() store.Store { return catalog.store }
 
 func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, dataFactory DataFactory, idxCtx *wal.Index, observer wal.ReplayObserver, cache *bytes.Buffer) {
 	switch txncmd.GetType() {
@@ -261,7 +261,7 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataF
 
 	un := cmd.entry.GetUpdateNodeLocked()
 	tblun := tbl.GetExactUpdateNode(un.Start)
-		un.AddLogIndex(idx)
+	un.AddLogIndex(idx)
 	if tblun == nil {
 		tbl.InsertNode(un) //TODO isvalid
 	} else {
@@ -548,17 +548,17 @@ func (catalog *Catalog) AddEntryLocked(database *DBEntry, txn txnif.TxnReader) e
 			return err
 		}
 		// logutil.Infof("lalala txn %v",txn)
-		// if txn == nil {
+		if txn == nil || record.GetTxn() != txn {
 			if !record.HasDropped() {
 				record.RUnlock()
 				return ErrDuplicate
 			}
-		// } else {
-		// 	if record.ExistedForTs(txn.GetStartTS()) {
-		// 		record.RUnlock()
-		// 		return ErrDuplicate
-		// 	}
-		// }
+		} else {
+			if record.ExistedForTs(txn.GetStartTS()) {
+				record.RUnlock()
+				return ErrDuplicate
+			}
+		}
 		record.RUnlock()
 		n := catalog.link.Insert(database)
 		catalog.entries[database.GetID()] = n

@@ -259,7 +259,7 @@ func (e *DBEntry) AddEntryLocked(table *TableEntry, txn txnif.AsyncTxn) (err err
 			record.RUnlock()
 			return
 		}
-		if txn == nil {
+		if txn == nil || record.GetTxn() != txn  {
 			if !record.HasDropped() {
 				record.RUnlock()
 				return ErrDuplicate

@@ -232,6 +232,7 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 }
 
 func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
+	logutil.Infof("lalala entry is %v",cmd.Table)
 	catalog.OnReplayTableID(cmd.Table.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -313,6 +314,7 @@ func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory Dat
 	if err != nil {
 		panic(err)
 	}
+	logutil.Infof("lalala get %d ctlg is %v",cmd.TableID,catalog.SimplePPString(3))
 	tbl, err := db.GetTableEntryByID(cmd.TableID)
 	if err != nil {
 		panic(err)

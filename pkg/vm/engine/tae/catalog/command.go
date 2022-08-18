@@ -335,7 +335,7 @@ func (cmd *EntryCommand) WriteTo(w io.Writer) (n int64, err error) {
 			return
 		}
 		n += 8
-		if sn, err = cmd.DB.WriteOneNodeTo(w); err != nil {
+		if sn, err = cmd.Table.WriteOneNodeTo(w); err != nil {
 			return
 		}
 		n += sn
@@ -465,6 +465,7 @@ func (cmd *EntryCommand) ReadFrom(r io.Reader) (n int64, err error) {
 		if err = binary.Read(r, binary.BigEndian, &cmd.DBID); err != nil {
 			return
 		}
+		
 		n+=8
 		if sn,err = cmd.entry.ReadOneNodeFrom(r); err != nil {
 			return

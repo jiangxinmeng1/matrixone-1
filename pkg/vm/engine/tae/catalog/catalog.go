@@ -549,7 +549,6 @@ func (catalog *Catalog) AddEntryLocked(database *DBEntry, txn txnif.TxnReader) e
 		}
 		// logutil.Infof("lalala txn %v",txn)
 		// if txn == nil {
-			logutil.Infof("lalala")
 			if !record.HasDropped() {
 				record.RUnlock()
 				return ErrDuplicate

@@ -94,7 +94,6 @@ func (mgr *TxnManager) StartTxn(info []byte) (txn txnif.AsyncTxn, err error) {
 	defer mgr.Unlock()
 	txnId := mgr.IdAlloc.Alloc()
 	startTs := mgr.TsAlloc.Alloc()
-	logutil.Infof("lalala %d start at %d",txnId,startTs)
 
 	store := mgr.TxnStoreFactory()
 	txn = mgr.TxnFactory(mgr, store, txnId, startTs, info)
@@ -157,9 +156,7 @@ func (mgr *TxnManager) onPreparing(items ...any) {
 			mgr.onPreCommit(op.Txn)
 		}
 		mgr.Lock()
-		ts2 := mgr.TsAlloc.Get()
 		ts := mgr.TsAlloc.Alloc()
-		logutil.Infof("lalala %d now %d get %d",op.Txn.GetID(),ts2,ts)
 		op.Txn.Lock()
 		if op.Txn.GetError() != nil {
 			op.Op = OpRollback

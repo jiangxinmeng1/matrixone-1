@@ -156,13 +156,6 @@ func (e *UpdateNode) Compare(o common.NodePayload) int {
 }
 
 func (e *UpdateNode) ApplyCommit(index *wal.Index) (err error) {
-	if e.CreatedAt == 0 {
-		e.CreatedAt = e.Txn.GetCommitTS()
-	}
-	if e.Deleted {
-		e.DeletedAt = e.Txn.GetCommitTS()
-	}
-	e.End = e.Txn.GetCommitTS()
 	e.Txn = nil
 	e.LogIndex = index
 	e.State = txnif.TxnStateCommitted
@@ -174,6 +167,13 @@ func (e *UpdateNode) ApplyRollback() (err error) {
 }
 
 func (e *UpdateNode) PrepareCommit() (err error) {
+	if e.CreatedAt == 0 {
+		e.CreatedAt = e.Txn.GetCommitTS()
+	}
+	if e.Deleted {
+		e.DeletedAt = e.Txn.GetCommitTS()
+	}
+	e.End = e.Txn.GetCommitTS()
 	return
 }
 

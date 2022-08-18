@@ -451,6 +451,7 @@ func (cmd *EntryCommand) ReadFrom(r io.Reader) (n int64, err error) {
 	n += 8
 	switch cmd.GetType() {
 	case CmdUpdateDatabase:
+		cmd.DB = NewReplayDBEntry()
 		if cmd.DB.name, sn, err = common.ReadString(r); err != nil {
 			return
 		}
@@ -459,7 +460,6 @@ func (cmd *EntryCommand) ReadFrom(r io.Reader) (n int64, err error) {
 			return
 		}
 		n+=sn
-		cmd.DB = NewReplayDBEntry()
 		cmd.DB.MVCCBaseEntry = cmd.entry
 	case CmdUpdateTable:
 		if err = binary.Read(r, binary.BigEndian, &cmd.DBID); err != nil {
@@ -495,10 +495,9 @@ func (cmd *EntryCommand) ReadFrom(r io.Reader) (n int64, err error) {
 			return
 		}
 		n+=sn
-		cmd.Segment = &SegmentEntry{
-			MVCCBaseEntry: cmd.entry,
-			state:     state,
-		}
+		cmd.Segment=NewReplaySegmentEntry()
+		cmd.Segment.MVCCBaseEntry=cmd.entry
+		cmd.Segment.state=state
 	case CmdUpdateBlock:
 		if err = binary.Read(r, binary.BigEndian, &cmd.DBID); err != nil {
 			return
@@ -520,6 +519,9 @@ func (cmd *EntryCommand) ReadFrom(r io.Reader) (n int64, err error) {
 			return
 		}
 		n += n2
+		cmd.Block=NewReplayBlockEntry()
+		cmd.Block.MVCCBaseEntry=cmd.entry
+		cmd.Block.state=state
 	}
 	return
 }

@@ -116,7 +116,6 @@ func (replayer *Replayer) PostReplayWal() {
 		if entry.IsActive() {
 			return
 		}
-		logutil.Infof("lalala %v",entry.StringLocked())
 		if entry.GetLogIndex()[0].LSN > replayer.db.Wal.GetCheckpointed() {
 			return
 		}

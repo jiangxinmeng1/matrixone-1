@@ -181,6 +181,7 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand, idx *wal.Index
 	if err != nil {
 		cmd.DB.RWMutex = new(sync.RWMutex)
 		cmd.DB.catalog = catalog
+		cmd.entry.GetUpdateNodeLocked().AddLogIndex(idx)
 		err = catalog.AddEntryLocked(cmd.DB, nil)
 		if err != nil {
 			panic(err)
@@ -232,7 +233,6 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 }
 
 func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
-	logutil.Infof("lalala entry is %v",cmd.Table)
 	catalog.OnReplayTableID(cmd.Table.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -314,7 +314,6 @@ func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory Dat
 	if err != nil {
 		panic(err)
 	}
-	logutil.Infof("lalala get %d ctlg is %v",cmd.TableID,catalog.SimplePPString(3))
 	tbl, err := db.GetTableEntryByID(cmd.TableID)
 	if err != nil {
 		panic(err)
@@ -548,18 +547,19 @@ func (catalog *Catalog) AddEntryLocked(database *DBEntry, txn txnif.TxnReader) e
 			record.RUnlock()
 			return err
 		}
-		if txn == nil {
+		// logutil.Infof("lalala txn %v",txn)
+		// if txn == nil {
+			logutil.Infof("lalala")
 			if !record.HasDropped() {
 				record.RUnlock()
 				return ErrDuplicate
 			}
-		} else {
-			if record.ExistedForTs(txn.GetStartTS()) {
-				record.RUnlock()
-				return ErrDuplicate
-			}
-		}
-
+		// } else {
+		// 	if record.ExistedForTs(txn.GetStartTS()) {
+		// 		record.RUnlock()
+		// 		return ErrDuplicate
+		// 	}
+		// }
 		record.RUnlock()
 		n := catalog.link.Insert(database)
 		catalog.entries[database.GetID()] = n

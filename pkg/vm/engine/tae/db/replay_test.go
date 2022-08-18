@@ -613,6 +613,8 @@ func TestReplay3(t *testing.T) {
 	}
 	assert.NoError(t, txn.Commit())
 
+	logutil.Infof("lalala ctlg is %v",tae.Catalog.SimplePPString(3))
+
 	for i := 0; i < 10; i++ {
 		txn, rel := tae.getRelation()
 		blkID, row, err := rel.GetByFilter(filter)
@@ -640,7 +642,11 @@ func TestReplay3(t *testing.T) {
 		// }
 	}
 
+
+	logutil.Infof("lalala ctlg is %v",tae.Catalog.SimplePPString(3))
 	tae.restart()
+
+	logutil.Infof("lalala ctlg is %v",tae.Catalog.SimplePPString(3))
 
 	txn, rel := tae.getRelation()
 	assert.Equal(t, uint64(1), rel.GetMeta().(*catalog.TableEntry).GetRows())
@@ -654,6 +660,7 @@ func TestReplay3(t *testing.T) {
 		blkdata.Flush()
 		blkIterator.Next()
 	}
+
 	err = tae.Catalog.Checkpoint(txn.GetStartTS())
 	assert.NoError(t, err)
 	assert.NoError(t, txn.Commit())

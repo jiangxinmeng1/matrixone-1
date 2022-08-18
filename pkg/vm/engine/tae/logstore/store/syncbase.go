@@ -23,6 +23,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 )
@@ -576,7 +577,7 @@ func (base *syncBase) OnCommit() {
 	for group, checkpointing := range base.checkpointing {
 		checkpointingId := checkpointing.GetCheckpointed()
 		ckpcnt := checkpointing.GetCkpCnt()
-		// logutil.Infof("G%d-%v",group,checkpointing)
+		logutil.Infof("G%d-%v",group,checkpointing)
 		checkpointedId := base.GetCheckpointed(group)
 		if checkpointingId > checkpointedId {
 			base.SetCheckpointed(group, checkpointingId)

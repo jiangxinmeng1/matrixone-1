@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils/config"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/types"
@@ -2536,7 +2537,9 @@ func TestDropCreated1(t *testing.T) {
 	assert.Nil(t, err)
 	_, err = txn.CreateDatabase("db")
 	assert.Nil(t, err)
+	logutil.Infof("lalala should nil")
 	db, err := txn.DropDatabase("db")
+	logutil.Infof("lalala should nil")
 	assert.Nil(t, err)
 	assert.Nil(t, txn.Commit())
 

@@ -95,7 +95,7 @@ func (be *MVCCBaseEntry) GetIndexes() []*wal.Index {
 	ret := make([]*wal.Index, 0)
 	be.MVCC.Loop(func(n *common.DLNode) bool {
 		un := n.GetPayload().(*UpdateNode)
-		ret = append(ret, un.LogIndex)
+		ret = append(ret, un.LogIndex...)
 		return true
 	}, true)
 	return ret
@@ -139,7 +139,7 @@ func (e *MVCCBaseEntry) ExistUpdate(minTs, MaxTs uint64) (exist bool) {
 // TODO update create
 func (e *MVCCBaseEntry) DeleteLocked(txn txnif.TxnReader, impl INode) (node INode, err error) {
 	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
-	if be.Txn == nil {
+	if be.Txn == nil || be.IsSameTxn(txn.GetStartTS()) {
 		if be.HasDropped() {
 			err = ErrNotFound
 			return
@@ -380,7 +380,7 @@ func (be *MVCCBaseEntry) ExistedForTs(ts uint64) bool {
 	}
 	return !un.HasDropped()
 }
-func (be *MVCCBaseEntry) GetLogIndex() *wal.Index {
+func (be *MVCCBaseEntry) GetLogIndex() []*wal.Index {
 	node := be.GetUpdateNodeLocked()
 	if node == nil {
 		return nil
@@ -405,6 +405,8 @@ func (be *MVCCBaseEntry) TxnCanRead(txn txnif.AsyncTxn, mu *sync.RWMutex) (canRe
 func (be *MVCCBaseEntry) CloneCreateEntry() *MVCCBaseEntry {
 	cloned := &MVCCBaseEntry{
 		MVCC: &common.Link{},
+		RWMutex: &sync.RWMutex{},
+		ID: be.ID,
 	}
 	un := be.GetUpdateNodeLocked()
 	uncloned := un.CloneData()

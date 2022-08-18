@@ -31,7 +31,7 @@ type UpdateNode struct {
 	State      txnif.TxnState
 	Start, End uint64
 	Txn        txnif.TxnReader
-	LogIndex   *wal.Index
+	LogIndex   []*wal.Index
 	Deleted    bool
 }
 
@@ -45,8 +45,11 @@ func (e UpdateNode) CloneAll() *UpdateNode {
 	n.Start = e.Start
 	n.End = e.End
 	n.Deleted = e.Deleted
-	if e.LogIndex != nil {
-		n.LogIndex = e.LogIndex.Clone()
+	if len(e.LogIndex) != 0 {
+		n.LogIndex=make([]*wal.Index, 0)
+		for _,idx:=range e.LogIndex{
+			n.LogIndex = append(n.LogIndex, idx.Clone())
+		}
 	}
 	return n
 }
@@ -58,6 +61,19 @@ func (e *UpdateNode) CloneData() *UpdateNode {
 		MetaLoc:   e.MetaLoc,
 		DeltaLoc:  e.DeltaLoc,
 	}
+}
+
+//for create drop in one txn
+func (e *UpdateNode) UpdateNode(un *UpdateNode){
+	if e.Start!=un.Start{
+		panic("logic err")
+	}
+	if e.End!=un.End{
+		panic("logic err")
+	}
+	e.DeletedAt=un.DeletedAt
+	e.Deleted=true
+	e.AddLogIndex(un.LogIndex[0])
 }
 
 func (e *UpdateNode) HasDropped() bool {
@@ -154,10 +170,16 @@ func (e *UpdateNode) Compare(o common.NodePayload) int {
 	oe := o.(*UpdateNode)
 	return e.DoCompre(oe)
 }
+func (e *UpdateNode) AddLogIndex(idx *wal.Index){
+	if e.LogIndex == nil{
+		e.LogIndex=make([]*wal.Index, 0)
+	}
+	e.LogIndex = append(e.LogIndex,idx)
 
+}
 func (e *UpdateNode) ApplyCommit(index *wal.Index) (err error) {
 	e.Txn = nil
-	e.LogIndex = index
+	e.AddLogIndex(index)
 	e.State = txnif.TxnStateCommitted
 	return
 }

@@ -364,5 +364,7 @@ func (entry *TableEntry) GetCheckpointItems(start, end uint64) CheckpointItems {
 func (entry *TableEntry) CloneCreateEntry() *TableEntry {
 	return &TableEntry{
 		MVCCBaseEntry: entry.MVCCBaseEntry.CloneCreateEntry(),
+		db: entry.db,
+		schema: entry.schema,
 	}
 }

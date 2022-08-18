@@ -149,7 +149,7 @@ func (cmd *EntryCommand) Desc() string {
 	return s
 }
 
-func (cmd *EntryCommand) GetLogIndex() *wal.Index {
+func (cmd *EntryCommand) GetLogIndex() []*wal.Index {
 	if cmd.entry == nil {
 		return nil
 	}

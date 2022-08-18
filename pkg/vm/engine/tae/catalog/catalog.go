@@ -109,14 +109,14 @@ func (catalog *Catalog) InitSystemDB() {
 	dbTables := NewSystemTableEntry(sysDB, SystemTable_DB_ID, SystemDBSchema)
 	tableTables := NewSystemTableEntry(sysDB, SystemTable_Table_ID, SystemTableSchema)
 	columnTables := NewSystemTableEntry(sysDB, SystemTable_Columns_ID, SystemColumnSchema)
-	err := sysDB.AddEntryLocked(dbTables,nil)
+	err := sysDB.AddEntryLocked(dbTables, nil)
 	if err != nil {
 		panic(err)
 	}
-	if err = sysDB.AddEntryLocked(tableTables,nil); err != nil {
+	if err = sysDB.AddEntryLocked(tableTables, nil); err != nil {
 		panic(err)
 	}
-	if err = sysDB.AddEntryLocked(columnTables,nil); err != nil {
+	if err = sysDB.AddEntryLocked(columnTables, nil); err != nil {
 		panic(err)
 	}
 	if err = catalog.AddEntryLocked(sysDB, nil); err != nil {
@@ -192,11 +192,12 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand, idx *wal.Index
 	}
 
 	un := cmd.entry.GetUpdateNodeLocked()
-	if db.GetExactUpdateNode(un.Start) == nil {
-		un.LogIndex = idx
+	un.AddLogIndex(idx)
+	dbun := db.GetExactUpdateNode(un.Start)
+	if dbun == nil {
 		db.InsertNode(un) //TODO isvalid
 	} else {
-		panic("node already existed")
+		dbun.UpdateNode(un)
 	}
 	if observer != nil {
 		observer.OnTimeStamp(cmd.GetTs())
@@ -207,7 +208,7 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 	var err error
 	catalog.OnReplayDBID(cmd.DB.ID)
 
-	db, err := catalog.GetDatabaseByID(cmd.entry.ID)
+	db, err := catalog.GetDatabaseByID(cmd.DB.ID)
 	if err != nil {
 		cmd.DB.RWMutex = new(sync.RWMutex)
 		cmd.DB.catalog = catalog
@@ -218,12 +219,13 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 		return
 	}
 
-	cmd.entry.MVCC.Loop(func(n *common.DLNode) bool {
+	cmd.DB.MVCC.Loop(func(n *common.DLNode) bool {
 		un := n.GetPayload().(*UpdateNode)
-		if db.GetExactUpdateNode(un.Start) == nil {
+		dbun := db.GetExactUpdateNode(un.Start)
+		if dbun == nil {
 			db.InsertNode(un) //TODO isvalid
 		} else {
-			panic("node already existed")
+			dbun.UpdateNode(un)
 		}
 		return true
 	}, true)
@@ -245,8 +247,8 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataF
 	if err != nil {
 		cmd.Table.db = db
 		cmd.Table.tableData = dataFactory.MakeTableFactory()(cmd.Table)
-		cmd.entry.GetUpdateNodeLocked().LogIndex = idx
-		err = db.AddEntryLocked(cmd.Table,nil)
+		cmd.entry.GetUpdateNodeLocked().AddLogIndex(idx)
+		err = db.AddEntryLocked(cmd.Table, nil)
 		if err != nil {
 			panic(err)
 		}
@@ -257,11 +259,12 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataF
 	}
 
 	un := cmd.entry.GetUpdateNodeLocked()
-	if tbl.GetExactUpdateNode(un.Start) == nil {
-		un.LogIndex = idx
+	tblun := tbl.GetExactUpdateNode(un.Start)
+		un.AddLogIndex(idx)
+	if tblun == nil {
 		tbl.InsertNode(un) //TODO isvalid
 	} else {
-		panic("node already existed")
+		tblun.UpdateNode(un)
 	}
 
 	if observer != nil {
@@ -279,18 +282,18 @@ func (catalog *Catalog) onReplayTable(cmd *EntryCommand, dataFactory DataFactory
 	if err != nil {
 		cmd.Table.db = db
 		cmd.Table.tableData = dataFactory.MakeTableFactory()(cmd.Table)
-		err = db.AddEntryLocked(cmd.Table,nil)
+		err = db.AddEntryLocked(cmd.Table, nil)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		cmd.entry.MVCC.Loop(func(n *common.DLNode) bool {
+		cmd.Table.MVCC.Loop(func(n *common.DLNode) bool {
 			un := n.GetPayload().(*UpdateNode)
 			node := rel.GetExactUpdateNode(un.Start)
 			if node == nil {
 				rel.InsertNode(un)
 			} else {
-				panic("logic err")
+				node.UpdateNode(un)
 			}
 			return true
 		}, true)
@@ -305,7 +308,7 @@ func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory Dat
 		}
 		return
 	}
-	cmd.Segment.GetUpdateNodeLocked().LogIndex = idx
+	cmd.Segment.GetUpdateNodeLocked().AddLogIndex(idx)
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
 		panic(err)
@@ -326,7 +329,7 @@ func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory Dat
 		if node == nil {
 			seg.InsertNode(un)
 		} else {
-			panic("logic err")
+			node.UpdateNode(un)
 		}
 	}
 	if observer != nil {
@@ -351,8 +354,9 @@ func (catalog *Catalog) onReplaySegment(cmd *EntryCommand, dataFactory DataFacto
 	} else {
 		cmd.Segment.MVCC.Loop(func(n *common.DLNode) bool {
 			un := n.GetPayload().(*UpdateNode)
-			if seg.GetExactUpdateNode(un.Start) != nil {
-				panic("logic err")
+			segun := seg.GetExactUpdateNode(un.Start)
+			if segun != nil {
+				segun.UpdateNode(un)
 			} else {
 				seg.InsertNode(un)
 			}
@@ -383,13 +387,11 @@ func (catalog *Catalog) onReplayUpdateBlock(cmd *EntryCommand, dataFactory DataF
 	}
 	blk, err := seg.GetBlockEntryByID(cmd.Block.ID)
 	un := cmd.entry.GetUpdateNodeLocked()
-	un.LogIndex = idx
+	un.AddLogIndex(idx)
 	if err == nil {
 		blkun := blk.GetExactUpdateNode(un.Start)
 		if blkun != nil {
-			panic(fmt.Errorf("logic err, %v", blkun.String()))
-			// blkun.LogIndex = cmd.entry.LogIndex
-			// blkun.LogIndex = idx
+			blkun.UpdateNode(un)
 		} else {
 			blk.InsertNode(un)
 			if observer != nil {
@@ -405,7 +407,7 @@ func (catalog *Catalog) onReplayUpdateBlock(cmd *EntryCommand, dataFactory DataF
 	if observer != nil {
 		observer.OnTimeStamp(ts)
 	}
-	un.LogIndex = idx
+	un.AddLogIndex(idx)
 	seg.AddEntryLocked(cmd.Block)
 	if observer != nil {
 		observer.OnTimeStamp(un.End)
@@ -433,8 +435,9 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, dataFactory DataFactory
 	} else {
 		cmd.Block.MVCC.Loop(func(n *common.DLNode) bool {
 			un := n.GetPayload().(*UpdateNode)
-			if blk.GetExactUpdateNode(un.Start) != nil {
-				panic("logic err")
+			blkun := blk.GetExactUpdateNode(un.Start)
+			if blkun != nil {
+				blkun.UpdateNode(un)
 			}
 			blk.InsertNode(un)
 			return false
@@ -652,8 +655,8 @@ func (catalog *Catalog) DropDBEntry(name string, txnCtx txnif.AsyncTxn) (deleted
 	entry := dn.GetPayload().(*DBEntry)
 	entry.Lock()
 	defer entry.Unlock()
-	needWait,txn:=entry.NeedWaitCommitting(txnCtx.GetStartTS())
-	if needWait{
+	needWait, txn := entry.NeedWaitCommitting(txnCtx.GetStartTS())
+	if needWait {
 		entry.Unlock()
 		txn.GetTxnState(true)
 		entry.Lock()

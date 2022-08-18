@@ -184,7 +184,7 @@ func (monitor *catalogStatsMonitor) onBlock(entry *catalog.BlockEntry) (err erro
 	if entry.IsDroppedCommitted() && !entry.DeleteAfter(monitor.maxTs) {
 		logIndex := entry.GetLogIndex()
 		if logIndex != nil {
-			gcNeeded = checkpointed >= logIndex.LSN
+			gcNeeded = checkpointed >= logIndex[0].LSN
 		}
 	}
 	entry.RUnlock()
@@ -224,7 +224,7 @@ func (monitor *catalogStatsMonitor) onSegment(entry *catalog.SegmentEntry) (err 
 	if entry.IsDroppedCommitted() {
 		logIndex := entry.GetLogIndex()
 		if logIndex != nil {
-			gcNeeded = checkpointed >= logIndex.LSN
+			gcNeeded = checkpointed >= logIndex[0].LSN
 		}
 	}
 	entry.RUnlock()
@@ -254,7 +254,7 @@ func (monitor *catalogStatsMonitor) onTable(entry *catalog.TableEntry) (err erro
 	entry.RLock()
 	if entry.IsDroppedCommitted() {
 		if logIndex := entry.GetLogIndex(); logIndex != nil {
-			gcNeeded = checkpointed >= logIndex.LSN
+			gcNeeded = checkpointed >= logIndex[0].LSN
 		}
 	}
 	entry.RUnlock()
@@ -284,7 +284,7 @@ func (monitor *catalogStatsMonitor) onDatabase(entry *catalog.DBEntry) (err erro
 	entry.RLock()
 	if entry.IsDroppedCommitted() {
 		if logIndex := entry.GetLogIndex(); logIndex != nil {
-			gcNeeded = checkpointed >= logIndex.LSN
+			gcNeeded = checkpointed >= logIndex[0].LSN
 		}
 	}
 	entry.RUnlock()

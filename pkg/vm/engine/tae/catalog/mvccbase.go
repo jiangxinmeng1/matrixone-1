@@ -112,8 +112,12 @@ func (e *MVCCBaseEntry) CreateWithTS(ts uint64) {
 	e.InsertNode(node)
 }
 func (e *MVCCBaseEntry) CreateWithTxn(txn txnif.AsyncTxn) {
+	var startTs uint64
+	if txn != nil {
+		startTs = txn.GetStartTS()
+	}
 	node := &UpdateNode{
-		Start: txn.GetStartTS(),
+		Start: startTs,
 		Txn:   txn,
 	}
 	e.InsertNode(node)
@@ -404,9 +408,9 @@ func (be *MVCCBaseEntry) TxnCanRead(txn txnif.AsyncTxn, mu *sync.RWMutex) (canRe
 }
 func (be *MVCCBaseEntry) CloneCreateEntry() *MVCCBaseEntry {
 	cloned := &MVCCBaseEntry{
-		MVCC: &common.Link{},
+		MVCC:    &common.Link{},
 		RWMutex: &sync.RWMutex{},
-		ID: be.ID,
+		ID:      be.ID,
 	}
 	un := be.GetUpdateNodeLocked()
 	uncloned := un.CloneData()

@@ -14,7 +14,7 @@
 
 package catalog
 
-func ActiveWithNoTxnFilter(be *MVCCBaseEntry) bool {
+func ActiveWithNoTxnFilter[T Payload](be *MVCCBaseEntry[T]) bool {
 	return !be.InTxnOrRollbacked() && !be.IsDroppedCommitted()
 }
 
@@ -27,18 +27,18 @@ func NonAppendableBlkFilter(be *BlockEntry) bool {
 }
 
 type ComposedFilter struct {
-	CommitFilters []func(*MVCCBaseEntry) bool
+	CommitFilters []func(*MVCCBaseEntry[*TempAddr]) bool
 	BlockFilters  []func(*BlockEntry) bool
 }
 
 func NewComposedFilter() *ComposedFilter {
 	return &ComposedFilter{
-		CommitFilters: make([]func(*MVCCBaseEntry) bool, 0),
+		CommitFilters: make([]func(*MVCCBaseEntry[*TempAddr]) bool, 0),
 		BlockFilters:  make([]func(*BlockEntry) bool, 0),
 	}
 }
 
-func (filter *ComposedFilter) AddCommitFilter(f func(*MVCCBaseEntry) bool) {
+func (filter *ComposedFilter) AddCommitFilter(f func(*MVCCBaseEntry[*TempAddr]) bool) {
 	filter.CommitFilters = append(filter.CommitFilters, f)
 }
 
@@ -46,7 +46,7 @@ func (filter *ComposedFilter) AddBlockFilter(f func(*BlockEntry) bool) {
 	filter.BlockFilters = append(filter.BlockFilters, f)
 }
 
-func (filter *ComposedFilter) FilteCommit(be *MVCCBaseEntry) bool {
+func (filter *ComposedFilter) FilteCommit(be *MVCCBaseEntry[*TempAddr]) bool {
 	ret := false
 	for _, f := range filter.CommitFilters {
 		if !f(be) {

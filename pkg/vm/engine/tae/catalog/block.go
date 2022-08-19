@@ -28,7 +28,7 @@ import (
 type BlockDataFactory = func(meta *BlockEntry) data.Block
 
 type BlockEntry struct {
-	*MVCCBaseEntry
+	*MVCCBaseEntry[*TempAddr]
 	segment *SegmentEntry
 	state   EntryState
 	blkData data.Block
@@ -36,14 +36,14 @@ type BlockEntry struct {
 
 func NewReplayBlockEntry() *BlockEntry {
 	return &BlockEntry{
-		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry[*TempAddr](),
 	}
 }
 
 func NewBlockEntry(segment *SegmentEntry, txn txnif.AsyncTxn, state EntryState, dataFactory BlockDataFactory) *BlockEntry {
 	id := segment.GetTable().GetDB().catalog.NextBlock()
 	e := &BlockEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		segment: segment,
 		state:   state,
 	}
@@ -56,7 +56,7 @@ func NewBlockEntry(segment *SegmentEntry, txn txnif.AsyncTxn, state EntryState, 
 
 func NewStandaloneBlock(segment *SegmentEntry, id uint64, ts uint64) *BlockEntry {
 	e := &BlockEntry{
-		MVCCBaseEntry:NewMVCCBaseEntry(id),
+		MVCCBaseEntry:NewMVCCBaseEntry[*TempAddr](id),
 		segment: segment,
 		state:   ES_Appendable,
 	}
@@ -66,7 +66,7 @@ func NewStandaloneBlock(segment *SegmentEntry, id uint64, ts uint64) *BlockEntry
 
 func NewSysBlockEntry(segment *SegmentEntry, id uint64) *BlockEntry {
 	e := &BlockEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		segment: segment,
 		state:   ES_Appendable,
 	}
@@ -172,7 +172,7 @@ func (entry *BlockEntry) ReadFrom(r io.Reader) (n int64, err error) {
 	return
 }
 
-func (entry *BlockEntry) MakeLogEntry() *EntryCommand {
+func (entry *BlockEntry) MakeLogEntry() *EntryCommand[*TempAddr] {
 	return newBlockCmd(0, CmdLogBlock, entry)
 }
 func (entry *BlockEntry) GetCheckpointItems(start,end uint64)CheckpointItems{

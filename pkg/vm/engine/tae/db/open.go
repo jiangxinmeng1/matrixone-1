@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/dataio/segmentio"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/buffer"
@@ -67,6 +68,7 @@ func Open(dirname string, opts *options.Options) (db *DB, err error) {
 	db.Scheduler = newTaskScheduler(db, db.Opts.SchedulerCfg.AsyncWorkers, db.Opts.SchedulerCfg.IOWorkers)
 	dataFactory := tables.NewDataFactory(db.FileFactory, mutBufMgr, db.Scheduler, db.Dir)
 	if db.Opts.Catalog, err = catalog.OpenCatalog(dirname, CATALOGDir, nil, db.Scheduler, dataFactory); err != nil {
+		logutil.Infof("lalala err is %v",err)
 		return
 	}
 	db.Catalog = db.Opts.Catalog
@@ -100,6 +102,9 @@ func Open(dirname string, opts *options.Options) (db *DB, err error) {
 	// Start workers
 	db.CKPDriver.Start()
 	db.TimedScanner.Start()
+	txn,_:=db.StartTxn(nil)
+	txn.Commit()
 
+	logutil.Infof("lalala err is %v",err)
 	return
 }

@@ -29,7 +29,7 @@ import (
 type TableDataFactory = func(meta *TableEntry) data.Table
 
 type TableEntry struct {
-	*MVCCBaseEntry
+	*MVCCBaseEntry[*TempAddr]
 	db        *DBEntry
 	schema    *Schema
 	entries   map[uint64]*common.DLNode
@@ -41,7 +41,7 @@ type TableEntry struct {
 func NewTableEntry(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn, dataFactory TableDataFactory) *TableEntry {
 	id := db.catalog.NextTable()
 	e := &TableEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		db:            db,
 		schema:        schema,
 		link:          new(common.Link),
@@ -56,7 +56,7 @@ func NewTableEntry(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn, dataFacto
 
 func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 	e := &TableEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		db:            db,
 		schema:        schema,
 		link:          new(common.Link),
@@ -80,7 +80,7 @@ func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 
 func NewReplayTableEntry() *TableEntry {
 	e := &TableEntry{
-		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry[*TempAddr](),
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),
 	}
@@ -89,7 +89,7 @@ func NewReplayTableEntry() *TableEntry {
 
 func MockStaloneTableEntry(id uint64, schema *Schema) *TableEntry {
 	return &TableEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		schema:        schema,
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),

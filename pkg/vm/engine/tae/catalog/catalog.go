@@ -53,7 +53,7 @@ type Catalog struct {
 	checkpoints []*Checkpoint
 
 	entries   map[uint64]*common.DLNode
-	nameNodes map[string]*nodeList
+	nameNodes map[string]*nodeList[*TempAddr]
 	link      *common.Link
 
 	nodesMu sync.RWMutex
@@ -74,7 +74,7 @@ func MockCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 		IDAlloctor:  NewIDAllocator(),
 		store:       driver,
 		entries:     make(map[uint64]*common.DLNode),
-		nameNodes:   make(map[string]*nodeList),
+		nameNodes:   make(map[string]*nodeList[*TempAddr]),
 		link:        new(common.Link),
 		checkpoints: make([]*Checkpoint, 0),
 		scheduler:   scheduler,
@@ -93,7 +93,7 @@ func OpenCatalog(dir, name string, cfg *store.StoreCfg, scheduler tasks.TaskSche
 		IDAlloctor:  NewIDAllocator(),
 		store:       driver,
 		entries:     make(map[uint64]*common.DLNode),
-		nameNodes:   make(map[string]*nodeList),
+		nameNodes:   make(map[string]*nodeList[*TempAddr]),
 		link:        new(common.Link),
 		checkpoints: make([]*Checkpoint, 0),
 		scheduler:   scheduler,
@@ -137,28 +137,28 @@ func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, dataFactory DataFactory, 
 			catalog.ReplayCmd(cmds, dataFactory, idx, observer, cache)
 		}
 	case CmdLogBlock:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayBlock(cmd, dataFactory)
 	case CmdLogSegment:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplaySegment(cmd, dataFactory, cache)
 	case CmdLogTable:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayTable(cmd, dataFactory)
 	case CmdLogDatabase:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayDatabase(cmd)
 	case CmdUpdateDatabase:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayUpdateDatabase(cmd, idxCtx, observer)
 	case CmdUpdateTable:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayUpdateTable(cmd, dataFactory, idxCtx, observer)
 	case CmdUpdateSegment:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayUpdateSegment(cmd, dataFactory, idxCtx, observer, cache)
 	case CmdUpdateBlock:
-		cmd := txncmd.(*EntryCommand)
+		cmd := txncmd.(*EntryCommand[*TempAddr])
 		catalog.onReplayUpdateBlock(cmd, dataFactory, idxCtx, observer)
 	default:
 		panic("unsupport")
@@ -167,7 +167,7 @@ func (catalog *Catalog) ReplayCmd(txncmd txnif.TxnCmd, dataFactory DataFactory, 
 
 // 2,3 always stale
 // snapshot->ckped entry(must covered by ss)->unckped but in ss wal->wal
-func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand, idx *wal.Index, observer wal.ReplayObserver) {
+func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand[*TempAddr], idx *wal.Index, observer wal.ReplayObserver) {
 	catalog.OnReplayDBID(cmd.DB.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -205,7 +205,7 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand, idx *wal.Index
 	}
 }
 
-func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
+func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand[*TempAddr]) {
 	var err error
 	catalog.OnReplayDBID(cmd.DB.ID)
 
@@ -221,7 +221,7 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 	}
 
 	cmd.DB.MVCC.Loop(func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[*TempAddr])
 		dbun := db.GetExactUpdateNode(un.Start)
 		if dbun == nil {
 			db.InsertNode(un) //TODO isvalid
@@ -232,7 +232,7 @@ func (catalog *Catalog) onReplayDatabase(cmd *EntryCommand) {
 	}, true)
 }
 
-func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
+func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand[*TempAddr], dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
 	catalog.OnReplayTableID(cmd.Table.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -273,7 +273,7 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand, dataFactory DataF
 	}
 }
 
-func (catalog *Catalog) onReplayTable(cmd *EntryCommand, dataFactory DataFactory) {
+func (catalog *Catalog) onReplayTable(cmd *EntryCommand[*TempAddr], dataFactory DataFactory) {
 	catalog.OnReplayTableID(cmd.Table.ID)
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
@@ -289,7 +289,7 @@ func (catalog *Catalog) onReplayTable(cmd *EntryCommand, dataFactory DataFactory
 		}
 	} else {
 		cmd.Table.MVCC.Loop(func(n *common.DLNode) bool {
-			un := n.GetPayload().(*UpdateNode)
+			un := n.GetPayload().(*UpdateNode[*TempAddr])
 			node := rel.GetExactUpdateNode(un.Start)
 			if node == nil {
 				rel.InsertNode(un)
@@ -301,7 +301,7 @@ func (catalog *Catalog) onReplayTable(cmd *EntryCommand, dataFactory DataFactory
 	}
 }
 
-func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver, cache *bytes.Buffer) {
+func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand[*TempAddr], dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver, cache *bytes.Buffer) {
 	catalog.OnReplaySegmentID(cmd.Segment.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -338,7 +338,7 @@ func (catalog *Catalog) onReplayUpdateSegment(cmd *EntryCommand, dataFactory Dat
 	}
 }
 
-func (catalog *Catalog) onReplaySegment(cmd *EntryCommand, dataFactory DataFactory, cache *bytes.Buffer) {
+func (catalog *Catalog) onReplaySegment(cmd *EntryCommand[*TempAddr], dataFactory DataFactory, cache *bytes.Buffer) {
 	catalog.OnReplaySegmentID(cmd.Segment.ID)
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
@@ -354,7 +354,7 @@ func (catalog *Catalog) onReplaySegment(cmd *EntryCommand, dataFactory DataFacto
 		rel.AddEntryLocked(cmd.Segment)
 	} else {
 		cmd.Segment.MVCC.Loop(func(n *common.DLNode) bool {
-			un := n.GetPayload().(*UpdateNode)
+			un := n.GetPayload().(*UpdateNode[*TempAddr])
 			segun := seg.GetExactUpdateNode(un.Start)
 			if segun != nil {
 				segun.UpdateNode(un)
@@ -366,7 +366,7 @@ func (catalog *Catalog) onReplaySegment(cmd *EntryCommand, dataFactory DataFacto
 	}
 }
 
-func (catalog *Catalog) onReplayUpdateBlock(cmd *EntryCommand, dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
+func (catalog *Catalog) onReplayUpdateBlock(cmd *EntryCommand[*TempAddr], dataFactory DataFactory, idx *wal.Index, observer wal.ReplayObserver) {
 	catalog.OnReplayBlockID(cmd.Block.ID)
 	if cmd.GetTs() <= catalog.GetCheckpointed().MaxTS {
 		if observer != nil {
@@ -415,7 +415,7 @@ func (catalog *Catalog) onReplayUpdateBlock(cmd *EntryCommand, dataFactory DataF
 	}
 }
 
-func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, dataFactory DataFactory) {
+func (catalog *Catalog) onReplayBlock(cmd *EntryCommand[*TempAddr], dataFactory DataFactory) {
 	catalog.OnReplayBlockID(cmd.Block.ID)
 	db, err := catalog.GetDatabaseByID(cmd.DBID)
 	if err != nil {
@@ -435,7 +435,7 @@ func (catalog *Catalog) onReplayBlock(cmd *EntryCommand, dataFactory DataFactory
 		seg.AddEntryLocked(cmd.Block)
 	} else {
 		cmd.Block.MVCC.Loop(func(n *common.DLNode) bool {
-			un := n.GetPayload().(*UpdateNode)
+			un := n.GetPayload().(*UpdateNode[*TempAddr])
 			blkun := blk.GetExactUpdateNode(un.Start)
 			if blkun != nil {
 				blkun.UpdateNode(un)
@@ -528,7 +528,7 @@ func (catalog *Catalog) AddEntryLocked(database *DBEntry, txn txnif.TxnReader) e
 		n := catalog.link.Insert(database)
 		catalog.entries[database.GetID()] = n
 
-		nn := newNodeList(catalog, &catalog.nodesMu, database.name)
+		nn := newNodeList[*TempAddr](catalog, &catalog.nodesMu, database.name)
 		catalog.nameNodes[database.name] = nn
 
 		nn.CreateNode(database.GetID())
@@ -536,16 +536,18 @@ func (catalog *Catalog) AddEntryLocked(database *DBEntry, txn txnif.TxnReader) e
 		node := nn.GetDBNode()
 		record := node.GetPayload().(*DBEntry)
 		record.RLock()
-		needWait, waitTxn := record.NeedWaitCommitting(txn.GetStartTS())
-		if needWait {
-			record.RUnlock()
-			waitTxn.GetTxnState(true)
-			record.RLock()
-		}
+		if txn != nil {
+			needWait, waitTxn := record.NeedWaitCommitting(txn.GetStartTS())
+			if needWait {
+				record.RUnlock()
+				waitTxn.GetTxnState(true)
+				record.RLock()
+			}
 		err := record.PrepareWrite(database.GetTxn(), record.RWMutex)
 		if err != nil {
 			record.RUnlock()
 			return err
+		}
 		}
 		// logutil.Infof("lalala txn %v",txn)
 		if txn == nil || record.GetTxn() != txn {

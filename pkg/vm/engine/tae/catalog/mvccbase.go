@@ -26,7 +26,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
-type MVCCBaseEntry struct {
+type MVCCBaseEntry[T Payload] struct {
 	*sync.RWMutex
 	MVCC   *common.Link
 	length uint64
@@ -34,27 +34,27 @@ type MVCCBaseEntry struct {
 	ID uint64
 }
 
-func NewReplayMVCCBaseEntry() *MVCCBaseEntry {
-	return &MVCCBaseEntry{
+func NewReplayMVCCBaseEntry[T Payload]() *MVCCBaseEntry[T] {
+	return &MVCCBaseEntry[T]{
 		RWMutex: &sync.RWMutex{},
 		MVCC:    new(common.Link),
 	}
 }
 
-func NewMVCCBaseEntry(id uint64) *MVCCBaseEntry {
-	return &MVCCBaseEntry{
+func NewMVCCBaseEntry[T Payload](id uint64) *MVCCBaseEntry[T] {
+	return &MVCCBaseEntry[T]{
 		ID:      id,
 		MVCC:    new(common.Link),
 		RWMutex: &sync.RWMutex{},
 	}
 }
-func (e *MVCCBaseEntry) StringLocked() string {
+func (e *MVCCBaseEntry[T]) StringLocked() string {
 	var w bytes.Buffer
 
 	_, _ = w.WriteString(fmt.Sprintf("[%d %p]", e.ID, e.RWMutex))
 	it := common.NewLinkIt(nil, e.MVCC, false)
 	for it.Valid() {
-		version := it.Get().GetPayload().(*UpdateNode)
+		version := it.Get().GetPayload().(*UpdateNode[T])
 		_, _ = w.WriteString(" -> ")
 		_, _ = w.WriteString(version.String())
 		it.Next()
@@ -62,24 +62,24 @@ func (e *MVCCBaseEntry) StringLocked() string {
 	return w.String()
 }
 
-func (e *MVCCBaseEntry) String() string {
+func (e *MVCCBaseEntry[T]) String() string {
 	e.RLock()
 	defer e.RUnlock()
 	return e.StringLocked()
 }
 
-func (e *MVCCBaseEntry) PPString(level common.PPLevel, depth int, prefix string) string {
+func (e *MVCCBaseEntry[T]) PPString(level common.PPLevel, depth int, prefix string) string {
 	s := fmt.Sprintf("%s%s%s", common.RepeatStr("\t", depth), prefix, e.StringLocked())
 	return s
 }
 
 // for replay
-func (entry *MVCCBaseEntry) GetTs() uint64 {
+func (entry *MVCCBaseEntry[T]) GetTs() uint64 {
 	return entry.GetUpdateNodeLocked().End
 }
-func (be *MVCCBaseEntry) GetTxn() txnif.TxnReader { return be.GetUpdateNodeLocked().Txn }
+func (be *MVCCBaseEntry[T]) GetTxn() txnif.TxnReader { return be.GetUpdateNodeLocked().Txn }
 
-func (be *MVCCBaseEntry) TryGetTerminatedTS(waitIfcommitting bool) (terminated bool, TS uint64) {
+func (be *MVCCBaseEntry[T]) TryGetTerminatedTS(waitIfcommitting bool) (terminated bool, TS uint64) {
 	node := be.GetCommittedNode()
 	if node == nil {
 		return
@@ -89,42 +89,42 @@ func (be *MVCCBaseEntry) TryGetTerminatedTS(waitIfcommitting bool) (terminated b
 	}
 	return
 }
-func (be *MVCCBaseEntry) GetID() uint64 { return be.ID }
+func (be *MVCCBaseEntry[T]) GetID() uint64 { return be.ID }
 
-func (be *MVCCBaseEntry) GetIndexes() []*wal.Index {
+func (be *MVCCBaseEntry[T]) GetIndexes() []*wal.Index {
 	ret := make([]*wal.Index, 0)
 	be.MVCC.Loop(func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		ret = append(ret, un.LogIndex...)
 		return true
 	}, true)
 	return ret
 }
-func (e *MVCCBaseEntry) InsertNode(un *UpdateNode) {
+func (e *MVCCBaseEntry[T]) InsertNode(un *UpdateNode[T]) {
 	e.MVCC.Insert(un)
 }
-func (e *MVCCBaseEntry) CreateWithTS(ts uint64) {
-	node := &UpdateNode{
+func (e *MVCCBaseEntry[T]) CreateWithTS(ts uint64) {
+	node := &UpdateNode[T]{
 		CreatedAt: ts,
 		Start:     ts,
 		End:       ts,
 	}
 	e.InsertNode(node)
 }
-func (e *MVCCBaseEntry) CreateWithTxn(txn txnif.AsyncTxn) {
+func (e *MVCCBaseEntry[T]) CreateWithTxn(txn txnif.AsyncTxn) {
 	var startTs uint64
 	if txn != nil {
 		startTs = txn.GetStartTS()
 	}
-	node := &UpdateNode{
+	node := &UpdateNode[T]{
 		Start: startTs,
 		Txn:   txn,
 	}
 	e.InsertNode(node)
 }
-func (e *MVCCBaseEntry) ExistUpdate(minTs, MaxTs uint64) (exist bool) {
+func (e *MVCCBaseEntry[T]) ExistUpdate(minTs, MaxTs uint64) (exist bool) {
 	e.MVCC.Loop(func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		if un.End == 0 {
 			return true
 		}
@@ -141,8 +141,8 @@ func (e *MVCCBaseEntry) ExistUpdate(minTs, MaxTs uint64) (exist bool) {
 }
 
 // TODO update create
-func (e *MVCCBaseEntry) DeleteLocked(txn txnif.TxnReader, impl INode) (node INode, err error) {
-	be := e.MVCC.GetHead().GetPayload().(*UpdateNode)
+func (e *MVCCBaseEntry[T]) DeleteLocked(txn txnif.TxnReader, impl INode[T]) (node INode[T], err error) {
+	be := e.MVCC.GetHead().GetPayload().(*UpdateNode[T])
 	if be.Txn == nil || be.IsSameTxn(txn.GetStartTS()) {
 		if be.HasDropped() {
 			err = ErrNotFound
@@ -162,18 +162,18 @@ func (e *MVCCBaseEntry) DeleteLocked(txn txnif.TxnReader, impl INode) (node INod
 	return
 }
 
-func (e *MVCCBaseEntry) GetUpdateNodeLocked() *UpdateNode {
+func (e *MVCCBaseEntry[T]) GetUpdateNodeLocked() *UpdateNode[T] {
 	payload := e.MVCC.GetHead().GetPayload()
 	if payload == nil {
 		return nil
 	}
-	be := payload.(*UpdateNode)
+	be := payload.(*UpdateNode[T])
 	return be
 }
 
-func (be *MVCCBaseEntry) GetCommittedNode() (node *UpdateNode) {
+func (be *MVCCBaseEntry[T]) GetCommittedNode() (node *UpdateNode[T]) {
 	be.MVCC.Loop((func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		if !un.IsActive() {
 			node = un
 			return false
@@ -183,9 +183,9 @@ func (be *MVCCBaseEntry) GetCommittedNode() (node *UpdateNode) {
 	return
 }
 
-func (be *MVCCBaseEntry) GetNodeToRead(startts uint64) (node *UpdateNode) {
+func (be *MVCCBaseEntry[T]) GetNodeToRead(startts uint64) (node *UpdateNode[T]) {
 	be.MVCC.Loop((func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		if un.IsActive() {
 			if un.IsSameTxn(startts) {
 				node = un
@@ -201,7 +201,7 @@ func (be *MVCCBaseEntry) GetNodeToRead(startts uint64) (node *UpdateNode) {
 	}), false)
 	return
 }
-func (be *MVCCBaseEntry) DeleteBefore(ts uint64) bool {
+func (be *MVCCBaseEntry[T]) DeleteBefore(ts uint64) bool {
 	createAt := be.GetDeleteAt()
 	if createAt == 0 {
 		return false
@@ -210,9 +210,9 @@ func (be *MVCCBaseEntry) DeleteBefore(ts uint64) bool {
 }
 
 // for replay
-func (e *MVCCBaseEntry) GetExactUpdateNode(startts uint64) (node *UpdateNode) {
+func (e *MVCCBaseEntry[T]) GetExactUpdateNode(startts uint64) (node *UpdateNode[T]) {
 	e.MVCC.Loop(func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		if un.Start == startts {
 			node = un
 			return false
@@ -223,7 +223,7 @@ func (e *MVCCBaseEntry) GetExactUpdateNode(startts uint64) (node *UpdateNode) {
 	return
 }
 
-func (e *MVCCBaseEntry) NeedWaitCommitting(startTS uint64) (bool, txnif.TxnReader) {
+func (e *MVCCBaseEntry[T]) NeedWaitCommitting(startTS uint64) (bool, txnif.TxnReader) {
 	un := e.GetUpdateNodeLocked()
 	if un == nil {
 		return false, nil
@@ -245,11 +245,11 @@ func (e *MVCCBaseEntry) NeedWaitCommitting(startTS uint64) (bool, txnif.TxnReade
 // get committed
 // get same node
 // get to read
-func (e *MVCCBaseEntry) InTxnOrRollbacked() bool {
+func (e *MVCCBaseEntry[T]) InTxnOrRollbacked() bool {
 	return e.GetUpdateNodeLocked().IsActive()
 }
 
-func (e *MVCCBaseEntry) IsDroppedCommitted() bool {
+func (e *MVCCBaseEntry[T]) IsDroppedCommitted() bool {
 	un := e.GetUpdateNodeLocked()
 	if un.IsActive() {
 		return false
@@ -257,7 +257,7 @@ func (e *MVCCBaseEntry) IsDroppedCommitted() bool {
 	return un.HasDropped()
 }
 
-func (be *MVCCBaseEntry) PrepareWrite(txn txnif.TxnReader, rwlocker *sync.RWMutex) (err error) {
+func (be *MVCCBaseEntry[T]) PrepareWrite(txn txnif.TxnReader, rwlocker *sync.RWMutex) (err error) {
 	node := be.GetUpdateNodeLocked()
 	if node.IsActive() {
 		if node.IsSameTxn(txn.GetStartTS()) {
@@ -272,7 +272,7 @@ func (be *MVCCBaseEntry) PrepareWrite(txn txnif.TxnReader, rwlocker *sync.RWMute
 	return
 }
 
-func (be *MVCCBaseEntry) WriteOneNodeTo(w io.Writer) (n int64, err error) {
+func (be *MVCCBaseEntry[T]) WriteOneNodeTo(w io.Writer) (n int64, err error) {
 	if err = binary.Write(w, binary.BigEndian, be.ID); err != nil {
 		return
 	}
@@ -286,7 +286,7 @@ func (be *MVCCBaseEntry) WriteOneNodeTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (be *MVCCBaseEntry) WriteAllTo(w io.Writer) (n int64, err error) {
+func (be *MVCCBaseEntry[T]) WriteAllTo(w io.Writer) (n int64, err error) {
 	if err = binary.Write(w, binary.BigEndian, be.ID); err != nil {
 		return
 	}
@@ -297,7 +297,7 @@ func (be *MVCCBaseEntry) WriteAllTo(w io.Writer) (n int64, err error) {
 	n += 8
 	be.MVCC.Loop(func(node *common.DLNode) bool {
 		var n2 int64
-		n2, err = node.GetPayload().(*UpdateNode).WriteTo(w)
+		n2, err = node.GetPayload().(*UpdateNode[T]).WriteTo(w)
 		if err != nil {
 			return false
 		}
@@ -307,12 +307,12 @@ func (be *MVCCBaseEntry) WriteAllTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (be *MVCCBaseEntry) ReadOneNodeFrom(r io.Reader) (n int64, err error) {
+func (be *MVCCBaseEntry[T]) ReadOneNodeFrom(r io.Reader) (n int64, err error) {
 	if err = binary.Read(r, binary.BigEndian, &be.ID); err != nil {
 		return
 	}
 	var n2 int64
-	un := NewEmptyUpdateNode()
+	un := NewEmptyUpdateNode[T]()
 	n2, err = un.ReadFrom(r)
 	if err != nil {
 		return
@@ -322,7 +322,7 @@ func (be *MVCCBaseEntry) ReadOneNodeFrom(r io.Reader) (n int64, err error) {
 	return
 }
 
-func (be *MVCCBaseEntry) ReadAllFrom(r io.Reader) (n int64, err error) {
+func (be *MVCCBaseEntry[T]) ReadAllFrom(r io.Reader) (n int64, err error) {
 	if err = binary.Read(r, binary.BigEndian, &be.ID); err != nil {
 		return
 	}
@@ -333,7 +333,7 @@ func (be *MVCCBaseEntry) ReadAllFrom(r io.Reader) (n int64, err error) {
 	n += 8
 	for i := 0; i < int(be.length); i++ {
 		var n2 int64
-		un := NewEmptyUpdateNode()
+		un := NewEmptyUpdateNode[T]()
 		n2, err = un.ReadFrom(r)
 		if err != nil {
 			return
@@ -344,7 +344,7 @@ func (be *MVCCBaseEntry) ReadAllFrom(r io.Reader) (n int64, err error) {
 	return
 }
 
-func (be *MVCCBaseEntry) DoCompre(oe *MVCCBaseEntry) int {
+func (be *MVCCBaseEntry[T]) DoCompre(oe *MVCCBaseEntry[T]) int {
 	be.RLock()
 	defer be.RUnlock()
 	oe.RLock()
@@ -353,28 +353,28 @@ func (be *MVCCBaseEntry) DoCompre(oe *MVCCBaseEntry) int {
 	return CompareUint64(be.ID, oe.ID)
 }
 
-func (be *MVCCBaseEntry) IsEmpty() bool {
+func (be *MVCCBaseEntry[T]) IsEmpty() bool {
 	head := be.MVCC.GetHead()
 	return head == nil
 }
-func (be *MVCCBaseEntry) ApplyRollback() error {
+func (be *MVCCBaseEntry[T]) ApplyRollback() error {
 	return nil
 }
 
-func (be *MVCCBaseEntry) ApplyCommit(index *wal.Index) error {
+func (be *MVCCBaseEntry[T]) ApplyCommit(index *wal.Index) error {
 	be.Lock()
 	defer be.Unlock()
 	return be.GetUpdateNodeLocked().ApplyCommit(index)
 }
 
-func (be *MVCCBaseEntry) HasDropped() bool {
+func (be *MVCCBaseEntry[T]) HasDropped() bool {
 	node := be.GetCommittedNode()
 	if node == nil {
 		return false
 	}
 	return node.HasDropped()
 }
-func (be *MVCCBaseEntry) ExistedForTs(ts uint64) bool {
+func (be *MVCCBaseEntry[T]) ExistedForTs(ts uint64) bool {
 	un := be.GetExactUpdateNode(ts)
 	if un == nil {
 		un = be.GetNodeToRead(ts)
@@ -384,7 +384,7 @@ func (be *MVCCBaseEntry) ExistedForTs(ts uint64) bool {
 	}
 	return !un.HasDropped()
 }
-func (be *MVCCBaseEntry) GetLogIndex() []*wal.Index {
+func (be *MVCCBaseEntry[T]) GetLogIndex() []*wal.Index {
 	node := be.GetUpdateNodeLocked()
 	if node == nil {
 		return nil
@@ -392,11 +392,11 @@ func (be *MVCCBaseEntry) GetLogIndex() []*wal.Index {
 	return node.LogIndex
 }
 
-func (be *MVCCBaseEntry) OnReplay(node *UpdateNode) error {
+func (be *MVCCBaseEntry[T]) OnReplay(node *UpdateNode[T]) error {
 	be.InsertNode(node)
 	return nil
 }
-func (be *MVCCBaseEntry) TxnCanRead(txn txnif.AsyncTxn, mu *sync.RWMutex) (canRead bool, err error) {
+func (be *MVCCBaseEntry[T]) TxnCanRead(txn txnif.AsyncTxn, mu *sync.RWMutex) (canRead bool, err error) {
 	needWait, txnToWait := be.NeedWaitCommitting(txn.GetStartTS())
 	if needWait {
 		mu.RUnlock()
@@ -406,8 +406,8 @@ func (be *MVCCBaseEntry) TxnCanRead(txn txnif.AsyncTxn, mu *sync.RWMutex) (canRe
 	canRead = be.ExistedForTs(txn.GetStartTS())
 	return
 }
-func (be *MVCCBaseEntry) CloneCreateEntry() *MVCCBaseEntry {
-	cloned := &MVCCBaseEntry{
+func (be *MVCCBaseEntry[T]) CloneCreateEntry() *MVCCBaseEntry[T] {
+	cloned := &MVCCBaseEntry[T]{
 		MVCC:    &common.Link{},
 		RWMutex: &sync.RWMutex{},
 		ID:      be.ID,
@@ -418,7 +418,7 @@ func (be *MVCCBaseEntry) CloneCreateEntry() *MVCCBaseEntry {
 	cloned.InsertNode(un)
 	return cloned
 }
-func (be *MVCCBaseEntry) DropEntryLocked(txnCtx txnif.TxnReader) error {
+func (be *MVCCBaseEntry[T]) DropEntryLocked(txnCtx txnif.TxnReader) error {
 	node := be.GetUpdateNodeLocked()
 	if node.IsActive() && !node.IsSameTxn(txnCtx.GetStartTS()) {
 		return txnif.ErrTxnWWConflict
@@ -433,7 +433,7 @@ func (be *MVCCBaseEntry) DropEntryLocked(txnCtx txnif.TxnReader) error {
 	return nil
 }
 
-func (be *MVCCBaseEntry) SameTxn(o *MVCCBaseEntry) bool {
+func (be *MVCCBaseEntry[T]) SameTxn(o *MVCCBaseEntry[T]) bool {
 	id := be.GetTxnID()
 	if id == 0 {
 		return false
@@ -465,7 +465,7 @@ func (be *MVCCBaseEntry) SameTxn(o *MVCCBaseEntry) bool {
 // 	return be.Txn != nil
 // }
 
-func (be *MVCCBaseEntry) GetTxnID() uint64 {
+func (be *MVCCBaseEntry[T]) GetTxnID() uint64 {
 	node := be.GetUpdateNodeLocked()
 	if node.Txn != nil {
 		return node.Txn.GetID()
@@ -473,38 +473,38 @@ func (be *MVCCBaseEntry) GetTxnID() uint64 {
 	return 0
 }
 
-func (be *MVCCBaseEntry) IsSameTxn(ctx txnif.TxnReader) bool {
+func (be *MVCCBaseEntry[T]) IsSameTxn(ctx txnif.TxnReader) bool {
 	return be.GetTxnID() == ctx.GetID()
 }
 
-func (be *MVCCBaseEntry) IsCommitting() bool {
+func (be *MVCCBaseEntry[T]) IsCommitting() bool {
 	node := be.GetUpdateNodeLocked()
 	return node.State == txnif.TxnStateCommitting
 }
 
-func (be *MVCCBaseEntry) GetDeleted() bool {
+func (be *MVCCBaseEntry[T]) GetDeleted() bool {
 	return be.GetUpdateNodeLocked().Deleted
 }
 
-func (be *MVCCBaseEntry) PrepareCommit() error {
+func (be *MVCCBaseEntry[T]) PrepareCommit() error {
 	be.Lock()
 	defer be.Unlock()
 	return be.GetUpdateNodeLocked().PrepareCommit()
 }
 
-func (be *MVCCBaseEntry) PrepareRollbackLocked() error {
+func (be *MVCCBaseEntry[T]) PrepareRollbackLocked() error {
 	node := be.MVCC.GetHead()
 	be.MVCC.Delete(node)
 	return nil
 }
-func (be *MVCCBaseEntry) DeleteAfter(ts uint64) bool {
+func (be *MVCCBaseEntry[T]) DeleteAfter(ts uint64) bool {
 	un := be.GetUpdateNodeLocked()
 	if un == nil {
 		return false
 	}
 	return un.DeletedAt > ts
 }
-func (be *MVCCBaseEntry) IsCommitted() bool {
+func (be *MVCCBaseEntry[T]) IsCommitted() bool {
 	un := be.GetUpdateNodeLocked()
 	if un == nil {
 		return false
@@ -512,16 +512,16 @@ func (be *MVCCBaseEntry) IsCommitted() bool {
 	return un.Txn == nil
 }
 
-func (e *MVCCBaseEntry) CloneCommittedInRange(start, end uint64) (ret *MVCCBaseEntry) {
+func (e *MVCCBaseEntry[T]) CloneCommittedInRange(start, end uint64) (ret *MVCCBaseEntry[T]) {
 	e.MVCC.Loop(func(n *common.DLNode) bool {
-		un := n.GetPayload().(*UpdateNode)
+		un := n.GetPayload().(*UpdateNode[T])
 		if un.IsActive() {
 			return true
 		}
 		// 1. Committed
 		if un.End >= start && un.End <= end {
 			if ret == nil {
-				ret = NewMVCCBaseEntry(e.ID)
+				ret = NewMVCCBaseEntry[T](e.ID)
 			}
 			ret.InsertNode(un.CloneAll())
 			ret.length++
@@ -533,7 +533,7 @@ func (e *MVCCBaseEntry) CloneCommittedInRange(start, end uint64) (ret *MVCCBaseE
 	return
 }
 
-func (e *MVCCBaseEntry) GetCurrOp() OpT {
+func (e *MVCCBaseEntry[T]) GetCurrOp() OpT {
 	un := e.GetUpdateNodeLocked()
 	if un == nil {
 		return OpCreate
@@ -544,7 +544,7 @@ func (e *MVCCBaseEntry) GetCurrOp() OpT {
 	return OpSoftDelete
 }
 
-func (e *MVCCBaseEntry) GetCreateAt() uint64 {
+func (e *MVCCBaseEntry[T]) GetCreateAt() uint64 {
 	un := e.GetUpdateNodeLocked()
 	if un == nil {
 		return 0
@@ -552,7 +552,7 @@ func (e *MVCCBaseEntry) GetCreateAt() uint64 {
 	return un.CreatedAt
 }
 
-func (e *MVCCBaseEntry) GetDeleteAt() uint64 {
+func (e *MVCCBaseEntry[T]) GetDeleteAt() uint64 {
 	un := e.GetUpdateNodeLocked()
 	if un == nil {
 		return 0

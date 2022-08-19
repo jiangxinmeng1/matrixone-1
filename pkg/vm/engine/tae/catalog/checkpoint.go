@@ -36,11 +36,11 @@ const (
 type CheckpointItem interface {
 	Clone() CheckpointItem
 	CloneCreate() CheckpointItem
-	MakeLogEntry() *EntryCommand
+	MakeLogEntry() *EntryCommand[*TempAddr]
 	StringLocked() string
 }
 
-func CheckpointSelectOp(entry *MVCCBaseEntry, minTs, maxTs uint64) bool {
+func CheckpointSelectOp[T Payload](entry *MVCCBaseEntry[T], minTs, maxTs uint64) bool {
 	entry.RLock()
 	defer entry.RUnlock()
 	if entry.InTxnOrRollbacked() {
@@ -49,18 +49,18 @@ func CheckpointSelectOp(entry *MVCCBaseEntry, minTs, maxTs uint64) bool {
 	return entry.ExistUpdate(minTs,maxTs)
 }
 
-type CatalogEntry interface{
-	GetCheckpointItems(start,end uint64) CheckpointItems//check committing, must clone here
+type CatalogEntry[T Payload] interface{
+	GetCheckpointItems(start,end uint64) CheckpointItems[T]//check committing, must clone here
 	RLock()
 	RUnlock()
 }
 
-type CheckpointItems interface{
+type CheckpointItems[T Payload] interface{
 	GetIndexes()[]*wal.Index
-	MakeLogEntry()*EntryCommand
+	MakeLogEntry()*EntryCommand[T]
 }
 
-func CheckpointOp(ckpEntry *CheckpointEntry, entry CatalogEntry, minTs, maxTs uint64) {
+func CheckpointOp[T Payload](ckpEntry *CheckpointEntry, entry CatalogEntry[T], minTs, maxTs uint64) {
 	entry.RLock()
 	ckpItem:=entry.GetCheckpointItems(minTs,maxTs)
 		entry.RUnlock()
@@ -84,16 +84,16 @@ func (ckp *Checkpoint) String() string {
 	return fmt.Sprintf("CommitId=%d,MaxTS=%d,LSN=%d", ckp.CommitId, ckp.MaxTS, ckp.LSN)
 }
 
-type CheckpointEntry struct {
+type CheckpointEntry[] struct {
 	MinTS, MaxTS uint64
 	LogIndexes   []*wal.Index
 	MaxIndex     wal.Index
-	Entries      []*EntryCommand
+	Entries      []*EntryCommand[*TempAddr]
 }
 
 func NewEmptyCheckpointEntry() *CheckpointEntry {
 	return &CheckpointEntry{
-		Entries: make([]*EntryCommand, 0, 16),
+		Entries: make([]*EntryCommand[*TempAddr], 0, 16),
 	}
 }
 
@@ -102,11 +102,11 @@ func NewCheckpointEntry(minTs, maxTs uint64) *CheckpointEntry {
 		MinTS:      minTs,
 		MaxTS:      maxTs,
 		LogIndexes: make([]*wal.Index, 0, 16),
-		Entries:    make([]*EntryCommand, 0, 16),
+		Entries:    make([]*EntryCommand[*TempAddr], 0, 16),
 	}
 }
 
-func (e *CheckpointEntry) AddCommand(cmd *EntryCommand) {
+func (e *CheckpointEntry) AddCommand(cmd *EntryCommand[*TempAddr]) {
 	e.Entries = append(e.Entries, cmd)
 }
 
@@ -175,7 +175,7 @@ func (e *CheckpointEntry) Unmarshal(buf []byte) (err error) {
 		if err != nil {
 			return err
 		}
-		e.Entries = append(e.Entries, txnEntry.(*EntryCommand))
+		e.Entries = append(e.Entries, txnEntry.(*EntryCommand[*TempAddr]))
 	}
 	return
 }

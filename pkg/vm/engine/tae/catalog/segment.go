@@ -30,7 +30,7 @@ import (
 type SegmentDataFactory = func(meta *SegmentEntry) data.Segment
 
 type SegmentEntry struct {
-	*MVCCBaseEntry
+	*MVCCBaseEntry[*TempAddr]
 	table   *TableEntry
 	entries map[uint64]*common.DLNode
 	link    *common.Link
@@ -41,7 +41,7 @@ type SegmentEntry struct {
 func NewSegmentEntry(table *TableEntry, txn txnif.AsyncTxn, state EntryState, dataFactory SegmentDataFactory) *SegmentEntry {
 	id := table.GetDB().catalog.NextSegment()
 	e := &SegmentEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		table:         table,
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),
@@ -56,7 +56,7 @@ func NewSegmentEntry(table *TableEntry, txn txnif.AsyncTxn, state EntryState, da
 
 func NewReplaySegmentEntry() *SegmentEntry {
 	e := &SegmentEntry{
-		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry[*TempAddr](),
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),
 	}
@@ -65,7 +65,7 @@ func NewReplaySegmentEntry() *SegmentEntry {
 
 func NewStandaloneSegment(table *TableEntry, id uint64, ts uint64) *SegmentEntry {
 	e := &SegmentEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		table:         table,
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),
@@ -77,7 +77,7 @@ func NewStandaloneSegment(table *TableEntry, id uint64, ts uint64) *SegmentEntry
 
 func NewSysSegmentEntry(table *TableEntry, id uint64) *SegmentEntry {
 	e := &SegmentEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		table:         table,
 		link:          new(common.Link),
 		entries:       make(map[uint64]*common.DLNode),
@@ -343,14 +343,14 @@ func (entry *SegmentEntry) GetScheduler() tasks.TaskScheduler {
 	return entry.GetTable().GetCatalog().GetScheduler()
 }
 
-func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *MVCCBaseEntry) bool, blockFilter func(be *BlockEntry) bool) []*BlockEntry {
+func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *MVCCBaseEntry[*TempAddr]) bool, blockFilter func(be *BlockEntry) bool) []*BlockEntry {
 	blks := make([]*BlockEntry, 0)
 	blkIt := entry.MakeBlockIt(true)
 	for blkIt.Valid() {
 		blk := blkIt.Get().GetPayload().(*BlockEntry)
 		blk.RLock()
 		if commitFilter != nil && blockFilter != nil {
-			if commitFilter(blk.MVCCBaseEntry) && blockFilter(blk) {
+			if commitFilter((*MVCCBaseEntry[*TempAddr])(blk.MVCCBaseEntry)) && blockFilter(blk) {
 				blks = append(blks, blk)
 			}
 		} else if blockFilter != nil {
@@ -358,7 +358,7 @@ func (entry *SegmentEntry) CollectBlockEntries(commitFilter func(be *MVCCBaseEnt
 				blks = append(blks, blk)
 			}
 		} else if commitFilter != nil {
-			if commitFilter(blk.MVCCBaseEntry) {
+			if commitFilter((*MVCCBaseEntry[*TempAddr])(blk.MVCCBaseEntry)) {
 				blks = append(blks, blk)
 			}
 		}
@@ -387,14 +387,14 @@ func (entry *SegmentEntry) IsActive() bool {
 	return !dropped
 }
 
-func (entry *SegmentEntry) TreeMaxDropCommitEntry() *MVCCBaseEntry {
+func (entry *SegmentEntry) TreeMaxDropCommitEntry() *MVCCBaseEntry[*TempAddr] {
 	table := entry.GetTable()
 	db := table.GetDB()
 	if db.IsDroppedCommitted() {
-		return db.MVCCBaseEntry
+		return (*MVCCBaseEntry[*TempAddr])(db.MVCCBaseEntry)
 	}
 	if table.IsDroppedCommitted() {
-		return table.MVCCBaseEntry
+		return (*MVCCBaseEntry[*TempAddr])(table.MVCCBaseEntry)
 	}
 	if entry.IsDroppedCommitted() {
 		return entry.MVCCBaseEntry

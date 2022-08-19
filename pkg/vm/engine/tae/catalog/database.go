@@ -28,13 +28,13 @@ import (
 
 type DBEntry struct {
 	// *BaseEntry
-	*MVCCBaseEntry
+	*MVCCBaseEntry[*TempAddr]
 	catalog *Catalog
 	name    string
 	isSys   bool
 
 	entries   map[uint64]*common.DLNode
-	nameNodes map[string]*nodeList
+	nameNodes map[string]*nodeList[*TempAddr]
 	link      *common.Link
 
 	nodesMu sync.RWMutex
@@ -43,11 +43,11 @@ type DBEntry struct {
 func NewDBEntry(catalog *Catalog, name string, txnCtx txnif.AsyncTxn) *DBEntry {
 	id := catalog.NextDB()
 	e := &DBEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		catalog:       catalog,
 		name:          name,
 		entries:       make(map[uint64]*common.DLNode),
-		nameNodes:     make(map[string]*nodeList),
+		nameNodes:     make(map[string]*nodeList[*TempAddr]),
 		link:          new(common.Link),
 	}
 	e.CreateWithTxn(txnCtx)
@@ -57,11 +57,11 @@ func NewDBEntry(catalog *Catalog, name string, txnCtx txnif.AsyncTxn) *DBEntry {
 func NewSystemDBEntry(catalog *Catalog) *DBEntry {
 	id := SystemDBID
 	entry := &DBEntry{
-		MVCCBaseEntry: NewMVCCBaseEntry(id),
+		MVCCBaseEntry: NewMVCCBaseEntry[*TempAddr](id),
 		catalog:       catalog,
 		name:          SystemDBName,
 		entries:       make(map[uint64]*common.DLNode),
-		nameNodes:     make(map[string]*nodeList),
+		nameNodes:     make(map[string]*nodeList[*TempAddr]),
 		link:          new(common.Link),
 		isSys:         true,
 	}
@@ -71,9 +71,9 @@ func NewSystemDBEntry(catalog *Catalog) *DBEntry {
 
 func NewReplayDBEntry() *DBEntry {
 	entry := &DBEntry{
-		MVCCBaseEntry: NewReplayMVCCBaseEntry(),
+		MVCCBaseEntry: NewReplayMVCCBaseEntry[*TempAddr](),
 		entries:       make(map[uint64]*common.DLNode),
-		nameNodes:     make(map[string]*nodeList),
+		nameNodes:     make(map[string]*nodeList[*TempAddr]),
 		link:          new(common.Link),
 	}
 	return entry
@@ -239,7 +239,7 @@ func (e *DBEntry) AddEntryLocked(table *TableEntry, txn txnif.AsyncTxn) (err err
 		n := e.link.Insert(table)
 		e.entries[table.GetID()] = n
 
-		nn := newNodeList(e, &e.nodesMu, table.schema.Name)
+		nn := newNodeList[*TempAddr](e, &e.nodesMu, table.schema.Name)
 		e.nameNodes[table.schema.Name] = nn
 		nn.CreateNode(table.GetID())
 	} else {
@@ -253,13 +253,13 @@ func (e *DBEntry) AddEntryLocked(table *TableEntry, txn txnif.AsyncTxn) (err err
 				waitTxn.GetTxnState(true)
 				record.RLock()
 			}
+			err = record.PrepareWrite(table.GetTxn(), record.RWMutex)
+			if err != nil {
+				record.RUnlock()
+				return
+			}
 		}
-		err = record.PrepareWrite(table.GetTxn(), record.RWMutex)
-		if err != nil {
-			record.RUnlock()
-			return
-		}
-		if txn == nil || record.GetTxn() != txn  {
+		if txn == nil || record.GetTxn() != txn {
 			if !record.HasDropped() {
 				record.RUnlock()
 				return ErrDuplicate
@@ -358,7 +358,7 @@ func (e *DBEntry) ReadFrom(r io.Reader) (n int64, err error) {
 	return
 }
 
-func (e *DBEntry) MakeLogEntry() *EntryCommand {
+func (e *DBEntry) MakeLogEntry() *EntryCommand[*TempAddr] {
 	return newDBCmd(0, CmdLogDatabase, e)
 }
 

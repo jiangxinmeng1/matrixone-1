@@ -23,15 +23,15 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
-type nodeList struct {
+type nodeList[T Payload] struct {
 	common.SSLLNode
 	host     any
 	rwlocker *sync.RWMutex
 	name     string
 }
 
-func newNodeList(host any, rwlocker *sync.RWMutex, name string) *nodeList {
-	return &nodeList{
+func newNodeList[T Payload](host any, rwlocker *sync.RWMutex, name string) *nodeList[T] {
+	return &nodeList[T]{
 		SSLLNode: *common.NewSSLLNode(),
 		host:     host,
 		rwlocker: rwlocker,
@@ -39,11 +39,11 @@ func newNodeList(host any, rwlocker *sync.RWMutex, name string) *nodeList {
 	}
 }
 
-func (n *nodeList) Less(item btree.Item) bool {
-	return n.name < item.(*nodeList).name
+func (n *nodeList[T]) Less(item btree.Item) bool {
+	return n.name < item.(*nodeList[T]).name
 }
 
-func (n *nodeList) CreateNode(id uint64) *nameNode {
+func (n *nodeList[T]) CreateNode(id uint64) *nameNode {
 	nn := newNameNode(n.host, id)
 	n.rwlocker.Lock()
 	defer n.rwlocker.Unlock()
@@ -51,7 +51,7 @@ func (n *nodeList) CreateNode(id uint64) *nameNode {
 	return nn
 }
 
-func (n *nodeList) DeleteNode(id uint64) (deleted *nameNode, empty bool) {
+func (n *nodeList[T]) DeleteNode(id uint64) (deleted *nameNode, empty bool) {
 	n.rwlocker.Lock()
 	defer n.rwlocker.Unlock()
 	var prev common.ISSLLNode
@@ -76,13 +76,13 @@ func (n *nodeList) DeleteNode(id uint64) (deleted *nameNode, empty bool) {
 	return
 }
 
-func (n *nodeList) ForEachNodes(fn func(*nameNode) bool) {
+func (n *nodeList[T]) ForEachNodes(fn func(*nameNode) bool) {
 	n.rwlocker.RLock()
 	defer n.rwlocker.RUnlock()
 	n.ForEachNodesLocked(fn)
 }
 
-func (n *nodeList) ForEachNodesLocked(fn func(*nameNode) bool) {
+func (n *nodeList[T]) ForEachNodesLocked(fn func(*nameNode) bool) {
 	curr := n.GetNext()
 	for curr != nil {
 		nn := curr.(*nameNode)
@@ -93,7 +93,7 @@ func (n *nodeList) ForEachNodesLocked(fn func(*nameNode) bool) {
 	}
 }
 
-func (n *nodeList) LengthLocked() int {
+func (n *nodeList[T]) LengthLocked() int {
 	length := 0
 	fn := func(*nameNode) bool {
 		length++
@@ -103,28 +103,28 @@ func (n *nodeList) LengthLocked() int {
 	return length
 }
 
-func (n *nodeList) Length() int {
+func (n *nodeList[T]) Length() int {
 	n.rwlocker.RLock()
 	defer n.rwlocker.RUnlock()
 	return n.LengthLocked()
 }
 
-func (n *nodeList) GetTableNode() *common.DLNode {
+func (n *nodeList[T]) GetTableNode() *common.DLNode {
 	n.rwlocker.RLock()
 	defer n.rwlocker.RUnlock()
 	return n.GetNext().(*nameNode).GetTableNode()
 }
 
-func (n *nodeList) GetDBNode() *common.DLNode {
+func (n *nodeList[T]) GetDBNode() *common.DLNode {
 	n.rwlocker.RLock()
 	defer n.rwlocker.RUnlock()
 	return n.GetNext().(*nameNode).GetDBNode()
 }
 
-func (n *nodeList) TxnGetTableNodeLocked(txn txnif.TxnReader) (dn *common.DLNode, err error) {
-	getter := func(nn *nameNode) (n *common.DLNode, entry *MVCCBaseEntry) {
+func (n *nodeList[TempAddr]) TxnGetTableNodeLocked(txn txnif.TxnReader) (dn *common.DLNode, err error) {
+	getter := func(nn *nameNode) (n *common.DLNode, entry *MVCCBaseEntry[TempAddr]) {
 		n = nn.GetTableNode()
-		entry = n.GetPayload().(*TableEntry).MVCCBaseEntry
+		entry = (*MVCCBaseEntry[TempAddr])(n.GetPayload().(*TableEntry).MVCCBaseEntry)
 		return
 	}
 	return n.TxnGetNodeLocked(txn, getter)
@@ -145,9 +145,9 @@ func (n *nodeList) TxnGetTableNodeLocked(txn txnif.TxnReader) (dn *common.DLNode
 // 7. Txn3 commit
 // 8. Txn4 can still find "tb1"
 // 9. Txn5 start and cannot find "tb1"
-func (n *nodeList) TxnGetNodeLocked(
+func (n *nodeList[T]) TxnGetNodeLocked(
 	txn txnif.TxnReader,
-	getter func(*nameNode) (*common.DLNode, *MVCCBaseEntry,
+	getter func(*nameNode) (*common.DLNode, *MVCCBaseEntry[T],
 	)) (dn *common.DLNode, err error) {
 	fn := func(nn *nameNode) (goNext bool) {
 		dlNode, entry := getter(nn)
@@ -179,16 +179,16 @@ func (n *nodeList) TxnGetNodeLocked(
 	return
 }
 
-func (n *nodeList) TxnGetDBNodeLocked(txn txnif.TxnReader) (*common.DLNode, error) {
-	getter := func(nn *nameNode) (n *common.DLNode, entry *MVCCBaseEntry) {
+func (n *nodeList[TempAddr]) TxnGetDBNodeLocked(txn txnif.TxnReader) (*common.DLNode, error) {
+	getter := func(nn *nameNode) (n *common.DLNode, entry *MVCCBaseEntry[TempAddr]) {
 		n = nn.GetDBNode()
-		entry = n.GetPayload().(*DBEntry).MVCCBaseEntry
+		entry = (*MVCCBaseEntry[TempAddr])(n.GetPayload().(*DBEntry).MVCCBaseEntry)
 		return
 	}
 	return n.TxnGetNodeLocked(txn, getter)
 }
 
-func (n *nodeList) PString(level common.PPLevel) string {
+func (n *nodeList[T]) PString(level common.PPLevel) string {
 	curr := n.GetNext()
 	if curr == nil {
 		return fmt.Sprintf("TableNode[\"%s\"](Len=0)", n.name)

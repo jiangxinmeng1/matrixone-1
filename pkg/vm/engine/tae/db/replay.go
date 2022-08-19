@@ -187,7 +187,7 @@ func (replayer *Replayer) PostReplayWal() {
 		}
 	}
 
-	logutil.Info(replayer.db.Catalog.SimplePPString(common.PPL1))
+	// logutil.Info(replayer.db.Catalog.SimplePPString(common.PPL1))
 }
 
 func (replayer *Replayer) OnStaleIndex(idx *wal.Index) {

@@ -614,7 +614,6 @@ func TestTxn7(t *testing.T) {
 }
 
 func TestTxn8(t *testing.T) {
-	return
 	testutils.EnsureNoLeak(t)
 	tae := initDB(t, nil)
 	schema := catalog.MockSchemaAll(13, 2)
@@ -625,6 +624,7 @@ func TestTxn8(t *testing.T) {
 	defer bat.Close()
 	bats := bat.Split(2)
 
+	tae.StartTxn(nil)
 	txn, _ := tae.StartTxn(nil)
 	db, _ := txn.GetDatabase(catalog.SystemDBName)
 	rel, _ := db.CreateRelation(schema)

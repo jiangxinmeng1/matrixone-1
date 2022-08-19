@@ -1345,11 +1345,11 @@ func TestCrossDBTxn(t *testing.T) {
 }
 
 func TestSystemDB1(t *testing.T) {
-	return
 	testutils.EnsureNoLeak(t)
 	tae := initDB(t, nil)
 	defer tae.Close()
 	schema := catalog.MockSchema(2, 0)
+	tae.StartTxn(nil)
 	txn, _ := tae.StartTxn(nil)
 	_, err := txn.CreateDatabase(catalog.SystemDBName)
 	assert.NotNil(t, err)
@@ -1489,11 +1489,11 @@ func TestSystemDB1(t *testing.T) {
 }
 
 func TestSystemDB2(t *testing.T) {
-	return
 	testutils.EnsureNoLeak(t)
 	tae := initDB(t, nil)
 	defer tae.Close()
 
+	tae.StartTxn(nil)
 	txn, _ := tae.StartTxn(nil)
 	sysDB, err := txn.GetDatabase(catalog.SystemDBName)
 	assert.NoError(t, err)
@@ -1527,10 +1527,11 @@ func TestSystemDB2(t *testing.T) {
 }
 
 func TestSystemDB3(t *testing.T) {
-	return
+	// return
 	testutils.EnsureNoLeak(t)
 	tae := initDB(t, nil)
 	defer tae.Close()
+	tae.StartTxn(nil)
 	txn, _ := tae.StartTxn(nil)
 	schema := catalog.MockSchemaAll(13, 12)
 	schema.BlockMaxRows = 100

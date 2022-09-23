@@ -67,7 +67,7 @@ func NewDefaultConfig(cfg *logservice.ClientConfig) *Config {
 func NewTestConfig(cfg *logservice.ClientConfig) *Config {
 	return &Config{
 		ClientPoolMaxSize:     10,
-		ClientPoolInitSize:    5,
+		ClientPoolInitSize:    10,
 		GetClientRetryTimeOut: time.Second,
 
 		RecordSize:       int(common.M * 10),

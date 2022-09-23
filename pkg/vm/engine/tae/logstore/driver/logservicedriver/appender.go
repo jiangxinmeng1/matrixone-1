@@ -53,7 +53,9 @@ func (a *driverAppender) append() {
 	record := a.client.record
 	copy(record.Payload(), a.entry.payload)
 	record.ResizePayload(size)
+	logutil.Infof("lalala %p append start",a.client.c)
 	lsn, err := a.client.c.Append(ctx, record)
+	logutil.Infof("lalala %p append finish",a.client.c)
 	if err != nil {
 		logutil.Infof("size is %d", size)
 		panic(err)

@@ -75,7 +75,9 @@ func (d *LogServiceDriver) truncateLogservice(lsn uint64) {
 		panic(err)
 	}
 	defer d.clientPool.Put(client)
+	logutil.Infof("lalala %p truncate start",client.c)
 	err = client.c.Truncate(ctx, lsn)
+	logutil.Infof("lalala %p truncate end",client.c)
 	if err != nil {
 		panic(err)
 	}
@@ -92,7 +94,9 @@ func (d *LogServiceDriver) getLogserviceTruncate() (lsn uint64) {
 		panic(err)
 	}
 	defer d.clientPool.Put(client)
+	logutil.Infof("lalala %p get truncate start",client.c)
 	lsn, err = client.c.GetTruncatedLsn(ctx)
+	logutil.Infof("lalala %p get truncate end",client.c)
 	if err != nil {
 		panic(err)
 	}

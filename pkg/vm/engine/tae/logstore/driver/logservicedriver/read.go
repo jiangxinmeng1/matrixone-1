@@ -146,7 +146,9 @@ func (d *LogServiceDriver) readFromLogService(lsn uint64, size int) (nextLsn uin
 	if err != nil {
 		panic(err)
 	}
+	logutil.Infof("lalala %p read start",client.c)
 	records, nextLsn, err = client.c.Read(ctx, lsn, d.config.ReadMaxSize)
+	logutil.Infof("lalala %p read end",client.c)
 	if err != nil { //TODO
 		logutil.Infof("try read %d", lsn)
 		panic(err)

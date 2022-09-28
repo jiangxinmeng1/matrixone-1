@@ -71,7 +71,7 @@ func getNodes() int {
 
 func makeTable(t *testing.T, dir string, colCnt int, pkIdx int, bufSize uint64) *txnTable {
 	mgr := buffer.NewNodeManager(bufSize, nil)
-	driver := wal.NewDriver(dir, "store", nil)
+	driver := wal.NewDriverWithBatchStore(dir, "store", nil)
 	id := common.NextGlobalSeqNum()
 	schema := catalog.MockSchemaAll(colCnt, pkIdx)
 	rel := mockTestRelation(id, schema)
@@ -558,7 +558,7 @@ func TestTxnManager1(t *testing.T) {
 
 func initTestContext(t *testing.T, dir string) (*catalog.Catalog, *txnbase.TxnManager, wal.Driver) {
 	c := catalog.MockCatalog(dir, "mock", nil, nil)
-	driver := wal.NewDriver(dir, "store", nil)
+	driver := wal.NewDriverWithBatchStore(dir, "store", nil)
 	txnBufMgr := buffer.NewNodeManager(common.G, nil)
 	mutBufMgr := buffer.NewNodeManager(common.G, nil)
 	SegmentFactory := blockio.NewObjectFactory(dir)

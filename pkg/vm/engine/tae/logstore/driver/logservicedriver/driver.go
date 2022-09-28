@@ -18,6 +18,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/lni/vfs"
+	"github.com/matrixorigin/matrixone/pkg/logservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
@@ -58,6 +60,20 @@ type LogServiceDriver struct {
 
 	flushtimes  int
 	appendtimes int
+
+	service *logservice.Service//for test
+}
+
+func MockLogServiceDriver() *LogServiceDriver{
+	fs := vfs.NewStrictMem()
+	service, ccfg, err := logservice.NewTestService(fs)
+	if err!=nil{
+		panic(err)
+	}
+	cfg:=NewDefaultConfig(&ccfg)
+	driver:=NewLogServiceDriver(cfg)
+	driver.service=service
+	return driver
 }
 
 func NewLogServiceDriver(cfg *Config) *LogServiceDriver {
@@ -100,6 +116,10 @@ func (d *LogServiceDriver) Close() error {
 	close(d.appendQueue)
 	close(d.appendedQueue)
 	close(d.postAppendQueue)
+	//for test
+	if d.service!=nil{
+		d.service.Close()
+	}
 	return nil
 }
 

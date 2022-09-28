@@ -20,6 +20,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/batchstoredriver"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/logservicedriver"
 	driverEntry "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
@@ -50,6 +51,11 @@ func NewStoreWithBatchStoreDriver(dir, name string, cfg *batchstoredriver.StoreC
 	if err != nil {
 		panic(err)
 	}
+	return NewStore(driver)
+}
+
+func MockStoreWithLogserviceDriver() Store {
+	driver := logservicedriver.MockLogServiceDriver()
 	return NewStore(driver)
 }
 func NewStore(driver driver.Driver) *StoreImpl {

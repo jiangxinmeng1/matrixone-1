@@ -48,8 +48,8 @@ fileservice = "S3"
 log-backend = "logservice"
 
 [dn.Ckp]
-flush-interval = "60s"
-min-count = 100
+flush-interval = "6s"
+min-count = 10
 scan-interval = "5s"
-incremental-interval = "180s"
-global-interval = "100000s"
+incremental-interval = "10s"
+global-interval = "10s"

@@ -581,6 +581,7 @@ func LoadCheckpointEntries(
 	if metLoc == "" {
 		return
 	}
+	logutil.Infof("load checkpoint %v",metLoc)
 
 	locations := strings.Split(metLoc, ";")
 	datas := make([]*CheckpointData, len(locations))

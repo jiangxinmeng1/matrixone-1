@@ -16,6 +16,7 @@ package checkpoint
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -208,7 +209,8 @@ func NewRunner(
 	r.fillDefaults()
 
 	r.incrementalPolicy = &timeBasedPolicy{interval: r.options.minIncrementalInterval}
-	r.globalPolicy = &timeBasedPolicy{interval: r.options.minGlobalInterval}
+	// r.globalPolicy = &timeBasedPolicy{interval: r.options.minGlobalInterval}
+	r.globalPolicy = &timeBasedPolicy{interval: time.Second}
 	r.stopper = stopper.NewStopper("CheckpointRunner")
 	r.dirtyEntryQueue = sm.NewSafeQueue(r.options.dirtyEntryQueueSize, 100, r.onDirtyEntries)
 	r.waitQueue = sm.NewSafeQueue(r.options.waitQueueSize, 100, r.onWaitWaitableItems)
@@ -731,6 +733,14 @@ func (r *runner) Stop() {
 }
 
 func (r *runner) CollectCheckpointsInRange(start, end types.TS) (locations string, checkpointed types.TS) {
+	entries:=make([]*CheckpointEntry,0)
+	defer func(){
+		ckps:=""
+		for _,e:=range entries{
+			ckps=fmt.Sprintf("%s,%v",ckps,e.String())
+		}
+		logutil.Infof("[%v,%v]%v %v",start.ToString(),end.ToString(),ckps,locations)
+	}()
 	r.storage.Lock()
 	tree := r.storage.entries.Copy()
 	global := r.storage.prevGlobal
@@ -739,6 +749,7 @@ func (r *runner) CollectCheckpointsInRange(start, end types.TS) (locations strin
 	newStart := start
 	if global != nil && global.HasOverlap(start, end) {
 		locs = append(locs, global.GetLocation())
+		entries = append(entries, global)
 		newStart = global.end.Next()
 		checkpointed = global.GetEnd()
 	}
@@ -769,6 +780,7 @@ func (r *runner) CollectCheckpointsInRange(start, end types.TS) (locations strin
 			}
 			if e.HasOverlap(newStart, end) {
 				locs = append(locs, e.GetLocation())
+				entries = append(entries, e)
 				checkpointed = e.GetEnd()
 				// checkpoints = append(checkpoints, e)
 			}
@@ -780,6 +792,7 @@ func (r *runner) CollectCheckpointsInRange(start, end types.TS) (locations strin
 				break
 			}
 			locs = append(locs, e.GetLocation())
+			entries = append(entries, e)
 			checkpointed = e.GetEnd()
 			// checkpoints = append(checkpoints, e)
 			if ok = iter.Next(); !ok {
@@ -798,6 +811,7 @@ func (r *runner) CollectCheckpointsInRange(start, end types.TS) (locations strin
 			return
 		}
 		locs = append(locs, e.GetLocation())
+		entries = append(entries, e)
 		checkpointed = e.GetEnd()
 		// checkpoints = append(checkpoints, e)
 	}

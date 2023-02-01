@@ -5668,8 +5668,7 @@ func TestGCCatalog2(t *testing.T) {
 	assert.True(t, checkCompactAndGCFn())
 	t.Log(tae.Catalog.SimplePPString(3))
 }
-func TestGCCatalog3(t *testing.T) {
-	for i := 0; i < 1000; i++ {
+func testHelper(t *testing.T){
 		defer testutils.AfterTest(t)()
 		opts := config.WithQuickScanAndCKPOpts(nil)
 		options.WithCatalogGCInterval(10 * time.Millisecond)(opts)
@@ -5707,6 +5706,10 @@ func TestGCCatalog3(t *testing.T) {
 		testutils.WaitExpect(4000, checkCompactAndGCFn)
 		assert.True(t, checkCompactAndGCFn())
 		t.Log(tae.Catalog.SimplePPString(3))
+}
+func TestGCCatalog3(t *testing.T) {
+	for i := 0; i < 1000; i++ {
+		testHelper(t)
 	}
 }
 

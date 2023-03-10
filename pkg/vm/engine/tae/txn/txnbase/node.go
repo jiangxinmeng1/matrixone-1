@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaxNodeRows uint32 = 10000
+	MaxNodeRows uint32 = 5
 )
 
 type NodeState = int32

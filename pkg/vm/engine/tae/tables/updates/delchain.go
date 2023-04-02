@@ -29,18 +29,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
-func mockTxn() *txnbase.Txn {
-	txn := new(txnbase.Txn)
-	txn.TxnCtx = txnbase.NewTxnCtx(common.NewTxnIDAllocator().Alloc(), types.NextGlobalTsForTest(), types.TS{})
-	return txn
-}
-
-func MockTxnWithStartTS(ts types.TS) *txnbase.Txn {
-	txn := mockTxn()
-	txn.StartTS = ts
-	return txn
-}
-
 type DeleteChain struct {
 	*sync.RWMutex
 	*txnbase.MVCCChain[*DeleteNode]

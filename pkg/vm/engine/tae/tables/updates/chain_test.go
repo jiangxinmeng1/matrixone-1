@@ -36,6 +36,18 @@ func commitTxn(txn *txnbase.Txn) {
 	txn.CommitTS = types.NextGlobalTsForTest()
 }
 
+func mockTxn() *txnbase.Txn {
+	txn := new(txnbase.Txn)
+	txn.TxnCtx = txnbase.NewTxnCtx(common.NewTxnIDAllocator().Alloc(), types.NextGlobalTsForTest(), types.TS{})
+	return txn
+}
+
+func mockTxnWithStartTS(ts types.TS) *txnbase.Txn {
+	txn := mockTxn()
+	txn.StartTS = ts
+	return txn
+}
+
 func TestDeleteChain1(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
@@ -91,10 +103,10 @@ func TestDeleteChain1(t *testing.T) {
 	assert.Equal(t, uint32(11), collected.GetCardinalityLocked())
 
 	var startTs1 types.TS
-	collected, err = chain.CollectDeletesLocked(MockTxnWithStartTS(startTs1), false, nil)
+	collected, err = chain.CollectDeletesLocked(mockTxnWithStartTS(startTs1), false, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, collected)
-	collected, err = chain.CollectDeletesLocked(MockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
+	collected, err = chain.CollectDeletesLocked(mockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, collected)
 
@@ -104,10 +116,10 @@ func TestDeleteChain1(t *testing.T) {
 	t.Log(chain.StringLocked())
 
 	var startTs2 types.TS
-	collected, err = chain.CollectDeletesLocked(MockTxnWithStartTS(startTs2), false, nil)
+	collected, err = chain.CollectDeletesLocked(mockTxnWithStartTS(startTs2), false, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, collected)
-	collected, err = chain.CollectDeletesLocked(MockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
+	collected, err = chain.CollectDeletesLocked(mockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(10), collected.GetCardinalityLocked())
 	collected, err = chain.CollectDeletesLocked(txn2, false, nil)
@@ -188,19 +200,19 @@ func TestDeleteChain2(t *testing.T) {
 	assert.Nil(t, err)
 	t.Log(chain.StringLocked())
 
-	m, err := chain.CollectDeletesLocked(MockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
+	m, err := chain.CollectDeletesLocked(mockTxnWithStartTS(types.NextGlobalTsForTest()), false, nil)
 	assert.NoError(t, err)
 	mask := m.(*DeleteNode).mask
 	assert.Equal(t, uint64(8), mask.GetCardinality())
-	m, err = chain.CollectDeletesLocked(MockTxnWithStartTS(txn3.GetCommitTS()), false, nil)
+	m, err = chain.CollectDeletesLocked(mockTxnWithStartTS(txn3.GetCommitTS()), false, nil)
 	assert.NoError(t, err)
 	mask = m.(*DeleteNode).mask
 	assert.Equal(t, uint64(8), mask.GetCardinality())
-	m, err = chain.CollectDeletesLocked(MockTxnWithStartTS(txn1.GetCommitTS()), false, nil)
+	m, err = chain.CollectDeletesLocked(mockTxnWithStartTS(txn1.GetCommitTS()), false, nil)
 	assert.NoError(t, err)
 	mask = m.(*DeleteNode).mask
 	assert.Equal(t, uint64(4), mask.GetCardinality())
-	m, err = chain.CollectDeletesLocked(MockTxnWithStartTS(txn1.GetCommitTS().Prev()), false, nil)
+	m, err = chain.CollectDeletesLocked(mockTxnWithStartTS(txn1.GetCommitTS().Prev()), false, nil)
 	assert.NoError(t, err)
 	assert.Nil(t, m)
 

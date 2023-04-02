@@ -15,8 +15,11 @@
 package tables
 
 import (
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/indexwrapper"
 	"testing"
+
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/indexwrapper"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -27,6 +30,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func mockTxn() *txnbase.Txn {
+	txn := new(txnbase.Txn)
+	txn.TxnCtx = txnbase.NewTxnCtx(common.NewTxnIDAllocator().Alloc(), types.NextGlobalTsForTest(), types.TS{})
+	return txn
+}
+
+func mockTxnWithStartTS(ts types.TS) *txnbase.Txn {
+	txn := mockTxn()
+	txn.StartTS = ts
+	return txn
+}
 func TestGetActiveRow(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	ts1 := types.BuildTS(1, 0)
@@ -75,14 +89,14 @@ func TestGetActiveRow(t *testing.T) {
 
 	node := blk.node.Load().MustMNode()
 	// row, err := blk.GetActiveRow(int8(1), ts2)
-	row, err := blk.getInMemoryRowByFilter(node, updates.MockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)))
+	row, err := blk.getInMemoryRowByFilter(node, mockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)))
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(1), row)
 
 	//abort appendnode2
 	an2.Aborted = true
 
-	row, err = blk.getInMemoryRowByFilter(node, updates.MockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)))
+	row, err = blk.getInMemoryRowByFilter(node, mockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)))
 	// row, err = blk.GetActiveRow(int8(1), ts2)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(0), row)

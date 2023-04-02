@@ -21,9 +21,17 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/stretchr/testify/assert"
 )
 
+func mockTxnWithTS(startTS, prepare, end types.TS) *txnbase.Txn {
+	txn := mockTxn()
+	txn.StartTS = startTS
+	txn.PrepareTS = prepare
+	txn.CommitTS = end
+	return txn
+}
 func TestMutationControllerAppend(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
@@ -73,25 +81,52 @@ func TestMutationControllerAppend(t *testing.T) {
 func TestGetVisibleRow(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	n := NewMVCCHandle(nil)
-	an1, _ := n.AddAppendNodeLocked(nil, 0, 1)
+	txn := mockTxnWithTS(
+		types.BuildTS(1, 0),
+		types.BuildTS(1, 0),
+		types.BuildTS(1, 0),
+	)
+	an1, _ := n.AddAppendNodeLocked(txn, 0, 1)
 	an1.Start = types.BuildTS(1, 0)
 	an1.Prepare = types.BuildTS(1, 0)
 	an1.End = types.BuildTS(1, 0)
-	an2, _ := n.AddAppendNodeLocked(nil, 1, 2)
+	an1.Txn=nil
+
+	txn2 := mockTxnWithTS(
+		types.BuildTS(1, 0),
+		types.BuildTS(3, 0),
+		types.BuildTS(5, 0),
+	)
+	an2, _ := n.AddAppendNodeLocked(txn2, 1, 2)
 	an2.Start = types.BuildTS(1, 0)
 	an2.Prepare = types.BuildTS(3, 0)
 	an2.End = types.BuildTS(5, 0)
-	an3, _ := n.AddAppendNodeLocked(nil, 2, 3)
+	an2.Txn=nil
+
+	txn3 := mockTxnWithTS(
+		types.BuildTS(1, 0),
+		types.BuildTS(4, 0),
+		types.BuildTS(4, 0),
+	)
+	an3, _ := n.AddAppendNodeLocked(txn3, 2, 3)
 	an3.Start = types.BuildTS(1, 0)
 	an3.Prepare = types.BuildTS(4, 0)
 	an3.End = types.BuildTS(4, 0)
-	an4, _ := n.AddAppendNodeLocked(nil, 3, 4)
+	an3.Txn=nil
+
+	txn4 := mockTxnWithTS(
+		types.BuildTS(1, 0),
+		types.BuildTS(5, 0),
+		types.BuildTS(5, 0),
+	)
+	an4, _ := n.AddAppendNodeLocked(txn4, 3, 4)
 	an4.Start = types.BuildTS(1, 0)
 	an4.Prepare = types.BuildTS(5, 0)
 	an4.End = types.BuildTS(5, 0)
 	an4.Aborted = true
+	an4.Txn=nil
 
-	// ts=1 maxrow=1, holes={}
+	// ts=1 maxrow=0, holes={}
 	maxrow, visible, holes, err := n.GetVisibleRowLocked(MockTxnWithStartTS(types.BuildTS(1, 0)))
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(1), maxrow)
@@ -106,7 +141,7 @@ func TestGetVisibleRow(t *testing.T) {
 	assert.Equal(t, uint64(1), holes.GetCardinality())
 	assert.True(t, holes.Contains(1))
 
-	// ts=5 maxrow=3, holes={}
+	// ts=5 maxrow=4, holes={}
 	maxrow, visible, holes, err = n.GetVisibleRowLocked(MockTxnWithStartTS(types.BuildTS(5, 0)))
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(3), maxrow)

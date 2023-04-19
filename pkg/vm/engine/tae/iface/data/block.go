@@ -95,6 +95,7 @@ type Block interface {
 
 	GetByFilter(txn txnif.AsyncTxn, filter *handle.Filter) (uint32, error)
 	GetValue(txn txnif.AsyncTxn, row, col int) (any, bool, error)
+	Foreach(colIdx int, op func(v any, isNull bool, row int) error, sels *roaring.Bitmap) error
 	PPString(level common.PPLevel, depth int, prefix string) string
 
 	Init() error

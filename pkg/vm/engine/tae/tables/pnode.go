@@ -126,6 +126,16 @@ func (node *persistedNode) GetColumnDataWindow(
 	return
 }
 
+func (node *persistedNode) Foreach(colIdx int, op func(v any, isNull bool, row int) error, sel *roaring.Bitmap) (err error) {
+	var data containers.Vector
+	if data, err = node.block.LoadPersistedColumnData(
+		colIdx,
+	); err != nil {
+		return
+	}
+	return data.Foreach(op, sel)
+}
+
 func (node *persistedNode) GetDataWindow(
 	from, to uint32) (bat *containers.Batch, err error) {
 	data, err := node.block.LoadPersistedData()

@@ -54,6 +54,10 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+func createDropDatabaseErrorInfo() string {
+	return "CREATE/DROP of database is not supported in transactions"
+}
+
 func onlyCreateStatementErrorInfo() string {
 	return "Only CREATE of DDL is supported in transactions"
 }
@@ -2177,7 +2181,9 @@ func (mce *MysqlCmdExecutor) canExecuteStatementInUncommittedTransaction(request
 	}
 	if !can {
 		//is ddl statement
-		if IsDDL(stmt) {
+		if IsCreateDropDatabase(stmt) {
+			return moerr.NewInternalError(requestCtx, createDropDatabaseErrorInfo())
+		} else if IsDDL(stmt) {
 			return moerr.NewInternalError(requestCtx, onlyCreateStatementErrorInfo())
 		} else if IsAdministrativeStatement(stmt) {
 			return moerr.NewInternalError(requestCtx, administrativeCommandIsUnsupportedInTxnErrorInfo())
@@ -3175,6 +3181,9 @@ func (mce *MysqlCmdExecutor) doComQuery(requestCtx context.Context, sql string) 
 			ses.SetOptionBits(OPTION_ATTACH_ABORT_TRANSACTION_ERROR)
 		}
 		logError(ses.GetDebugString(), err.Error())
+		if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+			fmt.Println(err)
+		}
 		txnErr = ses.TxnRollbackSingleStatement(stmt)
 		if txnErr != nil {
 			logStatementStatus(requestCtx, ses, stmt, fail, txnErr)

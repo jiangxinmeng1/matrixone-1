@@ -46,6 +46,7 @@ func TestPointerCmd(t *testing.T) {
 	}
 }
 
+
 func TestComposedCmd(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)

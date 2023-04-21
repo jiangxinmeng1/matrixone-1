@@ -670,6 +670,7 @@ func (s *Schema) Finalize(withoutPhyAddr bool) (err error) {
 			}
 			s.PhyAddrKey = def
 		}
+		logutil.Infof("for table %v, finalize schema def attr %v, idx %d, type %d", s.Name, def.Name, def.Idx, def.Type.Oid)
 	}
 
 	if len(sortColIdx) == 1 {

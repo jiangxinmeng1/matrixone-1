@@ -103,8 +103,7 @@ func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err er
 		}
 		def := schema.ColDefs[schema.GetColIdx(attr)]
 		destVec := n.storage.mnode.data.Vecs[def.Idx]
-		// logutil.Infof("destVec: %s, %d, %d", destVec.String(), cnt, data.Length())
-		destVec.ExtendWithOffset(data.Vecs[def.Idx], int(offset), int(an))
+		destVec.ExtendWithOffset(data.GetVectorByName(attr), int(offset), int(an))
 	}
 	n.storage.mnode.rows = uint32(n.storage.mnode.data.Length())
 	err = n.storage.mnode.FillPhyAddrColumn(from, an)

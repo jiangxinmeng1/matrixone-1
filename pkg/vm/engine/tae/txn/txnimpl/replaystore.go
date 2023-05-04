@@ -191,10 +191,6 @@ func (store *replayTxnStore) replayDataCmds(cmd *updates.UpdateCmd, idxCtx *wal.
 }
 
 func (store *replayTxnStore) replayDelete(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) {
-	database, err := store.catalog.GetDatabaseByID(cmd.GetDBID())
-	if err != nil {
-		panic(err)
-	}
 	deleteNode := cmd.GetDeleteNode()
 	deleteNode.SetLogIndex(idxCtx)
 	if deleteNode.Is1PC() {
@@ -203,6 +199,10 @@ func (store *replayTxnStore) replayDelete(cmd *updates.UpdateCmd, idxCtx *wal.In
 		}
 	}
 	id := deleteNode.GetID()
+	database, err := store.catalog.GetDatabaseByID(id.DbID)
+	if err != nil {
+		panic(err)
+	}
 	blk, err := database.GetBlockEntryByID(id)
 	if err != nil {
 		panic(err)
@@ -220,10 +220,6 @@ func (store *replayTxnStore) replayDelete(cmd *updates.UpdateCmd, idxCtx *wal.In
 }
 
 func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, idxCtx *wal.Index, observer wal.ReplayObserver) {
-	database, err := store.catalog.GetDatabaseByID(cmd.GetDBID())
-	if err != nil {
-		panic(err)
-	}
 	appendNode := cmd.GetAppendNode()
 	appendNode.SetLogIndex(idxCtx)
 	if appendNode.Is1PC() {
@@ -232,6 +228,10 @@ func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, idxCtx *wal.In
 		}
 	}
 	id := appendNode.GetID()
+	database, err := store.catalog.GetDatabaseByID(id.DbID)
+	if err != nil {
+		panic(err)
+	}
 	blk, err := database.GetBlockEntryByID(id)
 	if err != nil {
 		panic(err)

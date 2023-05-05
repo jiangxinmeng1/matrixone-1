@@ -15,8 +15,10 @@
 package db
 
 import (
+	"fmt"
 	"sync"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
@@ -26,7 +28,7 @@ func ScopeConflictCheck(oldScope, newScope *common.ID) (err error) {
 	if oldScope.TableID != newScope.TableID {
 		return
 	}
-	if oldScope.SegmentID().Eq(*newScope.SegmentID()) &&
+	if !oldScope.SegmentID().Eq(*newScope.SegmentID()) &&
 		!objectio.IsEmptySegid(oldScope.SegmentID()) &&
 		!objectio.IsEmptySegid(newScope.SegmentID()) {
 		return
@@ -80,9 +82,18 @@ func (dispatcher *asyncJobDispatcher) TryDispatch(task tasks.Task) (err error) {
 		dispatcher.Unlock()
 		return
 	}
+	s := "schedule:"
+	for _, scope := range scopes {
+		s = fmt.Sprintf("%s%s,", s, scope.BlockString())
+	}
+	s = fmt.Sprintf("%s actives: %d\n", s,len(dispatcher.actives))
+	// for a := range dispatcher.actives {
+	// 	s = fmt.Sprintf("%s%s,", s, a.BlockString())
+	// }
 	for _, scope := range scopes {
 		dispatcher.actives[scope] = true
 	}
+	logutil.Infof(s)
 	task.AddObserver(dispatcher)
 	dispatcher.Unlock()
 	dispatcher.Dispatch(task)

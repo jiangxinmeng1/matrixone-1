@@ -128,11 +128,11 @@ func (store *replayTxnStore) prepareCmd(txncmd txnif.TxnCmd, idxCtx *wal.Index) 
 func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.ReplayObserver) {
 	hasActive := false
 	for _, info := range cmd.Infos {
-		database, err := store.catalog.GetDatabaseByID(info.GetDBID())
+		id := info.GetDest()
+		database, err := store.catalog.GetDatabaseByID(id.DbID)
 		if err != nil {
 			panic(err)
 		}
-		id := info.GetDest()
 		blk, err := database.GetBlockEntryByID(id)
 		if err != nil {
 			panic(err)
@@ -156,11 +156,11 @@ func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.Repla
 	}
 
 	for _, info := range cmd.Infos {
-		database, err := store.catalog.GetDatabaseByID(info.GetDBID())
+		id := info.GetDest()
+		database, err := store.catalog.GetDatabaseByID(id.DbID)
 		if err != nil {
 			panic(err)
 		}
-		id := info.GetDest()
 		blk, err := database.GetBlockEntryByID(id)
 		if err != nil {
 			panic(err)

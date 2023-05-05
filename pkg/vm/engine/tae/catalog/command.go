@@ -169,7 +169,7 @@ func newTableCmd(id uint32, cmdType uint16, entry *TableEntry) *EntryCommand[*Ta
 
 func newDBCmd(id uint32, cmdType uint16, entry *DBEntry) *EntryCommand[*EmptyMVCCNode, *DBNode] {
 	impl := &EntryCommand[*EmptyMVCCNode, *DBNode]{
-		ID:       &common.ID{},
+		ID:       entry.AsCommonID(),
 		cmdType:  cmdType,
 		node:     entry.DBNode,
 		mvccNode: entry.GetLatestNodeLocked(),

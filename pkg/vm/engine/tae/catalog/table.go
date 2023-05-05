@@ -332,7 +332,7 @@ func (entry *TableEntry) LastNonAppendableSegmemt() (seg *SegmentEntry) {
 
 func (entry *TableEntry) AsCommonID() *common.ID {
 	return &common.ID{
-		DbID: entry.GetDB().ID,
+		DbID:    entry.GetDB().ID,
 		TableID: entry.ID,
 	}
 }

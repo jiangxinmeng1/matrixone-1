@@ -562,7 +562,6 @@ func (r *runner) tryScheduleIncrementalCheckpoint(start types.TS) {
 	r.tryAddNewIncrementalCheckpointEntry(entry)
 }
 
-// tryScheduleCheckpoint will try to schedule a new checkpoint
 func (r *runner) tryScheduleCheckpoint() {
 	if r.disabled.Load() {
 		return

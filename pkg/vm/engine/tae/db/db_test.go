@@ -128,6 +128,7 @@ func TestAppend2(t *testing.T) {
 	}
 	wg.Wait()
 	t.Logf("Append %d rows takes: %s", totalRows, time.Since(start))
+	t.Log(db.Catalog.SimplePPString(common.PPL1))
 	{
 		txn, rel := getDefaultRelation(t, db, schema.Name)
 		checkAllColRowsByScan(t, rel, int(totalRows), false)

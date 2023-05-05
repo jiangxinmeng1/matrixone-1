@@ -135,7 +135,7 @@ func (task *compactBlockTask) Name() string {
 
 func (task *compactBlockTask) Execute() (err error) {
 	logutil.Info("[Start]", common.OperationField(task.Name()),
-		common.OperandField(task.meta.Repr()))
+		common.OperandField(task.meta.AsCommonID().BlockString()))
 	now := time.Now()
 	seg := task.compacted.GetSegment()
 	// Prepare a block placeholder
@@ -276,7 +276,7 @@ func (task *compactBlockTask) Execute() (err error) {
 	logutil.Info("[Done]",
 		common.AnyField("txn-start-ts", task.txn.GetStartTS().ToString()),
 		common.OperationField(task.Name()),
-		common.AnyField("compacted", task.meta.Repr()),
+		common.AnyField("compacted", task.meta.AsCommonID().BlockString()),
 		common.AnyField("created", createdStr),
 		common.DurationField(time.Since(now)))
 	return

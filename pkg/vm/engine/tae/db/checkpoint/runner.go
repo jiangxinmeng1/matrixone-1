@@ -677,6 +677,8 @@ func (r *runner) tryCompactBlock(dbID, tableID uint64, id *objectio.Blockid, for
 		return nil
 	}
 
+	logutil.Infof("schedule compact blk %s",blk.AsCommonID().BlockString())
+
 	if _, err = r.scheduler.ScheduleMultiScopedTxnTask(nil, taskType, scopes, factory); err != nil {
 		logutil.Warnf("%s: %v", blkData.MutationInfo(), err)
 	}

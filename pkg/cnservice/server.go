@@ -351,7 +351,7 @@ func (s *service) getHAKeeperClient() (client logservice.CNHAKeeperClient, err e
 		s._hakeeperClient = client
 		s.pu.HAKeeperClient = client
 		s.initClusterService()
-		s.initLockService()
+		//s.initLockService()
 	})
 	client = s._hakeeperClient
 	return

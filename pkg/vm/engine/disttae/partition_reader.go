@@ -16,6 +16,7 @@ package disttae
 
 import (
 	"context"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -52,6 +53,7 @@ type PartitionReader struct {
 	blockBatch      *BlockBatch
 	currentFileName string
 	deletedBlocks   *deletedBlocks
+	deleteDelay     time.Duration
 }
 
 // BlockBatch is used to record the metaLoc info
@@ -179,7 +181,10 @@ func (p *PartitionReader) Read(ctx context.Context, colNames []string, expr *pla
 
 			deletes := p.deletedBlocks.getDeletedOffsetsByBlock(string(blkid[:]))
 			if len(deletes) != 0 {
+				now := time.Now()
 				rbat.AntiShrink(deletes)
+				p.deleteDelay += time.Since(now)
+				logutil.Infof("p.deleteDelay : %v", p.deleteDelay)
 			}
 			logutil.Debug(testutil.OperatorCatchBatch("partition reader[s3]", rbat))
 			return rbat, nil

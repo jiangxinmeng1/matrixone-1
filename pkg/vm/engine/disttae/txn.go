@@ -16,6 +16,7 @@ package disttae
 
 import (
 	"context"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"math"
 	"strings"
 	"time"
@@ -326,7 +327,10 @@ func (txn *Transaction) deleteBatch(bat *batch.Batch,
 		// update workspace
 	}
 	// cn rowId antiShrink
+	now := time.Now()
 	bat.AntiShrink(cnRowIdOffsets)
+	txn.deleteDelay += time.Since(now)
+	logutil.Infof("txndeleteDelay : %v", txn.deleteDelay)
 	if bat.Length() == 0 {
 		return bat
 	}

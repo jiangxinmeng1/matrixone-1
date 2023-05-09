@@ -129,6 +129,8 @@ type Transaction struct {
 	cnBlkId_Pos                     map[string]Pos
 	blockId_raw_batch               map[string]*batch.Batch
 	blockId_dn_delete_metaLoc_batch map[string][]*batch.Batch
+
+	deleteDelay time.Duration
 }
 
 type Pos struct {
@@ -257,6 +259,8 @@ type txnTable struct {
 	// this should be the statement id
 	// but seems that we're not maintaining it at the moment
 	localTS timestamp.Timestamp
+
+	deleteDelay time.Duration
 }
 
 type column struct {

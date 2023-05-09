@@ -17,7 +17,9 @@ package disttae
 import (
 	"context"
 	"fmt"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"strconv"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -576,7 +578,10 @@ func (tbl *txnTable) EnhanceDelete(bat *batch.Batch, name string) error {
 	case deletion.RawBatchOffset:
 		vs := vector.MustFixedCol[int64](bat.GetVector(0))
 		entry_bat := tbl.db.txn.blockId_raw_batch[blkId]
+		now := time.Now()
 		entry_bat.AntiShrink(vs)
+		tbl.deleteDelay += time.Since(now)
+		logutil.Infof("tbldeleteDelay : %v", tbl.deleteDelay)
 		// reset rowId offset
 		rowIds := vector.MustFixedCol[types.Rowid](entry_bat.GetVector(0))
 		for i := range rowIds {
@@ -637,7 +642,10 @@ func (tbl *txnTable) compaction() error {
 			return false
 		}
 		bat.SetZs(bat.GetVector(0).Length(), tbl.db.txn.proc.GetMPool())
+		now := time.Now()
 		bat.AntiShrink(deleteOffsets)
+		tbl.deleteDelay += time.Since(now)
+		logutil.Infof("tbldeleteDelay : %v", tbl.deleteDelay)
 		if bat.Length() == 0 {
 			return true
 		}
@@ -672,7 +680,10 @@ func (tbl *txnTable) compaction() error {
 	// delete old block info
 	for idx, offsets := range mp {
 		bat := tbl.db.txn.writes[idx].bat
+		now := time.Now()
 		bat.AntiShrink(offsets)
+		tbl.deleteDelay += time.Since(now)
+		logutil.Infof("tbldeleteDelay : %v", tbl.deleteDelay)
 		// update txn.cnBlkId_Pos
 		tbl.db.txn.updatePosForCNBlock(bat.GetVector(0), idx)
 		if bat.Length() == 0 {

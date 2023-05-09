@@ -236,7 +236,6 @@ insert into t select * from t;
 insert into t select * from t;
 begin;
 insert into t select * from t;
-select sleep(30);
 delete from t where a = 1;
 select count(*) from t;
 count(*)

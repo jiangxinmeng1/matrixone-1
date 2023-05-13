@@ -146,6 +146,7 @@ func (r *runner) ForceIncrementalCheckpoint(end types.TS) error {
 	if prev != nil {
 		start = prev.end.Next()
 	}
+
 	entry := NewCheckpointEntry(start, end, ET_Incremental)
 	r.storage.Lock()
 	r.storage.entries.Set(entry)

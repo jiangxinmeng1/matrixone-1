@@ -20,8 +20,6 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
-	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -39,7 +37,7 @@ type compactBlockEntry struct {
 	from      handle.Block
 	to        handle.Block
 	scheduler tasks.TaskScheduler
-	deletes   *roaring.Bitmap
+	mapping   []uint32
 }
 
 func NewCompactBlockEntry(
@@ -50,6 +48,7 @@ func NewCompactBlockEntry(
 	deletes *roaring.Bitmap) *compactBlockEntry {
 
 	page := model.NewTransferHashPage(from.Fingerprint(), time.Now())
+	mapping := make([]uint32, from.Rows())
 	if to != nil {
 		toId := to.Fingerprint()
 		offsetMapping := compute.GetOffsetMapBeforeApplyDeletes(deletes)
@@ -66,6 +65,7 @@ func NewCompactBlockEntry(
 		for i, idx := range sortIdx {
 			rowid := objectio.NewRowid(&toId.BlockID, uint32(i))
 			page.Train(idx, *rowid)
+			mapping[idx] = uint32(i)
 		}
 		_ = scheduler.AddTransferPage(page)
 	}
@@ -74,7 +74,7 @@ func NewCompactBlockEntry(
 		from:      from,
 		to:        to,
 		scheduler: scheduler,
-		deletes:   deletes,
+		mapping:   mapping,
 	}
 }
 
@@ -126,8 +126,18 @@ func (entry *compactBlockEntry) Set1PC()     {}
 func (entry *compactBlockEntry) Is1PC() bool { return false }
 func (entry *compactBlockEntry) PrepareCommit() (err error) {
 	dataBlock := entry.from.GetMeta().(*catalog.BlockEntry).GetBlockData()
-	if dataBlock.HasDeleteIntentsPreparedIn(entry.txn.GetStartTS().Next(), types.MaxTs()) {
-		err = moerr.NewTxnWWConflictNoCtx()
+	view, err := dataBlock.CollectChangesInRange(entry.txn.GetStartTS().Next(), entry.txn.GetPrepareTS())
+	if err != nil || view == nil || view.DeleteMask == nil || view.DeleteMask.IsEmpty() {
+		return
+	}
+	it := view.DeleteMask.Iterator()
+	for it.HasNext() {
+		row := it.Next()
+		toRow := entry.mapping[row]
+		err = entry.from.RangeDelete(toRow, toRow, handle.DT_MergeCompact)
+		if err != nil {
+			return
+		}
 	}
 	return
 }

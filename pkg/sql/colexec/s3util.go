@@ -33,6 +33,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
+	"time"
 )
 
 type S3Writer struct {
@@ -251,6 +252,10 @@ func (w *S3Writer) InitBuffers(bat *batch.Batch) {
 //	true: the tableBatches[idx] is over threshold
 //	false: the tableBatches[idx] is less than or equal threshold
 func (w *S3Writer) Put(bat *batch.Batch, proc *process.Process) bool {
+	now := time.Now()
+	defer func() {
+		logutil.Infof("S3Writer Put time: %v", time.Since(now))
+	}()
 	var rbat *batch.Batch
 
 	if len(w.typs) == 0 {
@@ -322,6 +327,10 @@ func getStrCols(bats []*batch.Batch, idx int) (cols [][]string) {
 }
 
 func (w *S3Writer) SortAndFlush(proc *process.Process) error {
+	now := time.Now()
+	defer func() {
+		logutil.Infof("sort and flush time: %v", time.Since(now))
+	}()
 	//bats := w.Bats[:length]
 	sortIdx := -1
 	for i := range w.Bats {
@@ -487,6 +496,10 @@ func (w *S3Writer) generateWriter(proc *process.Process) (objectio.ObjectName, e
 
 // reference to pkg/sql/colexec/order/order.go logic
 func sortByKey(proc *process.Process, bat *batch.Batch, sortIndex int, m *mpool.MPool) error {
+	now := time.Now()
+	defer func() {
+		logutil.Infof("sortByKey Put time: %v", time.Since(now))
+	}()
 	// Not-Null Check
 	if nulls.Any(bat.Vecs[sortIndex].GetNulls()) {
 		// return moerr.NewConstraintViolation(proc.Ctx, fmt.Sprintf("Column '%s' cannot be null", n.InsertCtx.TableDef.Cols[i].GetName()))
@@ -529,6 +542,10 @@ func (w *S3Writer) WriteBlock(bat *batch.Batch) error {
 }
 
 func (w *S3Writer) writeEndBlocks(proc *process.Process) error {
+	now := time.Now()
+	defer func() {
+		logutil.Infof("writeEndBlocks Put time: %v", time.Since(now))
+	}()
 	metaLocs, err := w.WriteEndBlocks(proc)
 	if err != nil {
 		return err

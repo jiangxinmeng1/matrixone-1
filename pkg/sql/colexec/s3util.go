@@ -530,6 +530,10 @@ func getPrimaryKeyIdx(pk map[string]struct{}, attrs []string) (uint16, bool) {
 }
 
 func (w *S3Writer) WriteBlock(bat *batch.Batch) error {
+	now := time.Now()
+	defer func() {
+		logutil.Infof("S3Writer WriteBlock time: %v", time.Since(now))
+	}()
 	if idx, ok := getPrimaryKeyIdx(w.pk, bat.Attrs); ok {
 		w.writer.SetPrimaryKey(idx)
 	}

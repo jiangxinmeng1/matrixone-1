@@ -38,7 +38,7 @@ const (
 	PPL3
 )
 
-const PrintN = 3
+const PrintN = 30000
 
 func RepeatStr(str string, times int) string {
 	for i := 0; i < times; i++ {

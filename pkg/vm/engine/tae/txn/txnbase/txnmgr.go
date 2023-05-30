@@ -458,6 +458,7 @@ func (mgr *TxnManager) dequeuePreparing(items ...any) {
 	now := time.Now()
 
 	for _, item := range items {
+		t0 := time.Now()
 		op := item.(*OpTxn)
 
 		// Idempotent check
@@ -485,6 +486,7 @@ func (mgr *TxnManager) dequeuePreparing(items ...any) {
 		if err := mgr.EnqueueFlushing(op); err != nil {
 			panic(err)
 		}
+		logutil.Infof("dequeue preparing takes %v, txn %v", time.Since(t0), op.Txn.Repr())
 	}
 	common.DoIfDebugEnabled(func() {
 		logutil.Debug("[dequeuePreparing]",
@@ -497,6 +499,7 @@ func (mgr *TxnManager) dequeuePreparing(items ...any) {
 func (mgr *TxnManager) onPrepareWAL(items ...any) {
 	now := time.Now()
 	for _, item := range items {
+		t0 := time.Now()
 		op := item.(*OpTxn)
 		if op.Txn.GetError() == nil && op.Op == OpCommit || op.Op == OpPrepare {
 			if err := op.Txn.PrepareWAL(); err != nil {
@@ -507,6 +510,7 @@ func (mgr *TxnManager) onPrepareWAL(items ...any) {
 		if _, err := mgr.FlushQueue.Enqueue(op); err != nil {
 			panic(err)
 		}
+		logutil.Infof("prepare wal txn %v, takes %v", op.Txn.Repr(), time.Since(t0))
 	}
 	common.DoIfDebugEnabled(func() {
 		logutil.Debug("[prepareWAL]",
@@ -521,6 +525,7 @@ func (mgr *TxnManager) dequeuePrepared(items ...any) {
 	var err error
 	now := time.Now()
 	for _, item := range items {
+		t0 := time.Now()
 		op := item.(*OpTxn)
 		//Notice that WaitPrepared do nothing when op is OpRollback
 		if err = op.Txn.WaitPrepared(); err != nil {
@@ -533,6 +538,7 @@ func (mgr *TxnManager) dequeuePrepared(items ...any) {
 		} else {
 			mgr.on1PCPrepared(op)
 		}
+		logutil.Infof("dequeue prepared, txn %v, takes %v", op.Txn.Repr(), time.Since(t0))
 	}
 	common.DoIfDebugEnabled(func() {
 		logutil.Debug("[dequeuePrepared]",

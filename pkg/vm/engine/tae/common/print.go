@@ -186,6 +186,7 @@ func vec2Str[T any](vec []T, v *vector.Vector) string {
 	return w.String()
 }
 
+
 func moVec2String(v *vector.Vector, printN int) string {
 	switch v.GetType().Oid {
 	case types.T_bool:

@@ -830,12 +830,14 @@ func (cmd cmdToConsumeUnSub) action(ctx context.Context, e *Engine, _ *routineCo
 
 func (e *Engine) consumeSubscribeResponse(ctx context.Context, rp *logtail.SubscribeResponse,
 	lazyLoad bool) error {
+	logutil.Infof("xxxxxx subscribe logtail %v", rp.Logtail.Ts)
 	lt := rp.GetLogtail()
 	return updatePartitionOfPush(ctx, e.pClient.subscriber.dnNodeID, e, &lt, lazyLoad)
 }
 
 func (e *Engine) consumeUpdateLogTail(ctx context.Context, rp logtail.TableLogtail,
 	lazyLoad bool) error {
+	logutil.Infof("xxxxxx update logtail %v", rp.Ts)
 	return updatePartitionOfPush(ctx, e.pClient.subscriber.dnNodeID, e, &rp, lazyLoad)
 }
 

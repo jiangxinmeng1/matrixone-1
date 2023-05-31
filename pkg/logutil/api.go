@@ -16,6 +16,7 @@ package logutil
 
 import (
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,6 +48,12 @@ func Fatal(msg string, fields ...zap.Field) {
 
 // Debugf only use in develop mode
 func Debugf(msg string, fields ...interface{}) {
+	t0 := time.Now()
+	defer func() {
+		if time.Since(t0) > time.Millisecond*100 {
+			fmt.Printf("debug log size %d, takes %v\n", len(msg), time.Since(t0))
+		}
+	}()
 	logger := GetSkip1Logger()
 	if logger.Core().Enabled(zap.DebugLevel) {
 		logger.Debug(fmt.Sprintf(msg, fields...))
@@ -55,6 +62,12 @@ func Debugf(msg string, fields ...interface{}) {
 
 // Infof only use in develop mode
 func Infof(msg string, fields ...interface{}) {
+	t0 := time.Now()
+	defer func() {
+		if time.Since(t0) > time.Millisecond*100 {
+			fmt.Printf("info log size %d, takes %v\n", len(msg), time.Since(t0))
+		}
+	}()
 	GetSkip1Logger().Info(fmt.Sprintf(msg, fields...))
 }
 

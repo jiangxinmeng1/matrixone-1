@@ -17,6 +17,7 @@ package blockio
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 
@@ -130,6 +131,7 @@ func (w *BlockWriter) WriteBatchWithOutIndex(batch *batch.Batch) (objectio.Block
 }
 
 func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objectio.Extent, error) {
+	now := time.Now()
 	if w.objMetaBuilder != nil {
 		if w.isSetPK {
 			w.objMetaBuilder.SetPKNdv(w.pk, w.objMetaBuilder.GetTotalRow())
@@ -149,14 +151,16 @@ func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objecti
 	}
 	blocks, err := w.writer.WriteEnd(ctx)
 	if len(blocks) == 0 {
-		logutil.Debug("[WriteEnd]", common.OperationField(w.nameStr),
-			common.OperandField("[Size=0]"), common.OperandField(w.writer.GetSeqnums()))
+		logutil.Info("[WriteEnd]", common.OperationField(w.nameStr),
+			common.OperandField("[Size=0]"), common.OperandField(w.writer.GetSeqnums()),
+			common.DurationField(time.Since(now)))
 		return blocks, objectio.Extent{}, err
 	}
-	logutil.Debug("[WriteEnd]",
+	logutil.Info("[WriteEnd]",
 		common.OperationField(w.String(blocks)),
 		common.OperandField(w.writer.GetSeqnums()),
-		common.OperandField(w.writer.GetMaxSeqnum()))
+		common.OperandField(w.writer.GetMaxSeqnum()),
+		common.DurationField(time.Since(now)))
 	return blocks, blocks[0].BlockHeader().MetaLocation(), err
 }
 

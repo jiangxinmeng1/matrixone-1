@@ -17,6 +17,7 @@ package db
 import (
 	"sync"
 
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
@@ -82,6 +83,7 @@ func (dispatcher *asyncJobDispatcher) TryDispatch(task tasks.Task) (err error) {
 	}
 	for _, scope := range scopes {
 		dispatcher.actives[scope] = true
+		logutil.Infof("lalala dispatch scope %v", scope.String())
 	}
 	task.AddObserver(dispatcher)
 	dispatcher.Unlock()

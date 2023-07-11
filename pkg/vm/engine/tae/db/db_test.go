@@ -146,6 +146,7 @@ func TestAppend2(t *testing.T) {
 	testutils.WaitExpect(20000, func() bool {
 		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0
 	})
+	t.Logf("compact worker count is %d",db.Opts.SchedulerCfg.AsyncWorkers)
 	t.Log(time.Since(now))
 	t.Logf("Checkpointed: %d", db.Runtime.Scheduler.GetCheckpointedLSN())
 	t.Logf("GetPenddingLSNCnt: %d", db.Runtime.Scheduler.GetPenddingLSNCnt())

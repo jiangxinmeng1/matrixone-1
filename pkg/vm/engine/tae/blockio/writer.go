@@ -149,7 +149,9 @@ func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objecti
 		}
 		w.writer.WriteObjectMetaBF(buf)
 	}
+	t0:=time.Now()
 	blocks, err := w.writer.WriteEnd(ctx)
+	logutil.Infof("write end takes %v",time.Since(t0))
 	if len(blocks) == 0 {
 		logutil.Info("[WriteEnd]", common.OperationField(w.nameStr),
 			common.OperandField("[Size=0]"), common.OperandField(w.writer.GetSeqnums()),

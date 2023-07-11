@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/compress"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -373,7 +374,9 @@ func (w *objectWriterV1) WriteEnd(ctx context.Context, items ...WriteOptions) ([
 		header.SetMetaLocation(objectHeader.Extent())
 		blockObjects = append(blockObjects, w.blocks[i].meta)
 	}
+	t0 := time.Now()
 	err = w.Sync(ctx, items...)
+	logutil.Infof("sync takes %v", time.Since(t0))
 	if err != nil {
 		return nil, err
 	}

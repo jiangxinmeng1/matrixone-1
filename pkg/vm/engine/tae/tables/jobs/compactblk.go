@@ -182,6 +182,10 @@ func (task *compactBlockTask) Execute(ctx context.Context) (err error) {
 	// Prepare a block placeholder
 	oldBMeta := task.compacted.GetMeta().(*catalog.BlockEntry)
 	phaseNumber = 1
+	logutil.Info("debug",
+		common.AnyField("phase", phaseNumber),
+		common.AnyField("compacted", task.meta.Repr()),
+		common.DurationField(time.Since(now)))
 	preparer, empty, err := task.PrepareData(ctx)
 	if err != nil {
 		return
@@ -191,11 +195,19 @@ func (task *compactBlockTask) Execute(ctx context.Context) (err error) {
 	}
 	defer preparer.Close()
 	phaseNumber = 2
+	logutil.Info("debug",
+		common.AnyField("phase", phaseNumber),
+		common.AnyField("compacted", task.meta.Repr()),
+		common.DurationField(time.Since(now)))
 	if err = seg.SoftDeleteBlock(task.compacted.Fingerprint().BlockID); err != nil {
 		return err
 	}
 	oldBlkData := oldBMeta.GetBlockData()
 	phaseNumber = 3
+	logutil.Info("debug",
+		common.AnyField("phase", phaseNumber),
+		common.AnyField("compacted", task.meta.Repr()),
+		common.DurationField(time.Since(now)))
 
 	if !empty {
 		createOnSeg := seg
@@ -229,6 +241,10 @@ func (task *compactBlockTask) Execute(ctx context.Context) (err error) {
 	// write old block
 	var deletes *containers.Batch
 	// write ablock
+	logutil.Info("debug",
+		common.AnyField("phase", phaseNumber),
+		common.AnyField("compacted", task.meta.Repr()),
+		common.DurationField(time.Since(now)))
 	phaseNumber = 4
 	if oldBMeta.IsAppendable() {
 		// for ablk, flush data and deletes
@@ -315,6 +331,10 @@ func (task *compactBlockTask) Execute(ctx context.Context) (err error) {
 			task.mapping[i] = int32(i)
 		}
 	}
+	logutil.Info("debug",
+		common.AnyField("phase", phaseNumber),
+		common.AnyField("compacted", task.meta.Repr()),
+		common.DurationField(time.Since(now)))
 	phaseNumber = 5
 	txnEntry := txnentries.NewCompactBlockEntry(
 		task.txn,

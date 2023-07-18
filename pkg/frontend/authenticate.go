@@ -3532,12 +3532,14 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 
 	dropAccountFunc := func() error {
 		err = bh.Exec(ctx, "begin;")
+		defer	logutil.Infof("lalala")
 		defer func() {
 			err = finishTxn(ctx, bh, err)
 		}()
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		//check the account exists or not
 		sql, err = getSqlForCheckTenant(ctx, da.Name)
@@ -3554,6 +3556,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		if execResultArrayHasData(erArray) {
 			accountId, err = erArray[0].GetInt64(ctx, 0, 0)
@@ -3575,6 +3578,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if !hasAccount {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		//drop tables of the tenant
 		//NOTE!!!: single DDL drop statement per single transaction
@@ -3595,6 +3599,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 				return err
 			}
 		}
+		logutil.Infof("lalala")
 
 		// delete all publications
 
@@ -3617,6 +3622,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		for i := uint64(0); i < erArray[0].GetRowCount(); i++ {
 			db, err = erArray[0].GetString(ctx, i, 0)
@@ -3645,6 +3651,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 			bb.WriteString(";")
 			sqlsForDropDatabases = append(sqlsForDropDatabases, bb.String())
 		}
+		logutil.Infof("lalala")
 
 		for _, sql = range sqlsForDropDatabases {
 			err = bh.Exec(deleteCtx, sql)
@@ -3664,6 +3671,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		//step 11: drop mo_catalog.mo_indexes under general tenant
 		err = bh.Exec(deleteCtx, dropMoIndexes)
@@ -3680,6 +3688,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		//step 2: get all cluster table in the mo_catalog
 
@@ -3694,6 +3703,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 		if err != nil {
 			return err
 		}
+		logutil.Infof("lalala")
 
 		for i := uint64(0); i < erArray[0].GetRowCount(); i++ {
 			table, err = erArray[0].GetString(ctx, i, 0)
@@ -3705,6 +3715,7 @@ func doDropAccount(ctx context.Context, ses *Session, da *tree.DropAccount) (err
 			}
 		}
 
+		logutil.Infof("lalala")
 		//step3 : delete all data of the account in the cluster table
 		for clusterTable := range clusterTables {
 			sql = fmt.Sprintf("delete from mo_catalog.`%s` where account_id = %d;", clusterTable, accountId)

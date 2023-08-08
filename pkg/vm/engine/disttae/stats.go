@@ -16,6 +16,7 @@ package disttae
 
 import (
 	"context"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 
 	"math"
 
@@ -122,7 +123,15 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					if !zm.IsInited() {
 						continue
 					}
+					max := zm.GetMaxBuf()
+					if len(max) == 0 {
+						logutil.Infof("len(max)111 == 0 zm is %v", zm.String())
+					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMaxBuf())
+					min := zm.GetMinBuf()
+					if len(min) == 0 {
+						logutil.Infof("len(min) == 0 zm is %v", zm.String())
+					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMinBuf())
 					info.ColumnNDVs[idx] += float64(objColMeta.Ndv())
 				}

@@ -1,3 +1,6 @@
+select mo_ctl('dn','checkpoint','');
+mo_ctl(dn, checkpoint, )
+{\n  "method": "Checkpoint",\n  "result": [\n    {\n      "returnStr": "OK"\n    }\n  ]\n}\n
 SELECT mo_log_date('2021/01/01') as date;
 date
 2021-01-01

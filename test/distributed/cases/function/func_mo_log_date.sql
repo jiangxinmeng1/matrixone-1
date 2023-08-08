@@ -1,3 +1,5 @@
+-- @separator:table
+select mo_ctl('dn','checkpoint','');
 -- FUNCTION: mo_log_date
 SELECT mo_log_date('2021/01/01') as date;
 SELECT mo_log_date('2021/01/01') between '2021-01-01' and '2021-01-02' as val;

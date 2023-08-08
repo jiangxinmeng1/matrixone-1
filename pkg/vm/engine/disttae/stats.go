@@ -130,7 +130,7 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMaxBuf())
 					min := zm.GetMinBuf()
 					if len(min) == 0 {
-						logutil.Infof("len(min) == 0 zm is %v", zm.String())
+						logutil.Infof("len(min) == 0 zm is %v, table  is %v, name is %v, old is %v", zm.String(), tableDef.Name, tableDef.Cols[idx].Name, info.DataTypes[idx].String())
 					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMinBuf())
 					info.ColumnNDVs[idx] += float64(objColMeta.Ndv())

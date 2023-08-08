@@ -127,6 +127,7 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					if tableDef.Name == "statement_info" {
 						logutil.Infof(" idx is %d, name is %v, type is %v, len is %d, zm is %v, MaxSeqnum is %d",
 							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), zm.String(), objectMeta.BlockHeader().MaxSeqnum())
+						logutil.Infof("fs is %v, location is %v", proc.FileService.Name(), location.String())
 					}
 					if !zm.IsInited() {
 						continue

@@ -116,7 +116,8 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					info.DataTypes[idx] = types.T(col.Typ.Id).ToType()
 					info.ColumnNDVs[idx] = float64(objColMeta.Ndv())
 					if tableDef.Name == "statement_info" {
-						logutil.Infof("tableDef.Name == statement_info, idx is %d, name is %v, type is %v， len is %d", idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount())
+						logutil.Infof("tableDef.Name == statement_info, idx is %d, name is %v, type is %v， len is %d",
+							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount())
 					}
 				}
 			} else {
@@ -128,11 +129,13 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMaxBuf())
 					if tableDef.Name == "statement_info" {
-						logutil.Infof("tableDef.Name == statement_info update, idx is %d, name is %v, type is %v, len is %d, type is %d, zm is %v", idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), objColMeta.DataType(), zm.String())
+						logutil.Infof("tableDef.Name == statement_info update, idx is %d, name is %v, type is %v, len is %d, zm is %v",
+							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), zm.String())
 					}
 					min := zm.GetMinBuf()
 					if len(min) == 0 {
-						logutil.Infof("len(min) == 0 zm is %v, table  is %v, name is %v, old is %v", zm.String(), tableDef.Name, tableDef.Cols[idx].Name, info.DataTypes[idx].String())
+						logutil.Infof("len(min) == 0 zm is %v, table  is %v, name is %v, old is %v",
+							zm.String(), tableDef.Name, tableDef.Cols[idx].Name, info.DataTypes[idx].String())
 					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMinBuf())
 					info.ColumnNDVs[idx] += float64(objColMeta.Ndv())

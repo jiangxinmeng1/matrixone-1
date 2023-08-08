@@ -126,10 +126,6 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					if !zm.IsInited() {
 						continue
 					}
-					max := zm.GetMaxBuf()
-					if len(max) == 0 {
-						logutil.Infof("len(max)111 == 0 zm is %v", zm.String())
-					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMaxBuf())
 					if tableDef.Name == "statement_info" {
 						logutil.Infof("tableDef.Name == statement_info update, idx is %d, name is %v, type is %v", idx, col.Name, info.DataTypes[idx].String())

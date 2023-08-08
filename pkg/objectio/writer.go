@@ -173,7 +173,7 @@ func (w *objectWriterV1) WriteObjectMeta(ctx context.Context, totalrow uint32, m
 	w.colmeta = metas
 }
 
-func (w *objectWriterV1) prepareDataMeta(objectMeta objectDataMetaV1, blocks []blockData, offset uint32, offsetId uint16) ([]byte, Extent, error) {
+func (w *objectWriterV1) prepareDataMeta(objectMeta objectDataMetaV1, blocks []blockData, offset uint32, offsetId uint16, dataType DataMetaType) ([]byte, Extent, error) {
 	var columnCount uint16
 	columnCount = 0
 	metaColCnt := uint16(0)
@@ -192,14 +192,14 @@ func (w *objectWriterV1) prepareDataMeta(objectMeta objectDataMetaV1, blocks []b
 	objectMeta.BlockHeader().SetMaxSeqnum(maxSeqnum)
 
 	// prepare object meta and block index
-	meta, extent, err := w.prepareObjectMeta(blocks, objectMeta, offset, seqnums, offsetId)
+	meta, extent, err := w.prepareObjectMeta(blocks, objectMeta, offset, seqnums, offsetId, dataType)
 	if err != nil {
 		return nil, nil, err
 	}
 	return meta, extent, err
 }
 
-func (w *objectWriterV1) prepareObjectMeta(blocks []blockData, objectMeta objectDataMetaV1, offset uint32, seqnums *Seqnums, offsetId uint16) ([]byte, Extent, error) {
+func (w *objectWriterV1) prepareObjectMeta(blocks []blockData, objectMeta objectDataMetaV1, offset uint32, seqnums *Seqnums, offsetId uint16, dataType DataMetaType) ([]byte, Extent, error) {
 	length := uint32(0)
 	blockCount := uint32(len(blocks))
 	sid := w.name.SegmentId()
@@ -210,11 +210,14 @@ func (w *objectWriterV1) prepareObjectMeta(blocks []blockData, objectMeta object
 	objectMeta.BlockHeader().SetRows(w.totalRow)
 	// write column meta
 	if seqnums != nil && len(seqnums.Seqs) > 0 {
-		for i, colMeta := range w.colmeta {
-			if i >= len(seqnums.Seqs) {
-				break
+		if dataType == SchemaData {
+			for i, colMeta := range w.colmeta {
+				objectMeta.AddColumnMeta(seqnums.Seqs[i], colMeta)
 			}
-			objectMeta.AddColumnMeta(seqnums.Seqs[i], colMeta)
+		} else if dataType == SchemaTombstone {
+			for i, colMeta := range w.tombstonesColmeta {
+				objectMeta.AddColumnMeta(seqnums.Seqs[i], colMeta)
+			}
 		}
 	}
 	length += objectMeta.Length()
@@ -398,7 +401,7 @@ func (w *objectWriterV1) WriteEnd(ctx context.Context, items ...WriteOptions) ([
 	idxStart := metaHeader.HeaderLength() + subMetachIndex.Length()
 	for i := range w.blocks {
 		// prepare object meta and block index
-		metas[i], metaExtents[i], err = w.prepareDataMeta(objectMetas[i], w.blocks[i], offset, startID)
+		metas[i], metaExtents[i], err = w.prepareDataMeta(objectMetas[i], w.blocks[i], offset, startID, DataMetaType(i))
 		if i == int(SchemaData) {
 			start = metaExtents[SchemaData].Offset()
 			metaHeader.SetDataMetaOffset(idxStart)

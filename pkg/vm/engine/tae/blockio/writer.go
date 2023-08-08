@@ -157,11 +157,11 @@ func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objecti
 	}
 	blocks, err := w.writer.WriteEnd(ctx)
 	if len(blocks) == 0 {
-		logutil.Debug("[WriteEnd]", common.OperationField(w.nameStr),
+		logutil.Info("[WriteEnd]", common.OperationField(w.nameStr),
 			common.OperandField("[Size=0]"), common.OperandField(w.writer.GetSeqnums()))
 		return blocks, objectio.Extent{}, err
 	}
-	logutil.Debug("[WriteEnd]",
+	logutil.Info("[WriteEnd]",
 		common.OperationField(w.String(blocks)),
 		common.OperandField(w.writer.GetSeqnums()),
 		common.OperandField(w.writer.GetMaxSeqnum()))

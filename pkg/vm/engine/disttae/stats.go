@@ -124,18 +124,14 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 				for idx, col := range tableDef.Cols[:lenCols] {
 					objColMeta := objectMeta.MustGetColumn(uint16(col.Seqnum))
 					zm := objColMeta.ZoneMap().Clone()
-					if tableDef.Name == "statement_info" {
-						logutil.Infof(" idx is %d, name is %v, type is %v, len is %d, zm is %v, MaxSeqnum is %d",
-							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), zm.String(), objectMeta.BlockHeader().MaxSeqnum())
-						logutil.Infof("fs is %v, location is %v", proc.FileService.Name(), location.String())
-					}
 					if !zm.IsInited() {
 						continue
 					}
 					index.UpdateZM(info.ColumnZMs[idx], zm.GetMaxBuf())
 					if tableDef.Name == "statement_info" {
-						logutil.Infof(" == statement_info update, idx is %d, name is %v, type is %v, len is %d, zm is %v",
-							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), zm.String())
+						logutil.Infof(" idx is %d, name is %v, type is %v, len is %d, zm is %v, MaxSeqnum is %d",
+							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), zm.String(), objectMeta.BlockHeader().MaxSeqnum())
+						logutil.Infof("fs is %v, location is %v", proc.FileService.Name(), location.String())
 					}
 					min := zm.GetMinBuf()
 					if len(min) == 0 {

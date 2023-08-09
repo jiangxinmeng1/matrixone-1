@@ -637,6 +637,12 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 
 		data.meta[tid] = tableMeta
 	}
+
+	if y != -1 {
+		if tidVec[y] != tableID {
+			panic("tableID not found in checkpoint meta")
+		}
+	}
 	meta = data.meta[tableID]
 	return
 }

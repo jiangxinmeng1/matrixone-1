@@ -590,8 +590,10 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 		}
 	}*/
 	y := vector.OrderedFindFirstIndexInSortedSlice[uint64](tableID, tidVec)
-	if tidVec[y] != tableID {
-		logutil.Infof("tableID %d not found in checkpoint meta, tidVec[y] is %d", tableID, tidVec[y])
+	if y != -1 {
+		if tidVec[y] != tableID {
+			logutil.Infof("tableID %d not found in checkpoint meta, tidVec[y] is %d", tableID, tidVec[y])
+		}
 	}
 	for i := 0; i < data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX].Length(); i++ {
 		tid := tidVec[i]

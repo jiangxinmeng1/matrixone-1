@@ -597,9 +597,6 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 	}
 	for i := 0; i < data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX].Length(); i++ {
 		tid := tidVec[i]
-		if tid == tableID {
-			logutil.Infof("table==%d found in checkpoint meta, tidVec[i] is %d", tableID, tidVec[i])
-		}
 		blkInsStr := blkIns.GetBytesAt(i)
 		blkCNInsStr := blkCNIns.GetBytesAt(i)
 		blkDelStr := blkDel.GetBytesAt(i)
@@ -608,6 +605,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 		if len(blkInsStr) > 0 {
 			blkInsertTableMeta := NewTableMeta()
 			blkInsertTableMeta.locations = blkInsStr
+			logutil.Infof("table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], blkInsertTableMeta.locations.String())
 			// blkInsertOffset
 			tableMeta.tables[BlockInsert] = blkInsertTableMeta
 		}

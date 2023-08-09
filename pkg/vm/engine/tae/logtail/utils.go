@@ -572,7 +572,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 	blkDel := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Delete_Block_LOC_IDX]
 	segDel := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Segment_LOC_IDX]
 
-	var i int
+	/*var i int
 	if version <= CheckpointVersion3 {
 		i = -1
 		for idx, id := range tidVec {
@@ -588,44 +588,53 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 		if i < 0 {
 			return
 		}
+	}*/
+	y := vector.OrderedFindFirstIndexInSortedSlice[uint64](tableID, tidVec)
+	if tidVec[y] != tableID {
+		logutil.Infof("tableID %d not found in checkpoint meta, tidVec[y] is %d", tableID, tidVec[y])
 	}
-	tid := tidVec[i]
-	blkInsStr := blkIns.GetBytesAt(i)
-	blkCNInsStr := blkCNIns.GetBytesAt(i)
-	blkDelStr := blkDel.GetBytesAt(i)
-	segDelStr := segDel.GetBytesAt(i)
-	tableMeta := NewCheckpointMeta()
-	if len(blkInsStr) > 0 {
-		blkInsertTableMeta := NewTableMeta()
-		blkInsertTableMeta.locations = blkInsStr
-		// blkInsertOffset
-		tableMeta.tables[BlockInsert] = blkInsertTableMeta
-	}
-	if len(blkCNInsStr) > 0 {
-		blkDeleteTableMeta := NewTableMeta()
-		blkDeleteTableMeta.locations = blkDelStr
-		tableMeta.tables[BlockDelete] = blkDeleteTableMeta
-		cnBlkInsTableMeta := NewTableMeta()
-		cnBlkInsTableMeta.locations = blkCNInsStr
-		tableMeta.tables[CNBlockInsert] = cnBlkInsTableMeta
-	} else {
-		if tableID == pkgcatalog.MO_DATABASE_ID ||
-			tableID == pkgcatalog.MO_TABLES_ID ||
-			tableID == pkgcatalog.MO_COLUMNS_ID {
-			if len(blkDelStr) > 0 {
-				blkDeleteTableMeta := NewTableMeta()
-				blkDeleteTableMeta.locations = blkDelStr
-				tableMeta.tables[BlockDelete] = blkDeleteTableMeta
+	for i := 0; i < data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX].Length(); i++ {
+		tid := tidVec[i]
+		if tid == tableID {
+			logutil.Infof("table==%d found in checkpoint meta, tidVec[i] is %d", tableID, tidVec[i])
+		}
+		blkInsStr := blkIns.GetBytesAt(i)
+		blkCNInsStr := blkCNIns.GetBytesAt(i)
+		blkDelStr := blkDel.GetBytesAt(i)
+		segDelStr := segDel.GetBytesAt(i)
+		tableMeta := NewCheckpointMeta()
+		if len(blkInsStr) > 0 {
+			blkInsertTableMeta := NewTableMeta()
+			blkInsertTableMeta.locations = blkInsStr
+			// blkInsertOffset
+			tableMeta.tables[BlockInsert] = blkInsertTableMeta
+		}
+		if len(blkCNInsStr) > 0 {
+			blkDeleteTableMeta := NewTableMeta()
+			blkDeleteTableMeta.locations = blkDelStr
+			tableMeta.tables[BlockDelete] = blkDeleteTableMeta
+			cnBlkInsTableMeta := NewTableMeta()
+			cnBlkInsTableMeta.locations = blkCNInsStr
+			tableMeta.tables[CNBlockInsert] = cnBlkInsTableMeta
+		} else {
+			if tableID == pkgcatalog.MO_DATABASE_ID ||
+				tableID == pkgcatalog.MO_TABLES_ID ||
+				tableID == pkgcatalog.MO_COLUMNS_ID {
+				if len(blkDelStr) > 0 {
+					blkDeleteTableMeta := NewTableMeta()
+					blkDeleteTableMeta.locations = blkDelStr
+					tableMeta.tables[BlockDelete] = blkDeleteTableMeta
+				}
 			}
 		}
-	}
-	if len(segDelStr) > 0 {
-		segDeleteTableMeta := NewTableMeta()
-		segDeleteTableMeta.locations = segDelStr
-		tableMeta.tables[SegmentDelete] = segDeleteTableMeta
-	}
+		if len(segDelStr) > 0 {
+			segDeleteTableMeta := NewTableMeta()
+			segDeleteTableMeta.locations = segDelStr
+			tableMeta.tables[SegmentDelete] = segDeleteTableMeta
+		}
 
-	data.meta[tid] = tableMeta
+		data.meta[tid] = tableMeta
+	}
 	meta = data.meta[tableID]
 	return
 }

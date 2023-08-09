@@ -116,8 +116,8 @@ func getInfoFromZoneMap(ctx context.Context, blocks []catalog.BlockInfo, tableDe
 					info.DataTypes[idx] = types.T(col.Typ.Id).ToType()
 					info.ColumnNDVs[idx] = float64(objColMeta.Ndv())
 					if tableDef.Name == "statement_info" {
-						logutil.Infof("tableDef.Name == statement_info, idx is %d, name is %v, type is %v， len is %d",
-							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount())
+						logutil.Infof("tableDef.Name == statement_info, idx is %d, name is %v, type is %v， len is %d, id is %d",
+							idx, col.Name, info.DataTypes[idx].String(), objectMeta.BlockHeader().ColumnCount(), tableDef.TblId)
 					}
 				}
 			} else {

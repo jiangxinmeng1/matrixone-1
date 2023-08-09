@@ -606,7 +606,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 		if len(blkInsStr) > 0 {
 			blkInsertTableMeta := NewTableMeta()
 			blkInsertTableMeta.locations = blkInsStr
-			logutil.Infof("table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], blkInsertTableMeta.locations.String())
+			logutil.Infof("blkInsStr table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], blkInsertTableMeta.locations.String())
 			// blkInsertOffset
 			tableMeta.tables[BlockInsert] = blkInsertTableMeta
 		}
@@ -614,8 +614,10 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 			blkDeleteTableMeta := NewTableMeta()
 			blkDeleteTableMeta.locations = blkDelStr
 			tableMeta.tables[BlockDelete] = blkDeleteTableMeta
+			logutil.Infof("blkDeleteTableMeta table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], blkDeleteTableMeta.locations.String())
 			cnBlkInsTableMeta := NewTableMeta()
 			cnBlkInsTableMeta.locations = blkCNInsStr
+			logutil.Infof("cnBlkInsTableMeta table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], cnBlkInsTableMeta.locations.String())
 			tableMeta.tables[CNBlockInsert] = cnBlkInsTableMeta
 		} else {
 			if tableID == pkgcatalog.MO_DATABASE_ID ||
@@ -625,6 +627,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 					blkDeleteTableMeta := NewTableMeta()
 					blkDeleteTableMeta.locations = blkDelStr
 					tableMeta.tables[BlockDelete] = blkDeleteTableMeta
+					logutil.Infof("pkgcatalog table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], blkDeleteTableMeta.locations.String())
 				}
 			}
 		}
@@ -632,6 +635,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 			segDeleteTableMeta := NewTableMeta()
 			segDeleteTableMeta.locations = segDelStr
 			tableMeta.tables[SegmentDelete] = segDeleteTableMeta
+			logutil.Infof("segDeleteTableMeta table==%d, tidVec[i]=%d, insert : %v", tableID, tidVec[i], segDeleteTableMeta.locations.String())
 		}
 
 		data.meta[tid] = tableMeta

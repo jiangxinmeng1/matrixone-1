@@ -595,6 +595,7 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32) (meta
 			logutil.Infof("tableID %d not found in checkpoint meta, tidVec[y] is %d", tableID, tidVec[y])
 		}
 	}
+	logutil.Infof("tableID %d found in checkpoint meta, tidVec[y] is %d", tableID, tidVec[y])
 	for i := 0; i < data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX].Length(); i++ {
 		tid := tidVec[i]
 		blkInsStr := blkIns.GetBytesAt(i)

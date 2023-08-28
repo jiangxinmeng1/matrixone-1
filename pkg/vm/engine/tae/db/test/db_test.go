@@ -17,6 +17,7 @@ package test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math/rand"
 	"reflect"
 	"strings"
@@ -8451,7 +8452,7 @@ func TestEstimateMemSize(t *testing.T) {
 	}
 }
 
-func TestColumnCount(t *testing.T) {
+func TestColumnCount1(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	ctx := context.Background()
 
@@ -8492,4 +8493,40 @@ func TestColumnCount(t *testing.T) {
 	}
 
 	assert.Equal(t, systemColumnCount+5, tae.Catalog.CoarseColumnCnt())
+}
+
+func TestColumnCount2(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 50
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 1)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+
+	{
+		txn, rel := tae.GetRelation()
+		for i := 0; i < 500; i++ {
+			colName := fmt.Sprintf("col %d", i)
+			err := rel.AlterTable(context.TODO(), api.NewAddColumnReq(0, 0, colName, types.NewProtoType(types.T_char), 5))
+			require.NoError(t, err)
+		}
+		require.Nil(t, txn.Commit(context.Background()))
+	}
+
+	txn, err := tae.StartTxn(nil)
+	assert.NoError(t, err)
+	db, err := txn.GetDatabase("db")
+	assert.NoError(t, err)
+	_, err = db.DropRelationByName(schema.Name)
+	assert.NoError(t, err)
+	assert.NoError(t, txn.Commit(context.Background()))
+
+	tae.Catalog.GCByTS(context.Background(), txn.GetCommitTS().Next())
 }

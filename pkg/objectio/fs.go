@@ -17,10 +17,12 @@ package objectio
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/defines"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 )
 
 type ObjectFS struct {
@@ -59,5 +61,6 @@ func (o *ObjectFS) DelFiles(ctx context.Context, name []string) error {
 }
 
 func (o *ObjectFS) Delete(fileName string) error {
+	logutil.Infof("lalala delete %s %s",fileName, debug.Stack())
 	return o.Service.Delete(context.Background(), fileName)
 }

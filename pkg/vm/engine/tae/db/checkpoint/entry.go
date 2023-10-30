@@ -272,6 +272,6 @@ func (e *CheckpointEntry) GCMetadata(fs *objectio.ObjectFS) error {
 
 func (e *CheckpointEntry) GCEntry(fs *objectio.ObjectFS) error {
 	err := fs.Delete(e.cnLocation.Name().String())
-	defer logutil.Infof("GC checkpoint metadata %v, err %v", e.String(), err)
+	defer logutil.Infof("GC checkpoint entry %v, err %v", e.String(), err)
 	return err
 }

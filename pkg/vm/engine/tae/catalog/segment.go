@@ -304,6 +304,7 @@ func (entry *SegmentEntry) LoadObjectInfoWithTxnTS(startTS types.TS) (*objectio.
 		return stats, nil
 	}
 
+	// Get stats from other mvcc nodes
 	entry.LoopChain(func(n *MVCCNode[*ObjectMVCCNode]) bool {
 		if n.BaseNode.ObjectStats != nil && !n.BaseNode.ObjectStats.IsZero() {
 			stats = n.BaseNode.ObjectStats.Clone()

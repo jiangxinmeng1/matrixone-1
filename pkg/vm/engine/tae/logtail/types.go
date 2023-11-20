@@ -56,6 +56,8 @@ const (
 	SnapshotMetaAttr_SegDeleteBatchStart        = "seg_delete_batch_start"
 	SnapshotMetaAttr_SegDeleteBatchEnd          = "seg_delete_batch_end"
 	SnapshotMetaAttr_SegDeleteBatchLocation     = "seg_delete_batch_location"
+	SnapshotMetaAttr_ObjBatchLocation           = "object_batch_location"
+	SnapshotMetaAttr_ObjLoadedBatchLocation     = "obj_loaded_batch_location"
 	CheckpointMetaAttr_BlockLocation            = "checkpoint_meta_block_location"
 	CheckpointMetaAttr_SchemaType               = "checkpoint_meta_schema_type"
 
@@ -81,7 +83,8 @@ var (
 	SegTNSchema      *catalog.Schema
 	BlkTNSchema      *catalog.Schema
 	MetaSchema_V1    *catalog.Schema
-	MetaSchema       *catalog.Schema
+	MetaSchema_V2    *catalog.Schema
+	MetaSchema_V3    *catalog.Schema
 	DBDelSchema      *catalog.Schema
 	TblDelSchema     *catalog.Schema
 	ColumnDelSchema  *catalog.Schema
@@ -245,15 +248,31 @@ var (
 		types.New(types.T_int32, 0, 0),
 		types.New(types.T_int32, 0, 0),
 	}
-	MetaSchemaAttr = []string{
+	MetaSchemaAttr_V2 = []string{
 		SnapshotAttr_TID,
 		SnapshotMetaAttr_BlockInsertBatchLocation,
 		SnapshotMetaAttr_BlockCNInsertBatchLocation,
 		SnapshotMetaAttr_BlockDeleteBatchLocation,
 		SnapshotMetaAttr_SegDeleteBatchLocation,
 	}
-	MetaShcemaTypes = []types.Type{
+	MetaShcemaTypes_V2 = []types.Type{
 		types.New(types.T_uint64, 0, 0),
+		types.New(types.T_varchar, types.MaxVarcharLen, 0),
+		types.New(types.T_varchar, types.MaxVarcharLen, 0),
+		types.New(types.T_varchar, types.MaxVarcharLen, 0),
+		types.New(types.T_varchar, types.MaxVarcharLen, 0),
+	}
+	MetaSchemaAttr_V3 = []string{
+		SnapshotAttr_TID,
+		SnapshotMetaAttr_BlockInsertBatchLocation,
+		SnapshotMetaAttr_BlockCNInsertBatchLocation,
+		SnapshotMetaAttr_BlockDeleteBatchLocation,
+		SnapshotMetaAttr_ObjBatchLocation,
+		SnapshotMetaAttr_ObjLoadedBatchLocation,
+	}
+	MetaShcemaTypes_V3 = []types.Type{
+		types.New(types.T_uint64, 0, 0),
+		types.New(types.T_varchar, types.MaxVarcharLen, 0),
 		types.New(types.T_varchar, types.MaxVarcharLen, 0),
 		types.New(types.T_varchar, types.MaxVarcharLen, 0),
 		types.New(types.T_varchar, types.MaxVarcharLen, 0),
@@ -316,6 +335,7 @@ var (
 		types.New(types.T_TS, 0, 0),
 		types.New(types.T_TS, 0, 0),
 	}
+	ObjectStatsOffset = 3
 
 	StorageUsageSchemaAttrs = []string{
 		pkgcatalog.SystemColAttr_AccID,
@@ -505,14 +525,27 @@ func init() {
 		}
 	}
 
-	MetaSchema = catalog.NewEmptySchema("meta")
-	for i, colname := range MetaSchemaAttr {
+	MetaSchema_V3 = catalog.NewEmptySchema("meta")
+	for i, colname := range MetaSchemaAttr_V3 {
 		if i == 0 {
-			if err := MetaSchema.AppendPKCol(colname, MetaShcemaTypes[i], 0); err != nil {
+			if err := MetaSchema_V3.AppendPKCol(colname, MetaShcemaTypes_V3[i], 0); err != nil {
 				panic(err)
 			}
 		} else {
-			if err := MetaSchema.AppendCol(colname, MetaShcemaTypes[i]); err != nil {
+			if err := MetaSchema_V3.AppendCol(colname, MetaShcemaTypes_V3[i]); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	MetaSchema_V2 = catalog.NewEmptySchema("meta")
+	for i, colname := range MetaSchemaAttr_V2 {
+		if i == 0 {
+			if err := MetaSchema_V2.AppendPKCol(colname, MetaShcemaTypes_V2[i], 0); err != nil {
+				panic(err)
+			}
+		} else {
+			if err := MetaSchema_V2.AppendCol(colname, MetaShcemaTypes_V2[i]); err != nil {
 				panic(err)
 			}
 		}

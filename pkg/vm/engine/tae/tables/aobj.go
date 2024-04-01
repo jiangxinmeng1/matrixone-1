@@ -133,7 +133,7 @@ func (obj *aobject) Pin() *common.PinnedItem[*aobject] {
 
 func (obj *aobject) GetColumnDataByIds(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	readSchema any,
 	_ uint16,
 	colIdxes []int,
@@ -151,7 +151,7 @@ func (obj *aobject) GetColumnDataByIds(
 
 func (obj *aobject) GetColumnDataById(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	readSchema any,
 	_ uint16,
 	col int,
@@ -361,11 +361,7 @@ func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {
 		return
 	}
 
-	changesCnt := uint32(0)
-	objectMVCC := obj.tryGetMVCC()
-	if objectMVCC != nil {
-		changesCnt = objectMVCC.GetChangeIntentionCnt()
-	}
+	changesCnt := obj.meta.GetDeleteCount()
 	if changesCnt == 0 && rows == 0 {
 		score = 0
 	} else {
@@ -414,13 +410,9 @@ func (obj *aobject) Init() (err error) { return }
 func (obj *aobject) EstimateMemSize() (int, int) {
 	node := obj.PinNode()
 	defer node.Unref()
+	dsize := obj.meta.GetTable().EstimateMemSize(obj.meta.ID)
 	obj.RLock()
 	defer obj.RUnlock()
-	dsize := 0
-	objMVCC := obj.tryGetMVCC()
-	if objMVCC != nil {
-		dsize = objMVCC.EstimateMemSizeLocked()
-	}
 	asize := obj.appendMVCC.EstimateMemSizeLocked()
 	if !node.IsPersisted() {
 		asize += node.MustMNode().EstimateMemSize()

@@ -14,7 +14,11 @@
 
 package catalog
 
-import "github.com/matrixorigin/matrixone/pkg/container/types"
+import (
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
+)
 
 type EntryState int8
 
@@ -22,6 +26,10 @@ const (
 	ES_Appendable EntryState = iota
 	ES_NotAppendable
 	ES_Frozen
+)
+
+var (
+	AppendNodeApproxSize int
 )
 
 func (es EntryState) Repr() string {
@@ -50,7 +58,7 @@ var (
 )
 
 func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
-	if isPersistedByCN {
+	if !isPersistedByCN {
 		schema := NewEmptySchema("tombstone")
 		colTypes := []types.Type{
 			types.T_Rowid.ToType(),
@@ -89,4 +97,17 @@ func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
 		}
 		return schema
 	}
+}
+
+func NewTombstoneBatch(pkType types.Type, mp *mpool.MPool) *containers.Batch {
+	bat := containers.NewBatch()
+	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), mp)
+	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
+	pkVec := containers.MakeVector(pkType, mp)
+	abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
+	bat.AddVector(PhyAddrColumnName, rowIDVec)
+	bat.AddVector(AttrCommitTs, commitTSVec)
+	bat.AddVector(AttrPKVal, pkVec)
+	bat.AddVector(AttrAborted, abortVec)
+	return bat
 }

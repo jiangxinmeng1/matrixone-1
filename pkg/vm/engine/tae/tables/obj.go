@@ -20,7 +20,6 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
-	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -81,7 +80,7 @@ func (obj *object) Pin() *common.PinnedItem[*object] {
 
 func (obj *object) GetColumnDataByIds(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	readSchema any,
 	blkID uint16,
 	colIdxes []int,
@@ -100,7 +99,7 @@ func (obj *object) GetColumnDataByIds(
 // then all the object data pointed by meta location also be visible to txn;
 func (obj *object) GetColumnDataById(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	readSchema any,
 	blkID uint16,
 	col int,
@@ -182,13 +181,7 @@ func (obj *object) estimateRawScore() (score int, dropped bool) {
 		dropped = true
 		return
 	}
-	changeCnt := uint32(0)
-	obj.RLock()
-	objectMVCC := obj.tryGetMVCC()
-	if objectMVCC != nil {
-		changeCnt = objectMVCC.GetChangeIntentionCnt()
-	}
-	obj.RUnlock()
+	changeCnt := obj.meta.GetDeleteCount()
 	if changeCnt == 0 {
 		// No deletes found
 		score = 0
@@ -237,7 +230,6 @@ func (obj *object) getPersistedRowByFilter(
 	var sortKey containers.Vector
 	schema := obj.meta.GetSchema()
 	idx := schema.GetSingleSortKeyIdx()
-	objMVCC := obj.tryGetMVCC()
 	for blkID = uint16(0); blkID < uint16(obj.meta.BlockCnt()); blkID++ {
 		var ok bool
 		ok, err = pnode.ContainsKey(ctx, filter.Val, uint32(blkID))
@@ -256,26 +248,11 @@ func (obj *object) getPersistedRowByFilter(
 			continue
 		}
 		offset = uint32(off)
-
-		if objMVCC == nil {
-			return
-		}
-		objMVCC.RLock()
-		defer objMVCC.RUnlock()
+		blkid := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkID)
+		rowID := objectio.NewRowid(blkid, offset)
 		var deleted bool
-		deleted, err = objMVCC.IsDeletedLocked(offset, txn, blkID)
-		if err != nil {
-			return
-		}
-		if deleted {
-			continue
-		}
-		var deletes *nulls.Nulls
-		deletes, err = obj.persistedCollectDeleteMaskInRange(ctx, blkID, types.TS{}, txn.GetStartTS(), mp)
-		if err != nil {
-			return
-		}
-		if !deletes.Contains(uint64(offset)) {
+		deleted, err = obj.meta.GetTable().IsDeleted(ctx, txn, *rowID, mp)
+		if !deleted {
 			return
 		}
 
@@ -287,13 +264,7 @@ func (obj *object) getPersistedRowByFilter(
 func (obj *object) EstimateMemSize() (int, int) {
 	node := obj.PinNode()
 	defer node.Unref()
-	obj.RLock()
-	defer obj.RUnlock()
-	objMVCC := obj.tryGetMVCC()
-	if objMVCC == nil {
-		return 0, 0
-	}
-	dsize := objMVCC.EstimateMemSizeLocked()
+	dsize := obj.meta.GetTable().EstimateMemSize(obj.meta.ID)
 	return 0, dsize
 }
 

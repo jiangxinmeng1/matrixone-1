@@ -15,30 +15,178 @@
 package catalog
 
 import (
+	"context"
+
+	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
 // for each tombstone in range [start,end]
 func (entry *TableEntry) foreachTombstoneInRange(
+	ctx context.Context,
 	start, end types.TS,
+	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		err := tombstone.foreachTombstoneInRange(ctx, start, end, mp, op)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // for each tombstone in range [start,end]
 func (entry *TableEntry) foreachTombstoneInRangeWithObjectID(
+	ctx context.Context,
 	objID types.Objectid,
-	start, end *types.TS,
+	start, end types.TS,
+	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objID, start, end, mp, op)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (entry *TableEntry) tryGetTombstone(rowID types.Rowid) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
+// for each tombstone in range [start,end]
+func (entry *TableEntry) foreachTombstoneInRangeWithBlockID(
+	ctx context.Context,
+	blkID types.Blockid,
+	start, end types.TS,
+	mp *mpool.MPool,
+	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		err := tombstone.foreachTombstoneInRangeWithBlockID(ctx, blkID, start, end, mp, op)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (entry *TableEntry) tryGetTombstone(
+	ctx context.Context,
+	rowID types.Rowid,
+	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		ok, commitTS, aborted, pk, err = tombstone.tryGetTombstone(ctx, rowID, mp)
+		if err != nil {
+			return
+		}
+		if ok {
+			return
+		}
+	}
+	return
+}
+func (entry *TableEntry) CollectDeleteInRange(
+	ctx context.Context,
+	start, end types.TS,
+	blockID objectio.Blockid,
+	mp *mpool.MPool,
+) (bat *containers.Batch, err error) {
+	entry.foreachTombstoneInRangeWithBlockID(
+		ctx, blockID, start, end, mp,
+		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
+			if bat == nil {
+				pkType := entry.GetLastestSchema().GetPrimaryKey().Type
+				bat = NewTombstoneBatch(pkType, mp)
+			}
+			bat.GetVectorByName(PhyAddrColumnName).Append(rowID, false)
+			bat.GetVectorByName(AttrCommitTs).Append(commitTS, false)
+			bat.GetVectorByName(AttrPKVal).Append(pk, false)
+			bat.GetVectorByName(AttrAborted).Append(aborted, false)
+			return true, nil
+		})
+	return
+}
+func (entry *TableEntry) IsDeleted(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	rowID types.Rowid,
+	mp *mpool.MPool) (deleted bool, err error) {
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		ok, _, _, _, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
 	return
 }
 
+func (entry *TableEntry) FillDeletes(
+	ctx context.Context,
+	blkID types.Blockid,
+	txn txnif.TxnReader,
+	view *containers.BaseView,
+	mp *mpool.MPool) (err error) {
+
+	it := entry.MakeTombstoneIt(false)
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		entry.RLock()
+		visible, err := tombstone.IsVisible(txn, entry.RWMutex)
+		if err != nil {
+			return err
+		}
+		entry.RUnlock()
+		if !visible {
+			return nil
+		}
+		blkCount := 1
+		if !tombstone.IsAppendable() {
+			stats, err := tombstone.MustGetObjectStats()
+			if err != nil {
+				return err
+			}
+			blkCount = int(stats.BlkCnt())
+		}
+		for i := 0; i < blkCount; i++ {
+			err = tombstone.foreachTombstoneVisible(
+				ctx,
+				txn,
+				uint16(i),
+				mp,
+				func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
+					if *rowID.BorrowBlockID() == blkID {
+						if view.DeleteMask == nil {
+							view.DeleteMask = &nulls.Nulls{}
+						}
+						_, rowOffset := rowID.Decode()
+						view.DeleteMask.Add(uint64(rowOffset))
+					}
+					return true, nil
+				})
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return
+}
 func (entry *TableEntry) OnApplyDelete(
 	deleted uint64,
 	ts types.TS) (err error) {
@@ -46,64 +194,35 @@ func (entry *TableEntry) OnApplyDelete(
 	return
 }
 
-func (entry *TableEntry) GetChangeIntentionCnt(objectID types.Objectid) uint32 {
-	var changes uint32
-	start := types.TS{}
-	end := types.MaxTs()
-	entry.foreachTombstoneInRangeWithObjectID(
-		objectID,
-		&start, &end,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			changes++
-			return true, nil
-		})
-	return changes
-}
-
 func (entry *TableEntry) IsDeletedLocked(
 	row types.Rowid, txn txnif.TxnReader,
 ) (bool, error) {
-	ok, _, _, _, err := entry.tryGetTombstone(row)
+	ok, _, _, _, err := entry.tryGetTombstone(txn.GetContext(), row, common.WorkspaceAllocator)
 	return ok, err
 }
 
-func (entry *TableEntry) EstimateMemSizeLocked(objectID types.Objectid) (dsize int) {
-	start := types.TS{}
-	end := types.MaxTs()
-	// TODO only count deletes in memory
-	entry.foreachTombstoneInRangeWithObjectID(
-		objectID,
-		&start, &end,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			dsize += AppendNodeApproxSize
-			return true, nil
-		})
-	return
-}
-
-func (entry *TableEntry) GetDeleteCnt(objectID types.Objectid) uint32 {
-	cnt := uint32(0)
-	start := types.TS{}
-	end := types.MaxTs()
-	entry.foreachTombstoneInRangeWithObjectID(
-		objectID,
-		&start, &end,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			cnt++
-			return true, nil
-		})
-	return cnt
-}
-
-func (entry *TableEntry) HasDeleteIntentsPreparedIn(objectID types.Objectid, from, to types.TS) (found, isPersist bool) {
-	entry.foreachTombstoneInRangeWithObjectID(
-		objectID,
-		&from, &to,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			found = true
-			return false, nil
-		})
-	return
+func (entry *TableEntry) EstimateMemSize(objID types.Objectid) int {
+	it := entry.MakeTombstoneIt(false)
+	size := 0
+	for node := it.Get(); it.Valid(); it.Next() {
+		tombstone := node.GetPayload()
+		if tombstone.HasPersistedData() {
+			continue
+		}
+		err := tombstone.foreachTombstoneInRangeWithObjectID(
+			context.Background(),
+			objID, types.TS{},
+			types.MaxTs(),
+			common.MergeAllocator,
+			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
+				size += AppendNodeApproxSize
+				return true, nil
+			})
+		if err != nil {
+			logutil.Errorf("estimate mem size failed, tombstone %v, objectID %v, err %v", tombstone.ID.String(), objID.String(), err)
+		}
+	}
+	return size
 }
 
 func (entry *TableEntry) ReplayDeltaLoc(vMVCCNode any, blkID uint16) {

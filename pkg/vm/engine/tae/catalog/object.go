@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -40,11 +41,19 @@ type ObjectEntry struct {
 	table *TableEntry
 	*ObjectNode
 	objData data.Object
+	deleteCount atomic.Uint32
 }
 
 func (entry *ObjectEntry) GetLoaded() bool {
 	stats := entry.GetObjectStats()
 	return stats.Rows() != 0
+}
+
+func (entry *ObjectEntry) AddDeleteCount(count uint32){	
+	entry.deleteCount.Add(count)
+}
+func (entry *ObjectEntry) GetDeleteCount()uint32{
+	return entry.deleteCount.Load()
 }
 
 func (entry *ObjectEntry) GetSortKeyZonemap() index.ZM {

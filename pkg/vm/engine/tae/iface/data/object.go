@@ -59,7 +59,6 @@ type ObjectAppender interface {
 }
 
 type ObjectReplayer interface {
-	OnReplayDelete(blkID uint16, node txnif.DeleteNode) (err error)
 	OnReplayAppend(node txnif.AppendNode) (err error)
 	OnReplayAppendPayload(bat *containers.Batch) (err error)
 }
@@ -68,23 +67,20 @@ type Object interface {
 	CheckpointUnit
 	ObjectReplayer
 
-	DeletesInfo() string
-
 	GetRowsOnReplay() uint64
 	GetID() *common.ID
 	IsAppendable() bool
 	PrepareCompact() bool
 	PrepareCompactInfo() (bool, string)
-	GetDeltaPersistedTS() types.TS
 
 	Rows() (int, error)
 	CheckFlushTaskRetry(startts types.TS) bool
 
 	GetColumnDataById(
-		ctx context.Context, txn txnif.AsyncTxn, readSchema any /*avoid import cycle*/, blkID uint16, colIdx int, mp *mpool.MPool,
+		ctx context.Context, txn txnif.TxnReader, readSchema any /*avoid import cycle*/, blkID uint16, colIdx int, mp *mpool.MPool,
 	) (*containers.ColumnView, error)
 	GetColumnDataByIds(
-		ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
+		ctx context.Context, txn txnif.TxnReader, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
 	) (*containers.BlockView, error)
 	GetAllColumns(
 		ctx context.Context,
@@ -94,14 +90,8 @@ type Object interface {
 	GetMeta() any
 
 	MakeAppender() (ObjectAppender, error)
-	RangeDelete(txn txnif.AsyncTxn, blkID uint16, start, end uint32, pk containers.Vector, dt handle.DeleteType) (txnif.DeleteNode, error)
-	TryDeleteByDeltaloc(txn txnif.AsyncTxn, blkID uint16, deltaLoc objectio.Location) (node txnif.TxnEntry, ok bool, err error)
 
 	GetTotalChanges() int
-	CollectChangesInRange(ctx context.Context, blkID uint16, startTs, endTs types.TS, mp *mpool.MPool) (*containers.BlockView, error)
-
-	// check wether any delete intents with prepared ts within [from, to]
-	HasDeleteIntentsPreparedIn(from, to types.TS) (bool, bool)
 
 	// check if all rows are committed before ts
 	// NOTE: here we assume that the object is visible to the ts
@@ -142,24 +132,10 @@ type Object interface {
 	GetRuntime() *dbutils.Runtime
 
 	Init() error
-	TryUpgrade() error
-	GCInMemeoryDeletesByTS(types.TS)
-	UpgradeAllDeleteChain()
 	CollectAppendInRange(start, end types.TS, withAborted bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
-	CollectDeleteInRange(ctx context.Context, start, end types.TS, withAborted bool, mp *mpool.MPool) (*containers.Batch, *bitmap.Bitmap, error)
-	PersistedCollectDeleteInRange(
-		ctx context.Context,
-		b *containers.Batch,
-		blkID uint16,
-		start, end types.TS,
-		withAborted bool,
-		mp *mpool.MPool,
-	) (bat *containers.Batch, err error)
-	// GetAppendNodeByRow(row uint32) (an txnif.AppendNode)
-	// GetDeleteNodeByRow(row uint32) (an txnif.DeleteNode)
+	CollectDeleteInRange(ctx context.Context, start, end types.TS, mp *mpool.MPool) (*containers.Batch, *bitmap.Bitmap, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
-	UpdateDeltaLoc(txn txnif.TxnReader, blkID uint16, deltaLoc objectio.Location) (bool, txnif.TxnEntry, error)
 
 	Close()
 }

@@ -192,8 +192,9 @@ func (node *persistedNode) GetRowByFilter(
 		defer commitTSVec.Close()
 
 		// Load persisted deletes
+		fullBlockID:=objectio.NewBlockidWithObjectID(&node.object.meta.ID,blkID)
 		view := containers.NewColumnView(0)
-		if err = node.object.FillPersistedDeletes(ctx, blkID, txn, view.BaseView, mp); err != nil {
+		if err = node.object.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp); err != nil {
 			return
 		}
 

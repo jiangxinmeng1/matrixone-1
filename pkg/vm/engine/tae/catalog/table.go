@@ -257,6 +257,12 @@ func (entry *TableEntry) MakeObjectIt(reverse bool) *common.GenericSortedDListIt
 	return common.NewGenericSortedDListIt(entry.RWMutex, entry.link, reverse)
 }
 
+func (entry *TableEntry) MakeTombstoneIt(reverse bool) *common.GenericSortedDListIt[*TombstoneEntry] {
+	entry.RLock()
+	defer entry.RUnlock()
+	return common.NewGenericSortedDListIt(entry.RWMutex, entry.tombstoneLink, reverse)
+}
+
 func (entry *TableEntry) CreateObject(
 	txn txnif.AsyncTxn,
 	state EntryState,

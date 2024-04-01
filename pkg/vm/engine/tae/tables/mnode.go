@@ -364,15 +364,10 @@ func (node *memoryNode) GetRowByFilter(
 		if appendnode.IsAborted() || !appendnode.IsVisible(txn) {
 			continue
 		}
-		objMVCC := node.object.tryGetMVCC()
-		if objMVCC == nil {
-			return
-		}
+		fullBlockID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, blkID)
+		rowID := objectio.NewRowid(fullBlockID, row)
 		var deleted bool
-		deleted, err = objMVCC.IsDeletedLocked(row, txn, 0)
-		if err != nil {
-			return
-		}
+		deleted, err = node.object.meta.GetTable().IsDeleted(ctx, txn, *rowID, mp)
 		if !deleted {
 			return
 		}
@@ -430,29 +425,12 @@ func (node *memoryNode) checkConflictAndDupClosure(
 		if appendnode.IsAborted() || !visible {
 			return nil
 		}
-		objMVCC := node.object.tryGetMVCC()
-		if objMVCC == nil {
+		fullBlockID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+		rowID := objectio.NewRowid(fullBlockID, row)
+		var deleted bool
+		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, common.WorkspaceAllocator)
+		if !deleted {
 			*dupRow = row
-			return moerr.GetOkExpectedDup()
-		}
-		mvcc := objMVCC.TryGetDeleteChain(0)
-		if mvcc == nil {
-			*dupRow = row
-			return moerr.GetOkExpectedDup()
-		}
-		deleteNode := mvcc.GetDeleteNodeByRow(row)
-		if deleteNode == nil {
-			*dupRow = row
-			return moerr.GetOkExpectedDup()
-		}
-
-		if visible, err = node.checkConflictAandVisibility(
-			deleteNode,
-			isCommitting,
-			txn); err != nil {
-			return
-		}
-		if deleteNode.IsAborted() || !visible {
 			return moerr.GetOkExpectedDup()
 		}
 		return nil
@@ -548,7 +526,8 @@ func (node *memoryNode) resolveInMemoryColumnDatas(
 		return
 	}
 
-	err = node.object.fillInMemoryDeletesLocked(txn, 0, view.BaseView, node.object.RWMutex)
+	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	err = node.object.meta.GetTable().FillDeletes(txn.GetContext(), *blkID, txn, view.BaseView, mp)
 	if err != nil {
 		return
 	}
@@ -602,7 +581,8 @@ func (node *memoryNode) resolveInMemoryColumnData(
 		return
 	}
 
-	err = node.object.fillInMemoryDeletesLocked(txn, 0, view.BaseView, node.object.RWMutex)
+	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	err = node.object.meta.GetTable().FillDeletes(txn.GetContext(), *blkID, txn, view.BaseView, mp)
 	if err != nil {
 		return
 	}
@@ -625,15 +605,9 @@ func (node *memoryNode) getInMemoryValue(
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	node.object.RLock()
-	deleted := false
-	objMVCC := node.object.tryGetMVCC()
-	if objMVCC != nil {
-		mvcc := objMVCC.TryGetDeleteChain(0)
-		if mvcc != nil {
-			deleted, err = mvcc.IsDeletedLocked(uint32(row), txn)
-		}
-	}
-	node.object.RUnlock()
+	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	rowID := objectio.NewRowid(blkID, uint32(row))
+	deleted, err := node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)
 	if err != nil {
 		return
 	}

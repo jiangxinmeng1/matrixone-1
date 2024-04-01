@@ -37,7 +37,6 @@ import (
 )
 
 var (
-	AppendNodeApproxSize int
 	DeleteNodeApproxSize int
 
 	DeleteChainApproxSize int
@@ -46,7 +45,7 @@ var (
 
 func init() {
 	txnNodeSize := int(unsafe.Sizeof(txnbase.TxnMVCCNode{}))
-	AppendNodeApproxSize = int(unsafe.Sizeof(AppendNode{})) + txnNodeSize
+	catalog.AppendNodeApproxSize = int(unsafe.Sizeof(AppendNode{})) + txnNodeSize
 	DeleteNodeApproxSize = int(unsafe.Sizeof(DeleteNode{})) + txnNodeSize
 
 	DeleteChainApproxSize = int(unsafe.Sizeof(DeleteChain{}))
@@ -320,7 +319,7 @@ func (n *AppendMVCCHandle) StringLocked() string {
 func (n *AppendMVCCHandle) EstimateMemSizeLocked() int {
 	asize := 0
 	if n.appends != nil {
-		asize += len(n.appends.MVCC) * AppendNodeApproxSize
+		asize += len(n.appends.MVCC) * catalog.AppendNodeApproxSize
 	}
 	return asize
 }

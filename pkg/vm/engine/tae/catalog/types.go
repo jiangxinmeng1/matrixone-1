@@ -14,6 +14,8 @@
 
 package catalog
 
+import "github.com/matrixorigin/matrixone/pkg/container/types"
+
 type EntryState int8
 
 const (
@@ -32,4 +34,59 @@ func (es EntryState) Repr() string {
 		return "F"
 	}
 	panic("not supported")
+}
+
+var (
+	TNTombstoneSchemaAttr = []string{
+		PhyAddrColumnName,
+		AttrCommitTs,
+		AttrPKVal,
+		AttrAborted,
+	}
+	CNTombstoneCNSchemaAttr = []string{
+		PhyAddrColumnName,
+		AttrPKVal,
+	}
+)
+
+func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
+	if isPersistedByCN {
+		schema := NewEmptySchema("tombstone")
+		colTypes := []types.Type{
+			types.T_Rowid.ToType(),
+			types.T_TS.ToType(),
+			pkType,
+			types.T_bool.ToType(),
+		}
+		for i, colname := range TNTombstoneSchemaAttr {
+			if i == 0 {
+				if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
+					panic(err)
+				}
+			} else {
+				if err := schema.AppendCol(colname, colTypes[i]); err != nil {
+					panic(err)
+				}
+			}
+		}
+		return schema
+	} else {
+		schema := NewEmptySchema("tombstone")
+		colTypes := []types.Type{
+			types.T_Rowid.ToType(),
+			pkType,
+		}
+		for i, colname := range CNTombstoneCNSchemaAttr {
+			if i == 0 {
+				if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
+					panic(err)
+				}
+			} else {
+				if err := schema.AppendCol(colname, colTypes[i]); err != nil {
+					panic(err)
+				}
+			}
+		}
+		return schema
+	}
 }

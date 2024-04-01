@@ -562,6 +562,15 @@ func (node *memoryNode) resolveInMemoryColumnDatas(
 	return
 }
 
+func (node *memoryNode) getAllColumns(
+	ctx context.Context,
+	readSchema *catalog.Schema) (bat *containers.Batch) {
+	node.object.RLock()
+	defer node.object.RUnlock()
+	length := node.data.Length()
+	return node.data.CloneWindow(0, length)
+}
+
 // Note: With PinNode Context
 func (node *memoryNode) resolveInMemoryColumnData(
 	txn txnif.TxnReader,

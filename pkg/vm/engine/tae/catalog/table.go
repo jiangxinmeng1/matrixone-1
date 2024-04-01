@@ -60,6 +60,9 @@ type TableEntry struct {
 	fullName string
 
 	deleteList *btree.BTreeG[DeleteEntry]
+	tombstoneEntries map[types.Objectid]*common.GenericDLNode[*TombstoneEntry]
+	//link.head and link.tail is nil when create tableEntry object.
+	tombstoneLink      *common.GenericSortedDList[*TombstoneEntry]
 }
 
 type DeleteEntry struct {

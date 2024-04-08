@@ -423,7 +423,7 @@ func (d *dirtyCollector) tryCompactTree(
 		}
 
 		for id, dirtyObj := range dirtyTable.Objs {
-			if obj, err = tbl.GetObjectByID(dirtyObj.ID); err != nil {
+			if obj, err = tbl.GetObjectByID(dirtyObj.ID, false); err != nil {
 				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
 					dirtyTable.Shrink(id)
 					err = nil
@@ -438,11 +438,29 @@ func (d *dirtyCollector) tryCompactTree(
 				continue
 			}
 			if calibration == 0 {
-				// TODO: may be put it to post replay process
-				// FIXME
-				if obj.HasPersistedData() {
-					obj.GetObjectData().TryUpgrade()
+				dirtyTable.Shrink(id)
+				continue
+			}
+			if err = interceptor.OnObject(obj); err != nil {
+				return
+			}
+		}
+		for id, dirtyObj := range dirtyTable.Tombstones {
+			if obj, err = tbl.GetObjectByID(dirtyObj.ID, true); err != nil {
+				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+					dirtyTable.Shrink(id)
+					err = nil
+					continue
 				}
+				return
+			}
+			var calibration int
+			calibration, err = obj.GetObjectData().RunCalibration()
+			if err != nil {
+				logutil.Warnf("get object rows failed, obj %v, err: %v", obj.ID.String(), err)
+				continue
+			}
+			if calibration == 0 {
 				dirtyTable.Shrink(id)
 				continue
 			}

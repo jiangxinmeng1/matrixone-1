@@ -70,9 +70,7 @@ type flushTableTailTask struct {
 	transMappings *api.BlkTransferBooking
 
 	aObjMetas         []*catalog.ObjectEntry
-	delSrcMetas       []*catalog.ObjectEntry
 	aObjHandles       []handle.Object
-	delSrcHandles     []handle.Object
 	createdObjHandles handle.Object
 
 	dirtyLen                 int
@@ -127,6 +125,7 @@ func NewFlushTableTailTask(
 	ctx *tasks.Context,
 	txn txnif.AsyncTxn,
 	objs []*catalog.ObjectEntry,
+	tombStones []*catalog.ObjectEntry,
 	rt *dbutils.Runtime,
 	dirtyEndTs types.TS,
 ) (task *flushTableTailTask, err error) {
@@ -153,7 +152,7 @@ func NewFlushTableTailTask(
 	for _, obj := range objs {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
-		hdl, err = rel.GetObject(&obj.ID)
+		hdl, err = rel.GetObject(&obj.ID, false)
 		if err != nil {
 			return
 		}
@@ -179,7 +178,7 @@ func NewFlushTableTailTask(
 	for _, obj := range tblEntry.DeletedDirties {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
-		hdl, err = rel.GetObject(&obj.ID)
+		hdl, err = rel.GetObject(&obj.ID, false)
 		if err != nil {
 			return
 		}

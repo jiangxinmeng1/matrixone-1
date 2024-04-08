@@ -446,19 +446,6 @@ func (d *dirtyCollector) tryCompactTree(
 				dirtyTable.Shrink(id)
 				continue
 			}
-			if !obj.IsAppendable() {
-				newFrom := from
-				if lastFlush.Greater(&newFrom) {
-					newFrom = lastFlush
-				}
-				// sometimes, delchain is no cleared after flushing table tail.
-				// the reason is still unknown, but here bumping the check from ts to lastFlush is correct anyway.
-				found, _ := obj.GetObjectData().HasDeleteIntentsPreparedIn(newFrom, to)
-				if !found {
-					dirtyTable.Shrink(id)
-					continue
-				}
-			}
 			if err = interceptor.OnObject(obj); err != nil {
 				return
 			}

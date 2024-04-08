@@ -169,32 +169,32 @@ func (h *txnRelation) AddObjsWithMetaLoc(ctx context.Context, stats containers.V
 	)
 }
 
-func (h *txnRelation) GetObject(id *types.Objectid) (obj handle.Object, err error) {
+func (h *txnRelation) GetObject(id *types.Objectid, isTombstone bool) (obj handle.Object, err error) {
 	fp := h.table.entry.AsCommonID()
 	fp.SetObjectID(id)
-	return h.Txn.GetStore().GetObject(fp)
+	return h.Txn.GetStore().GetObject(fp, isTombstone)
 }
 
-func (h *txnRelation) CreateObject(is1PC bool) (obj handle.Object, err error) {
-	return h.Txn.GetStore().CreateObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), is1PC)
+func (h *txnRelation) CreateObject(is1PC bool, isTombstone bool) (obj handle.Object, err error) {
+	return h.Txn.GetStore().CreateObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), is1PC, isTombstone)
 }
 
-func (h *txnRelation) CreateNonAppendableObject(is1PC bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
-	return h.Txn.GetStore().CreateNonAppendableObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), is1PC, opt)
+func (h *txnRelation) CreateNonAppendableObject(is1PC bool, isTombstone bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
+	return h.Txn.GetStore().CreateNonAppendableObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), is1PC, isTombstone, opt)
 }
 
-func (h *txnRelation) SoftDeleteObject(id *types.Objectid) (err error) {
+func (h *txnRelation) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err error) {
 	fp := h.table.entry.AsCommonID()
 	fp.SetObjectID(id)
-	return h.Txn.GetStore().SoftDeleteObject(fp)
+	return h.Txn.GetStore().SoftDeleteObject(isTombstone, fp)
 }
 
 func (h *txnRelation) MakeObjectItOnSnap() handle.ObjectIt {
-	return newObjectItOnSnap(h.table)
+	return newObjectItOnSnap(h.table, false)
 }
 
 func (h *txnRelation) MakeObjectIt() handle.ObjectIt {
-	return newObjectIt(h.table)
+	return newObjectIt(h.table, false)
 }
 
 func (h *txnRelation) GetByFilter(
@@ -337,8 +337,8 @@ func (h *txnRelation) GetValue(id *common.ID, row uint32, col uint16) (any, bool
 	return h.Txn.GetStore().GetValue(id, row, col)
 }
 
-func (h *txnRelation) LogTxnEntry(entry txnif.TxnEntry, readed []*common.ID) (err error) {
-	return h.Txn.GetStore().LogTxnEntry(h.table.entry.GetDB().ID, h.table.entry.GetID(), entry, readed)
+func (h *txnRelation) LogTxnEntry(entry txnif.TxnEntry, readedObject, readedTombstone []*common.ID) (err error) {
+	return h.Txn.GetStore().LogTxnEntry(h.table.entry.GetDB().ID, h.table.entry.GetID(), entry, readedObject, readedTombstone)
 }
 
 func (h *txnRelation) GetDB() (handle.Database, error) {

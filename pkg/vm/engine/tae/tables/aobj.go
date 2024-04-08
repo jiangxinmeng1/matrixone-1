@@ -46,6 +46,7 @@ type aobject struct {
 func newAObject(
 	meta *catalog.ObjectEntry,
 	rt *dbutils.Runtime,
+	isTombstone bool,
 ) *aobject {
 	obj := &aobject{}
 	obj.baseObject = newBaseObject(obj, meta, rt)
@@ -56,7 +57,7 @@ func newAObject(
 		obj.node.Store(node)
 		obj.FreezeAppend()
 	} else {
-		mnode := newMemoryNode(obj.baseObject)
+		mnode := newMemoryNode(obj.baseObject, isTombstone)
 		node := NewNode(mnode)
 		node.Ref()
 		obj.node.Store(node)

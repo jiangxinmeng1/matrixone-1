@@ -33,7 +33,7 @@ func (entry *TableEntry) foreachTombstoneInRange(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		err := tombstone.foreachTombstoneInRange(ctx, start, end, mp, op)
@@ -51,7 +51,7 @@ func (entry *TableEntry) foreachTombstoneInRangeWithObjectID(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objID, start, end, mp, op)
@@ -69,7 +69,7 @@ func (entry *TableEntry) foreachTombstoneInRangeWithBlockID(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		err := tombstone.foreachTombstoneInRangeWithBlockID(ctx, blkID, start, end, mp, op)
@@ -83,7 +83,7 @@ func (entry *TableEntry) tryGetTombstone(
 	ctx context.Context,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		ok, commitTS, aborted, pk, err = tombstone.tryGetTombstone(ctx, rowID, mp)
@@ -122,7 +122,7 @@ func (entry *TableEntry) IsDeleted(
 	txn txnif.TxnReader,
 	rowID types.Rowid,
 	mp *mpool.MPool) (deleted bool, err error) {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		ok, _, _, _, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
@@ -143,7 +143,7 @@ func (entry *TableEntry) FillDeletes(
 	view *containers.BaseView,
 	mp *mpool.MPool) (err error) {
 
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()
 		entry.RLock()
@@ -201,7 +201,7 @@ func (entry *TableEntry) IsDeletedLocked(
 }
 
 func (entry *TableEntry) EstimateMemSize(objID types.Objectid) int {
-	it := entry.MakeTombstoneIt(false)
+	it := entry.MakeObjectIt(false, true)
 	size := 0
 	for node := it.Get(); it.Valid(); it.Next() {
 		tombstone := node.GetPayload()

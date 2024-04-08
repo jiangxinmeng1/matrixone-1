@@ -1173,7 +1173,7 @@ func traverseCatalogForNewAccounts(c *catalog2.Catalog, memo *logtail.TNUsageMem
 				continue
 			}
 
-			objIt := tblEntry.MakeObjectIt(true)
+			objIt := tblEntry.MakeObjectIt(true, false)
 			for objIt.Valid() {
 				objEntry := objIt.Get().GetPayload()
 				if !objEntry.IsAppendable() && !objEntry.HasDropCommitted() && objEntry.IsCommitted() {

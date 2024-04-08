@@ -255,19 +255,13 @@ func (obj *txnObject) IsUncommitted() bool {
 
 func (obj *txnObject) IsAppendable() bool { return obj.entry.IsAppendable() }
 
-func (obj *txnObject) SoftDeleteBlock(id types.Blockid) (err error) {
-	fp := obj.entry.AsCommonID()
-	fp.BlockID = id
-	return obj.Txn.GetStore().SoftDeleteBlock(fp)
-}
-
 func (obj *txnObject) GetRelation() (rel handle.Relation) {
 	return newRelation(obj.table)
 }
 
 func (obj *txnObject) UpdateStats(stats objectio.ObjectStats) error {
 	id := obj.entry.AsCommonID()
-	return obj.Txn.GetStore().UpdateObjectStats(id, &stats)
+	return obj.Txn.GetStore().UpdateObjectStats(id, &stats, obj.entry.IsTombstone)
 }
 
 func (obj *txnObject) Prefetch(idxes []int) error {

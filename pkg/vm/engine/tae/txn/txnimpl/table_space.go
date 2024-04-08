@@ -49,7 +49,7 @@ type tableSpace struct {
 
 	stats []objectio.ObjectStats
 	// for tombstone table space
-	objs  []*objectio.ObjectId
+	objs []*objectio.ObjectId
 }
 
 func newTableSpace(table *txnTable, isTombstone bool) *tableSpace {
@@ -164,7 +164,7 @@ func (space *tableSpace) prepareApplyANode(node *anode) error {
 	for appended < node.Rows() {
 		appender, err := space.tableHandle.GetAppender()
 		if moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound) {
-			objH, err := space.table.CreateObject(true)
+			objH, err := space.table.CreateObject(true, space.isTombstone)
 			if err != nil {
 				return err
 			}
@@ -253,7 +253,7 @@ func (space *tableSpace) prepareApplyObjectStats(stats objectio.ObjectStats) (er
 	}
 
 	if shouldCreateNewObj() {
-		space.nobj, err = space.table.CreateNonAppendableObject(true, new(objectio.CreateObjOpt).WithId(sid))
+		space.nobj, err = space.table.CreateNonAppendableObject(true, new(objectio.CreateObjOpt).WithId(sid), space.isTombstone)
 		if err != nil {
 			return
 		}

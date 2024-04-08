@@ -98,14 +98,14 @@ func (store *NoopTxnStore) UnsafeGetRelation(dbId, id uint64) (rel handle.Relati
 func (store *NoopTxnStore) GetDatabase(name string) (db handle.Database, err error)   { return }
 func (store *NoopTxnStore) GetDatabaseByID(id uint64) (db handle.Database, err error) { return }
 func (store *NoopTxnStore) DatabaseNames() (names []string)                           { return }
-func (store *NoopTxnStore) GetObject(id *common.ID) (obj handle.Object, err error) {
+func (store *NoopTxnStore) GetObject(id *common.ID, isTombstone bool) (obj handle.Object, err error) {
 	return
 }
 
-func (store *NoopTxnStore) CreateObject(dbId, tid uint64, is1PC bool) (obj handle.Object, err error) {
+func (store *NoopTxnStore) CreateObject(dbId, tid uint64, is1PC, isTombstone bool) (obj handle.Object, err error) {
 	return
 }
-func (store *NoopTxnStore) CreateNonAppendableObject(dbId, tid uint64, _ bool, _ *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (store *NoopTxnStore) CreateNonAppendableObject(dbId, tid uint64, _, _ bool, _ *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	return
 }
 func (store *NoopTxnStore) UpdateMetaLoc(id *common.ID, un objectio.Location) (err error) {
@@ -114,8 +114,8 @@ func (store *NoopTxnStore) UpdateMetaLoc(id *common.ID, un objectio.Location) (e
 func (store *NoopTxnStore) UpdateDeltaLoc(id *common.ID, un objectio.Location) (err error) {
 	return
 }
-func (store *NoopTxnStore) SoftDeleteBlock(id *common.ID) (err error)  { return }
-func (store *NoopTxnStore) SoftDeleteObject(id *common.ID) (err error) { return }
+func (store *NoopTxnStore) SoftDeleteBlock(id *common.ID) (err error)                    { return }
+func (store *NoopTxnStore) SoftDeleteObject(isTombstone bool, id *common.ID) (err error) { return }
 func (store *NoopTxnStore) BatchDedup(
 	uint64, uint64, containers.Vector,
 ) (err error) {
@@ -143,7 +143,7 @@ func (store *NoopTxnStore) GetValue(
 	return
 }
 
-func (store *NoopTxnStore) LogTxnEntry(dbId, tableId uint64, entry txnif.TxnEntry, readed []*common.ID) (err error) {
+func (store *NoopTxnStore) LogTxnEntry(dbId, tableId uint64, entry txnif.TxnEntry, readedObject, readedTombstone []*common.ID) (err error) {
 	return
 }
 func (store *NoopTxnStore) LogTxnState(sync bool) (logEntry entry.Entry, err error) {
@@ -173,4 +173,6 @@ func (store *NoopTxnStore) GetTransactionType() txnif.TxnType {
 	return txnif.TxnType_Normal
 }
 
-func (store *NoopTxnStore) UpdateObjectStats(*common.ID, *objectio.ObjectStats) error { return nil }
+func (store *NoopTxnStore) UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error {
+	return nil
+}

@@ -75,12 +75,14 @@ func (rel *TxnRelation) Append(ctx context.Context, data *containers.Batch) erro
 func (rel *TxnRelation) AddObjsWithMetaLoc(context.Context, containers.Vector) error {
 	return nil
 }
-func (rel *TxnRelation) GetMeta() any                                                { return nil }
-func (rel *TxnRelation) GetDB() (handle.Database, error)                             { return nil, nil }
-func (rel *TxnRelation) GetObject(id *types.Objectid) (obj handle.Object, err error) { return }
-func (rel *TxnRelation) SoftDeleteObject(id *types.Objectid) (err error)             { return }
-func (rel *TxnRelation) CreateObject(bool) (obj handle.Object, err error)            { return }
-func (rel *TxnRelation) CreateNonAppendableObject(bool, *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (rel *TxnRelation) GetMeta() any                    { return nil }
+func (rel *TxnRelation) GetDB() (handle.Database, error) { return nil, nil }
+func (rel *TxnRelation) GetObject(id *types.Objectid, isTombstone bool) (obj handle.Object, err error) {
+	return
+}
+func (rel *TxnRelation) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err error) { return }
+func (rel *TxnRelation) CreateObject(bool, bool) (obj handle.Object, err error)            { return }
+func (rel *TxnRelation) CreateNonAppendableObject(bool, bool, *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	return
 }
 func (rel *TxnRelation) GetValue(*common.ID, uint32, uint16) (v any, isNull bool, err error) {

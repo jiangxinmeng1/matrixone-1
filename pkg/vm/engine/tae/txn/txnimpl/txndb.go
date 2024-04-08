@@ -69,12 +69,12 @@ func (db *txnDB) SetDropEntry(e txnif.TxnEntry) error {
 	return nil
 }
 
-func (db *txnDB) LogTxnEntry(tableId uint64, entry txnif.TxnEntry, readed []*common.ID) (err error) {
+func (db *txnDB) LogTxnEntry(tableId uint64, entry txnif.TxnEntry, readedObjects, readedTombstone []*common.ID) (err error) {
 	table, err := db.getOrSetTable(tableId)
 	if err != nil {
 		return
 	}
-	return table.LogTxnEntry(entry, readed)
+	return table.LogTxnEntry(entry, readedObjects, readedTombstone)
 }
 
 func (db *txnDB) Close() error {
@@ -298,35 +298,35 @@ func (db *txnDB) GetRelationByID(id uint64) (relation handle.Relation, err error
 	return
 }
 
-func (db *txnDB) GetObject(id *common.ID) (obj handle.Object, err error) {
+func (db *txnDB) GetObject(id *common.ID, isTombstone bool) (obj handle.Object, err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(id.TableID); err != nil {
 		return
 	}
-	return table.GetObject(id.ObjectID())
+	return table.GetObject(id.ObjectID(), isTombstone)
 }
 
-func (db *txnDB) CreateObject(tid uint64, is1PC bool) (obj handle.Object, err error) {
+func (db *txnDB) CreateObject(tid uint64, is1PC bool, isTombstone bool) (obj handle.Object, err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(tid); err != nil {
 		return
 	}
-	return table.CreateObject(is1PC)
+	return table.CreateObject(is1PC, isTombstone)
 }
-func (db *txnDB) CreateNonAppendableObject(tid uint64, is1PC bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (db *txnDB) CreateNonAppendableObject(tid uint64, is1PC bool, opt *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(tid); err != nil {
 		return
 	}
-	return table.CreateNonAppendableObject(is1PC, opt)
+	return table.CreateNonAppendableObject(is1PC, opt, isTombstone)
 }
 
-func (db *txnDB) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats) error {
+func (db *txnDB) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
 	table, err := db.getOrSetTable(id.TableID)
 	if err != nil {
 		return err
 	}
-	table.UpdateObjectStats(id, stats)
+	table.UpdateObjectStats(id, stats, isTombstone)
 	return nil
 }
 func (db *txnDB) getOrSetTable(id uint64) (table *txnTable, err error) {
@@ -358,19 +358,12 @@ func (db *txnDB) getOrSetTable(id uint64) (table *txnTable, err error) {
 	return
 }
 
-func (db *txnDB) UpdateDeltaLoc(id *common.ID, deltaLoc objectio.Location) (err error) {
+func (db *txnDB) SoftDeleteObject(id *common.ID, isTombstone bool) (err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(id.TableID); err != nil {
 		return
 	}
-	return table.UpdateDeltaLoc(id, deltaLoc)
-}
-func (db *txnDB) SoftDeleteObject(id *common.ID) (err error) {
-	var table *txnTable
-	if table, err = db.getOrSetTable(id.TableID); err != nil {
-		return
-	}
-	return table.SoftDeleteObject(id.ObjectID())
+	return table.SoftDeleteObject(id.ObjectID(), isTombstone)
 }
 func (db *txnDB) NeedRollback() bool {
 	return db.createEntry != nil && db.dropEntry != nil
@@ -465,7 +458,10 @@ func (db *txnDB) PrePrepare(ctx context.Context) (err error) {
 		}
 	}
 	for _, table := range db.tables {
-		if err = table.PrePrepareDedup(ctx); err != nil {
+		if err = table.PrePrepareDedup(ctx, true); err != nil {
+			return
+		}
+		if err = table.PrePrepareDedup(ctx, false); err != nil {
 			return
 		}
 	}

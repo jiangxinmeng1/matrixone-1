@@ -217,12 +217,12 @@ func (store *txnStore) IncreateWriteCnt() int {
 	return int(store.writeOps.Add(1))
 }
 
-func (store *txnStore) LogTxnEntry(dbId uint64, tableId uint64, entry txnif.TxnEntry, readed []*common.ID) (err error) {
+func (store *txnStore) LogTxnEntry(dbId uint64, tableId uint64, entry txnif.TxnEntry, readedObject, readedTombstone []*common.ID) (err error) {
 	db, err := store.getOrSetDB(dbId)
 	if err != nil {
 		return
 	}
-	return db.LogTxnEntry(tableId, entry, readed)
+	return db.LogTxnEntry(tableId, entry, readedObject, readedTombstone)
 }
 
 func (store *txnStore) LogTxnState(sync bool) (logEntry entry.Entry, err error) {
@@ -330,18 +330,6 @@ func (store *txnStore) TryDeleteByDeltaloc(
 		return
 	}
 	return db.TryDeleteByDeltaloc(id, deltaloc)
-}
-
-func (store *txnStore) UpdateDeltaLoc(id *common.ID, deltaLoc objectio.Location) (err error) {
-	store.IncreateWriteCnt()
-	db, err := store.getOrSetDB(id.DbID)
-	if err != nil {
-		return err
-	}
-	// if table.IsDeleted() {
-	// 	return txnbase.ErrNotFound
-	// }
-	return db.UpdateDeltaLoc(id, deltaLoc)
 }
 
 func (store *txnStore) GetByFilter(ctx context.Context, dbId, tid uint64, filter *handle.Filter) (id *common.ID, offset uint32, err error) {
@@ -609,28 +597,28 @@ func (store *txnStore) GetRelationByID(dbId uint64, id uint64) (relation handle.
 	return db.GetRelationByID(id)
 }
 
-func (store *txnStore) GetObject(id *common.ID) (obj handle.Object, err error) {
+func (store *txnStore) GetObject(id *common.ID, isTombstone bool) (obj handle.Object, err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(id.DbID); err != nil {
 		return
 	}
-	return db.GetObject(id)
+	return db.GetObject(id, isTombstone)
 }
 
-func (store *txnStore) CreateObject(dbId, tid uint64, is1PC bool) (obj handle.Object, err error) {
+func (store *txnStore) CreateObject(dbId, tid uint64, is1PC, isTombstone bool) (obj handle.Object, err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(dbId); err != nil {
 		return
 	}
-	return db.CreateObject(tid, is1PC)
+	return db.CreateObject(tid, is1PC, isTombstone)
 }
 
-func (store *txnStore) CreateNonAppendableObject(dbId, tid uint64, is1PC bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (store *txnStore) CreateNonAppendableObject(dbId, tid uint64, isTombstone, is1PC bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(dbId); err != nil {
 		return
 	}
-	return db.CreateNonAppendableObject(tid, is1PC, opt)
+	return db.CreateNonAppendableObject(tid, is1PC, opt, isTombstone)
 }
 
 func (store *txnStore) getOrSetDB(id uint64) (db *txnDB, err error) {
@@ -655,16 +643,16 @@ func (store *txnStore) getOrSetDB(id uint64) (db *txnDB, err error) {
 	store.dbs[id] = db
 	return
 }
-func (store *txnStore) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats) error {
+func (store *txnStore) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
 	db, err := store.getOrSetDB(id.DbID)
 	if err != nil {
 		return err
 	}
-	db.UpdateObjectStats(id, stats)
+	db.UpdateObjectStats(id, stats, isTombstone)
 	return nil
 }
 
-func (store *txnStore) SoftDeleteObject(id *common.ID) (err error) {
+func (store *txnStore) SoftDeleteObject(isTombstone bool, id *common.ID) (err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(id.DbID); err != nil {
 		return
@@ -672,7 +660,7 @@ func (store *txnStore) SoftDeleteObject(id *common.ID) (err error) {
 	perfcounter.Update(store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.SoftDelete.Add(1)
 	})
-	return db.SoftDeleteObject(id)
+	return db.SoftDeleteObject(id, isTombstone)
 }
 
 func (store *txnStore) ApplyRollback() (err error) {

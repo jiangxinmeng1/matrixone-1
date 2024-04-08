@@ -40,7 +40,7 @@ type ObjectEntry struct {
 	*BaseEntryImpl[*ObjectMVCCNode]
 	table *TableEntry
 	*ObjectNode
-	objData data.Object
+	objData     data.Object
 	deleteCount atomic.Uint32
 }
 
@@ -49,10 +49,10 @@ func (entry *ObjectEntry) GetLoaded() bool {
 	return stats.Rows() != 0
 }
 
-func (entry *ObjectEntry) AddDeleteCount(count uint32){	
+func (entry *ObjectEntry) AddDeleteCount(count uint32) {
 	entry.deleteCount.Add(count)
 }
-func (entry *ObjectEntry) GetDeleteCount()uint32{
+func (entry *ObjectEntry) GetDeleteCount() uint32 {
 	return entry.deleteCount.Load()
 }
 

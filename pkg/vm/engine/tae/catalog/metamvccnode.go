@@ -208,6 +208,7 @@ type ObjectNode struct {
 
 	// for tombstone
 	persistedByCN bool
+	IsTombstone   bool
 
 	remainingRows common.FixedSampleIII[int]
 }

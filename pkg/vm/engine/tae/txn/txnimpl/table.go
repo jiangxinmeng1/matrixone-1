@@ -150,7 +150,8 @@ func (tbl *txnTable) TransferDeleteIntent(
 	entry, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		id.TableID,
-		id.ObjectID())
+		id.ObjectID(),
+		true)
 	if err != nil {
 		panic(err)
 	}
@@ -321,7 +322,7 @@ func (tbl *txnTable) recurTransferDelete(
 	}
 	pkVec := containers.MakeVector(tbl.schema.GetSingleSortKeyType(), common.WorkspaceAllocator)
 	pkVec.Append(pk, false)
-	if err = tbl.RangeDelete(tbl.store.ctx, newID, offset, offset, pkVec, handle.DT_Normal); err != nil {
+	if err = tbl.RangeDelete(newID, offset, offset, pkVec, handle.DT_Normal); err != nil {
 		return err
 	}
 	common.DoIfInfoEnabled(func() {
@@ -416,11 +417,12 @@ func (tbl *txnTable) CollectCmd(cmdMgr *commandManager) (err error) {
 	return
 }
 
-func (tbl *txnTable) GetObject(id *types.Objectid) (obj handle.Object, err error) {
+func (tbl *txnTable) GetObject(id *types.Objectid, isTombstone bool) (obj handle.Object, err error) {
 	meta, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		tbl.entry.ID,
-		id)
+		id,
+		isTombstone)
 	if err != nil {
 		return
 	}
@@ -428,8 +430,8 @@ func (tbl *txnTable) GetObject(id *types.Objectid) (obj handle.Object, err error
 	return
 }
 
-func (tbl *txnTable) SoftDeleteObject(id *types.Objectid) (err error) {
-	txnEntry, err := tbl.entry.DropObjectEntry(id, tbl.store.txn)
+func (tbl *txnTable) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err error) {
+	txnEntry, err := tbl.entry.DropObjectEntry(id, tbl.store.txn, isTombstone)
 	if err != nil {
 		return
 	}
@@ -441,27 +443,27 @@ func (tbl *txnTable) SoftDeleteObject(id *types.Objectid) (err error) {
 	return
 }
 
-func (tbl *txnTable) CreateObject(is1PC bool) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateObject(is1PC bool, isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.Create.Add(1)
 	})
-	return tbl.createObject(catalog.ES_Appendable, is1PC, nil)
+	return tbl.createObject(catalog.ES_Appendable, is1PC, nil, isTombstone)
 }
 
-func (tbl *txnTable) CreateNonAppendableObject(is1PC bool, opts *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateNonAppendableObject(is1PC bool, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.CreateNonAppendable.Add(1)
 	})
-	return tbl.createObject(catalog.ES_NotAppendable, is1PC, opts)
+	return tbl.createObject(catalog.ES_NotAppendable, is1PC, opts, isTombstone)
 }
 
-func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	var factory catalog.ObjectDataFactory
 	if tbl.store.dataFactory != nil {
 		factory = tbl.store.dataFactory.MakeObjectFactory()
 	}
 	var meta *catalog.ObjectEntry
-	if meta, err = tbl.entry.CreateObject(tbl.store.txn, state, opts, factory); err != nil {
+	if meta, err = tbl.entry.CreateObject(tbl.store.txn, state, opts, factory, isTombstone); err != nil {
 		return
 	}
 	obj = newObject(tbl, meta)
@@ -474,10 +476,10 @@ func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *ob
 	return
 }
 
-func (tbl *txnTable) LogTxnEntry(entry txnif.TxnEntry, readed []*common.ID) (err error) {
+func (tbl *txnTable) LogTxnEntry(entry txnif.TxnEntry, readedObject, readedTombstone []*common.ID) (err error) {
 	tbl.store.IncreateWriteCnt()
 	tbl.txnEntries.Append(entry)
-	for _, id := range readed {
+	for _, id := range readedObject {
 		// warChecker skip non-block read
 		if objectio.IsEmptyBlkid(&id.BlockID) {
 			continue
@@ -487,7 +489,21 @@ func (tbl *txnTable) LogTxnEntry(entry txnif.TxnEntry, readed []*common.ID) (err
 		tbl.store.warChecker.InsertByID(
 			tbl.entry.GetDB().ID,
 			id.TableID,
-			id.ObjectID())
+			id.ObjectID(),
+			false)
+	}
+	for _, id := range readedTombstone {
+		// warChecker skip non-block read
+		if objectio.IsEmptyBlkid(&id.BlockID) {
+			continue
+		}
+
+		// record block into read set
+		tbl.store.warChecker.InsertByID(
+			tbl.entry.GetDB().ID,
+			id.TableID,
+			id.ObjectID(),
+			true)
 	}
 	return
 }
@@ -748,7 +764,7 @@ func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, co
 	meta, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		id.TableID,
-		id.ObjectID())
+		id.ObjectID(), false)
 	if err != nil {
 		panic(err)
 	}
@@ -756,8 +772,8 @@ func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, co
 	_, blkIdx := id.BlockID.Offsets()
 	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(), blkIdx, int(row), int(col), common.WorkspaceAllocator)
 }
-func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats) error {
-	meta, err := tbl.entry.GetObjectByID(id.ObjectID())
+func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
+	meta, err := tbl.entry.GetObjectByID(id.ObjectID(), isTombstone)
 	if err != nil {
 		return err
 	}

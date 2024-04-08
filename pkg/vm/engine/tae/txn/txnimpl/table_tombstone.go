@@ -40,7 +40,6 @@ func (tbl *txnTable) RangeDeleteLocalRows(start, end uint32) (err error) {
 
 // RangeDelete delete block rows in range [start, end]
 func (tbl *txnTable) RangeDelete(
-	ctx context.Context,
 	id *common.ID,
 	start,
 	end uint32,
@@ -85,6 +84,7 @@ func (tbl *txnTable) RangeDelete(
 	deleteBatch := tbl.createTombstoneBatch(id, start, end, pk)
 
 	dedupType := tbl.store.txn.GetDedupType()
+	ctx := tbl.store.ctx
 	if dedupType == txnif.FullDedup {
 		//do PK deduplication check against txn's work space.
 		if err = tbl.DedupWorkSpace(
@@ -135,7 +135,8 @@ func (tbl *txnTable) RangeDelete(
 	}
 	obj, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
-		id.TableID, id.ObjectID())
+		id.TableID, id.ObjectID(),
+		true)
 	if err != nil {
 		return
 	}

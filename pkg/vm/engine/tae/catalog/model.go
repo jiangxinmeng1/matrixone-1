@@ -25,7 +25,7 @@ const (
 	SortKeyNamePrefx     = "_SORT_"
 
 	AttrRowID    = PhyAddrColumnName
-	AttrCommitTs = catalog.TableTailAttrCommitTs
+	AttrCommitTs = catalog.TableTailAttrDeleteRowID
 	AttrAborted  = catalog.TableTailAttrAborted
 	AttrPKVal    = catalog.TableTailAttrPKVal
 

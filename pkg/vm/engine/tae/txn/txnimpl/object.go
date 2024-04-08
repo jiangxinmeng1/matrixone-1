@@ -70,9 +70,9 @@ type composedObjectIt struct {
 	uncommitted *catalog.ObjectEntry
 }
 
-func newObjectItOnSnap(table *txnTable) handle.ObjectIt {
+func newObjectItOnSnap(table *txnTable, isTombstone bool) handle.ObjectIt {
 	it := &ObjectIt{
-		linkIt: table.entry.MakeObjectIt(true),
+		linkIt: table.entry.MakeObjectIt(true, isTombstone),
 		table:  table,
 	}
 	var err error
@@ -97,9 +97,9 @@ func newObjectItOnSnap(table *txnTable) handle.ObjectIt {
 	return it
 }
 
-func newObjectIt(table *txnTable) handle.ObjectIt {
+func newObjectIt(table *txnTable, isTombstone bool) handle.ObjectIt {
 	it := &ObjectIt{
-		linkIt: table.entry.MakeObjectIt(true),
+		linkIt: table.entry.MakeObjectIt(true, isTombstone),
 		table:  table,
 	}
 	var err error

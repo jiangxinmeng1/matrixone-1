@@ -33,7 +33,8 @@ import (
 )
 
 type tableSpace struct {
-	entry *catalog.ObjectEntry
+	entry       *catalog.ObjectEntry
+	isTombstone bool
 
 	appendable InsertNode
 	//index for primary key
@@ -47,18 +48,22 @@ type tableSpace struct {
 	nobj        handle.Object
 
 	stats []objectio.ObjectStats
+	// for tombstone table space
+	objs  []*objectio.ObjectId
 }
 
-func newTableSpace(table *txnTable) *tableSpace {
-	return &tableSpace{
-		entry: catalog.NewStandaloneObject(
-			table.entry,
-			table.store.txn.GetStartTS()),
-		nodes:   make([]InsertNode, 0),
-		index:   NewSimpleTableIndex(),
-		appends: make([]*appendCtx, 0),
-		table:   table,
+func newTableSpace(table *txnTable, isTombstone bool) *tableSpace {
+	space := &tableSpace{
+		nodes:       make([]InsertNode, 0),
+		index:       NewSimpleTableIndex(),
+		appends:     make([]*appendCtx, 0),
+		table:       table,
+		isTombstone: isTombstone,
 	}
+	space.entry = catalog.NewStandaloneObject(
+		table.entry,
+		table.store.txn.GetStartTS())
+	return space
 }
 
 func (space *tableSpace) GetLocalPhysicalAxis(row uint32) (int, uint32) {

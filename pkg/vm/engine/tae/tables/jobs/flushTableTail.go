@@ -645,7 +645,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context) (subt
 		}
 		// do not close data, leave that to wait phase
 		if deletes, _, err = objData.CollectDeleteInRange(
-			ctx, types.TS{}, task.txn.GetStartTS(), true, common.MergeAllocator,
+			ctx, types.TS{}, task.txn.GetStartTS(),common.MergeAllocator,
 		); err != nil {
 			return
 		}
@@ -716,7 +716,7 @@ func (task *flushTableTailTask) flushAllDeletesFromDelSrc(ctx context.Context) (
 		var deletes *containers.Batch
 		var emptyDelObjs *bitmap.Bitmap
 		if deletes, emptyDelObjs, err = objData.CollectDeleteInRange(
-			ctx, types.TS{}, task.txn.GetStartTS(), true, common.MergeAllocator,
+			ctx, types.TS{}, task.txn.GetStartTS(),  common.MergeAllocator,
 		); err != nil {
 			return
 		}

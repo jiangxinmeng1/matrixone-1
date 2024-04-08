@@ -136,7 +136,6 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 			entry.txn.GetContext(),
 			startTS.Next(),
 			entry.txn.GetPrepareTS(),
-			false,
 			common.MergeAllocator,
 		)
 		if err != nil {
@@ -233,15 +232,6 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 
 // ApplyCommit Gc in memory deletes and update table compact status
 func (entry *flushTableTailEntry) ApplyCommit() (err error) {
-	for _, blk := range entry.ablksMetas {
-		_ = blk.GetObjectData().TryUpgrade()
-		blk.GetObjectData().UpgradeAllDeleteChain()
-	}
-
-	for _, blk := range entry.delSrcMetas {
-		blk.GetObjectData().UpgradeAllDeleteChain()
-	}
-
 	tbl := entry.tableEntry
 	tbl.Stats.Lock()
 	defer tbl.Stats.Unlock()

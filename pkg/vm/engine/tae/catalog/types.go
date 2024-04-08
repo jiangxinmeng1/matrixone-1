@@ -17,6 +17,7 @@ package catalog
 import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 )
 
@@ -110,4 +111,25 @@ func NewTombstoneBatch(pkType types.Type, mp *mpool.MPool) *containers.Batch {
 	bat.AddVector(AttrPKVal, pkVec)
 	bat.AddVector(AttrAborted, abortVec)
 	return bat
+}
+
+func NewTombstoneBatchWithPKVector(pkVec containers.Vector, mp *mpool.MPool) *containers.Batch {
+	bat := containers.NewBatch()
+	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), mp)
+	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
+	abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
+	bat.AddVector(PhyAddrColumnName, rowIDVec)
+	bat.AddVector(AttrCommitTs, commitTSVec)
+	bat.AddVector(AttrPKVal, pkVec)
+	bat.AddVector(AttrAborted, abortVec)
+	return bat
+}
+
+func BuildLocation(stats objectio.ObjectStats, blkOffset uint16, blkMaxRows uint32) objectio.Location {
+	blkRow := blkMaxRows
+	if blkOffset == uint16(stats.BlkCnt())-1 {
+		blkRow = stats.Rows() - uint32(blkOffset)*blkMaxRows
+	}
+	metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, blkOffset)
+	return metaloc
 }

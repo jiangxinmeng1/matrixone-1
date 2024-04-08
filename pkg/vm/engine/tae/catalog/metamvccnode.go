@@ -206,6 +206,9 @@ type ObjectNode struct {
 	SortHint uint64 // sort object by create time, make iteration on object determined
 	sorted   bool   // deprecated
 
+	// for tombstone
+	persistedByCN bool
+
 	remainingRows common.FixedSampleIII[int]
 }
 

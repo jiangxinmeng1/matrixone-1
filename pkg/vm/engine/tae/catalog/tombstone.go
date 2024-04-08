@@ -20,57 +20,11 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
-	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
-type TombstoneEntry struct {
-	ObjectEntry
-	objectBF      objectio.BloomFilter
-	persistedByCN bool
-}
-
-func (e *TombstoneEntry) quickSkipObject(objectID objectio.ObjectId) (skip bool, err error) {
-	if !e.HasCommittedPersistedData() {
-		return false, nil
-	}
-	bfIndex := index.NewEmptyBinaryFuseFilter()
-	if err = index.DecodeBloomFilter(bfIndex, e.objectBF); err != nil {
-		return
-	}
-	exist, _ := bfIndex.MayContainsKey(objectID[:])
-	return !exist, nil
-}
-func (entry *TombstoneEntry) buildObjectBF(ctx context.Context, mp *mpool.MPool) objectio.BloomFilter {
-	objectsVector := containers.MakeVector(types.T_varchar.ToType(), mp)
-	objectIDs := make(map[types.Objectid]struct{})
-	err := entry.foreachTombstoneInRange(
-		ctx, types.TS{}, types.MaxTs(),
-		mp,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			objID := rowID.BorrowObjectID()
-			objectIDs[*objID] = struct{}{}
-			return true, nil
-		})
-	if err != nil {
-		panic(err)
-	}
-	for objID := range objectIDs {
-		objectsVector.Append(objID[:], false)
-	}
-	bf, err := index.NewBinaryFuseFilter(objectsVector)
-	if err != nil {
-		panic(err)
-	}
-	buf, err := bf.Marshal()
-	if err != nil {
-		panic(err)
-	}
-	return buf
-}
-func (entry *TombstoneEntry) foreachTombstoneInRange(
+func (entry *ObjectEntry) foreachTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
 	mp *mpool.MPool,
@@ -129,7 +83,7 @@ func (entry *TombstoneEntry) foreachTombstoneInRange(
 	return nil
 }
 
-func (entry *TombstoneEntry) foreachATombstoneInRange(
+func (entry *ObjectEntry) foreachATombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
 	mp *mpool.MPool,
@@ -164,7 +118,7 @@ func (entry *TombstoneEntry) foreachATombstoneInRange(
 	return nil
 }
 
-func (entry *TombstoneEntry) foreachTombstoneVisible(
+func (entry *ObjectEntry) foreachTombstoneVisible(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	blkOffset uint16,
@@ -218,19 +172,12 @@ func (entry *TombstoneEntry) foreachTombstoneVisible(
 }
 
 // for each tombstone in range [start,end]
-func (entry *TombstoneEntry) foreachTombstoneInRangeWithObjectID(
+func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	ctx context.Context,
 	objID types.Objectid,
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	skip, err := entry.quickSkipObject(objID)
-	if err != nil {
-		return err
-	}
-	if skip {
-		return nil
-	}
 	entry.foreachTombstoneInRange(ctx, start, end, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if *rowID.BorrowObjectID() != objID {
@@ -242,19 +189,12 @@ func (entry *TombstoneEntry) foreachTombstoneInRangeWithObjectID(
 }
 
 // for each tombstone in range [start,end]
-func (entry *TombstoneEntry) foreachTombstoneInRangeWithBlockID(
+func (entry *ObjectEntry) foreachTombstoneInRangeWithBlockID(
 	ctx context.Context,
 	blkID types.Blockid,
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	skip, err := entry.quickSkipObject(*blkID.Object()) // TODO skip blk
-	if err != nil {
-		return err
-	}
-	if skip {
-		return nil
-	}
 	entry.foreachTombstoneInRange(ctx, start, end, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if *rowID.BorrowBlockID() != blkID {
@@ -265,19 +205,10 @@ func (entry *TombstoneEntry) foreachTombstoneInRangeWithBlockID(
 	return nil
 }
 
-func (entry *TombstoneEntry) tryGetTombstone(
+func (entry *ObjectEntry) tryGetTombstone(
 	ctx context.Context,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	objID := rowID.BorrowObjectID()
-	skip, err := entry.quickSkipObject(*objID)
-	if err != nil {
-		return
-	}
-	if skip {
-		ok = false
-		return
-	}
 	entry.foreachTombstoneInRange(ctx, types.TS{}, types.MaxTs(), mp,
 		func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
 			if row != rowID {
@@ -292,20 +223,11 @@ func (entry *TombstoneEntry) tryGetTombstone(
 	return
 }
 
-func (entry *TombstoneEntry) tryGetTombstoneVisible(
+func (entry *ObjectEntry) tryGetTombstoneVisible(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	objID := rowID.BorrowObjectID()
-	skip, err := entry.quickSkipObject(*objID)
-	if err != nil {
-		return
-	}
-	if skip {
-		ok = false
-		return
-	}
 	blkID := rowID.BorrowBlockID()
 	_, blkOffset := blkID.Offsets()
 	entry.foreachTombstoneVisible(ctx, txn, blkOffset, mp,

@@ -171,12 +171,7 @@ func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) 
 		return nil, err
 	}
 	blkMaxRows := blk.meta.GetSchema().BlockMaxRows
-	blkRow := blkMaxRows
-	if bid == uint16(blk.meta.BlockCnt())-1 {
-		blkRow = stats.Rows() - uint32(bid)*blkMaxRows
-	}
-	metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, bid)
-	return metaloc, nil
+	return catalog.BuildLocation(stats, bid, blkMaxRows), nil
 }
 
 func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector, err error) {

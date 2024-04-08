@@ -157,7 +157,6 @@ func (entry *mergeObjectsEntry) transferBlockDeletes(
 		entry.txn.GetContext(),
 		startTS.Next(),
 		entry.txn.GetPrepareTS(),
-		false,
 		common.MergeAllocator,
 	)
 	if err != nil {

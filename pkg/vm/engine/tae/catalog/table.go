@@ -60,9 +60,9 @@ type TableEntry struct {
 	fullName string
 
 	deleteList *btree.BTreeG[DeleteEntry]
-	tombstoneEntries map[types.Objectid]*common.GenericDLNode[*TombstoneEntry]
+	tombstoneEntries map[types.Objectid]*common.GenericDLNode[*ObjectEntry]
 	//link.head and link.tail is nil when create tableEntry object.
-	tombstoneLink      *common.GenericSortedDList[*TombstoneEntry]
+	tombstoneLink      *common.GenericSortedDList[*ObjectEntry]
 }
 
 type DeleteEntry struct {
@@ -251,16 +251,13 @@ func (entry *TableEntry) GetObjectsByID(id *types.Segmentid) (obj []*ObjectEntry
 	return obj, nil
 }
 
-func (entry *TableEntry) MakeObjectIt(reverse bool) *common.GenericSortedDListIt[*ObjectEntry] {
+func (entry *TableEntry) MakeObjectIt(reverse bool, isTombstone bool) *common.GenericSortedDListIt[*ObjectEntry] {
 	entry.RLock()
 	defer entry.RUnlock()
-	return common.NewGenericSortedDListIt(entry.RWMutex, entry.link, reverse)
-}
-
-func (entry *TableEntry) MakeTombstoneIt(reverse bool) *common.GenericSortedDListIt[*TombstoneEntry] {
-	entry.RLock()
-	defer entry.RUnlock()
+	if isTombstone{
 	return common.NewGenericSortedDListIt(entry.RWMutex, entry.tombstoneLink, reverse)
+	}
+	return common.NewGenericSortedDListIt(entry.RWMutex, entry.link, reverse)
 }
 
 func (entry *TableEntry) CreateObject(

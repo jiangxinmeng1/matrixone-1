@@ -46,13 +46,19 @@ type memoryNode struct {
 	pkIndex *indexwrapper.MutIndex
 }
 
-func newMemoryNode(object *baseObject) *memoryNode {
+func newMemoryNode(object *baseObject, isTombstone bool) *memoryNode {
 	impl := new(memoryNode)
 	impl.object = object
 
-	// Get the lastest schema, it will not be modified, so just keep the pointer
-	schema := object.meta.GetSchemaLocked()
-	impl.writeSchema = schema
+	var schema *catalog.Schema
+	if isTombstone {
+		pkType := object.meta.GetSchemaLocked().GetPrimaryKey().GetType()
+		schema = catalog.GetTombstoneSchema(false, pkType)
+	} else {
+		// Get the lastest schema, it will not be modified, so just keep the pointer
+		schema = object.meta.GetSchemaLocked()
+		impl.writeSchema = schema
+	}
 	// impl.data = containers.BuildBatchWithPool(
 	// 	schema.AllNames(), schema.AllTypes(), 0, object.rt.VectorPool.Memtable,
 	// )

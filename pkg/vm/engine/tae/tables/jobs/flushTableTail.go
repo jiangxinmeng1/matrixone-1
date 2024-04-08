@@ -75,7 +75,6 @@ type flushTableTailTask struct {
 
 	dirtyLen                 int
 	createdMergedObjectName  string
-	createdDeletesObjectName string
 
 	mergeRowsCnt, aObjDeletesCnt, nObjDeletesCnt int
 }
@@ -736,40 +735,6 @@ func (task *flushTableTailTask) flushAllDeletesFromDelSrc(ctx context.Context) (
 		subtask = NewFlushDeletesTask(tasks.WaitableCtx, task.rt.Fs, bufferBatch)
 		if err = task.rt.Scheduler.Schedule(subtask); err != nil {
 			return
-		}
-	}
-	return
-}
-
-// waitFlushAllDeletesFromDelSrc waits all io tasks about flushing deletes from objs, update locations but skip those in emtpyDelObjIdx
-func (task *flushTableTailTask) waitFlushAllDeletesFromDelSrc(ctx context.Context, subtask *flushDeletesTask, emtpyDelObjIdx []*bitmap.Bitmap) (err error) {
-	if subtask == nil {
-		return
-	}
-	ictx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-	defer cancel()
-	if err = subtask.WaitDone(ictx); err != nil {
-		return err
-	}
-	task.createdDeletesObjectName = subtask.name.String()
-	deltaLoc := blockio.EncodeLocation(
-		subtask.name,
-		subtask.blocks[0].GetExtent(),
-		uint32(subtask.delta.Length()),
-		subtask.blocks[0].GetID())
-
-	v2.TaskFlushDeletesCountHistogram.Observe(float64(task.nObjDeletesCnt))
-	v2.TaskFlushDeletesSizeHistogram.Observe(float64(deltaLoc.Extent().End()))
-	logutil.Infof("[FlushTabletail] task %d update %s for approximate %d objs", task.ID(), deltaLoc, len(task.delSrcHandles))
-	for i, hdl := range task.delSrcHandles {
-		for j := 0; j < hdl.GetMeta().(*catalog.ObjectEntry).BlockCnt(); j++ {
-			if emtpyDelObjIdx[i] != nil && emtpyDelObjIdx[i].Contains(uint64(j)) {
-				continue
-			}
-			if err = hdl.UpdateDeltaLoc(uint16(j), deltaLoc); err != nil {
-				return err
-			}
-
 		}
 	}
 	return

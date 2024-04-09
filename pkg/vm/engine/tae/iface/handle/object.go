@@ -82,14 +82,11 @@ type ObjectReader interface {
 type ObjectWriter interface {
 	io.Closer
 	String() string
-	Update(blk uint64, row uint32, col uint16, v any) error
-	RangeDelete(blk uint16, start, end uint32, dt DeleteType, mp *mpool.MPool) error
 
 	PushDeleteOp(filter Filter) error
 	PushUpdateOp(filter Filter, attr string, val any) error
 
 	UpdateStats(objectio.ObjectStats) error
-	UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) error
 }
 
 type Object interface {

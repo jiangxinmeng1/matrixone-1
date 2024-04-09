@@ -175,7 +175,7 @@ func (entry *TableEntry) IsVirtual() bool {
 	if !entry.db.IsSystemDB() {
 		return false
 	}
-	name := entry.GetLastestSchemaLocked().Name
+	name := entry.GetLastestSchemaLocked(false).Name
 	return name == pkgcatalog.MO_DATABASE ||
 		name == pkgcatalog.MO_TABLES ||
 		name == pkgcatalog.MO_COLUMNS
@@ -297,16 +297,24 @@ func (entry *TableEntry) deleteEntryLocked(objectEntry *ObjectEntry) error {
 }
 
 // GetLastestSchemaLocked returns the latest committed schema with entry Not locked
-func (entry *TableEntry) GetLastestSchemaLocked() *Schema {
+func (entry *TableEntry) GetLastestSchemaLocked(isTombstone bool) *Schema {
+	if isTombstone {
+		tombstoneSchema := entry.tombstoneSchema.Load()
+		if tombstoneSchema == nil {
+			entry.tombstoneSchema.Store(GetTombstoneSchema(true, entry.schema.Load()))
+			tombstoneSchema = entry.tombstoneSchema.Load()
+		}
+		return tombstoneSchema
+	}
 	return entry.schema.Load()
 }
 
 // GetLastestSchema returns the latest committed schema with entry locked
-func (entry *TableEntry) GetLastestSchema() *Schema {
+func (entry *TableEntry) GetLastestSchema(isTombstone bool) *Schema {
 	entry.Lock()
 	defer entry.Unlock()
 
-	return entry.schema.Load()
+	return entry.GetLastestSchemaLocked(isTombstone)
 }
 
 // GetVisibleSchema returns committed schema visible at the given txn
@@ -317,7 +325,7 @@ func (entry *TableEntry) GetVisibleSchema(txn txnif.TxnReader) (schema, tombston
 	if node != nil {
 		return node.BaseNode.Schema, node.BaseNode.GetTombstoneSchema(false)
 	}
-	return nil,nil
+	return nil, nil
 }
 
 func (entry *TableEntry) GetVersionSchema(ver uint32) *Schema {
@@ -336,12 +344,12 @@ func (entry *TableEntry) GetVersionSchema(ver uint32) *Schema {
 }
 
 func (entry *TableEntry) GetColDefs() []*ColDef {
-	return entry.GetLastestSchemaLocked().ColDefs
+	return entry.GetLastestSchemaLocked(false).ColDefs
 }
 
 func (entry *TableEntry) GetFullName() string {
 	if len(entry.fullName) == 0 {
-		schema := entry.GetLastestSchemaLocked()
+		schema := entry.GetLastestSchemaLocked(false)
 		entry.fullName = genTblFullName(schema.AcInfo.TenantID, schema.Name)
 	}
 	return entry.fullName
@@ -388,7 +396,7 @@ func (entry *TableEntry) ObjectStats(level common.PPLevel, start, end int) (stat
 
 	it := entry.MakeObjectIt(true, false)
 	zonemapKind := common.ZonemapPrintKindNormal
-	if schema := entry.GetLastestSchemaLocked(); schema.HasSortKey() && strings.HasPrefix(schema.GetSingleSortKey().Name, "__") {
+	if schema := entry.GetLastestSchemaLocked(false); schema.HasSortKey() && strings.HasPrefix(schema.GetSingleSortKey().Name, "__") {
 		zonemapKind = common.ZonemapPrintKindCompose
 	}
 
@@ -472,7 +480,7 @@ func (entry *TableEntry) StringWithLevel(level common.PPLevel) string {
 	return entry.StringLockedWithLevel(level)
 }
 func (entry *TableEntry) StringLockedWithLevel(level common.PPLevel) string {
-	name := entry.GetLastestSchemaLocked().Name
+	name := entry.GetLastestSchemaLocked(false).Name
 	if level <= common.PPL1 {
 		return fmt.Sprintf("TBL[%d][name=%s][C@%s,D@%s]",
 			entry.ID, name, entry.GetCreatedAtLocked().ToString(), entry.GetDeleteAt().ToString())

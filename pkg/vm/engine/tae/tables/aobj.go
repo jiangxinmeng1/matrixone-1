@@ -167,7 +167,16 @@ func (obj *aobject) GetColumnDataById(
 		mp,
 	)
 }
-
+func (obj *aobject) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
+	node := obj.PinNode()
+	defer node.Unref()
+	if !node.IsPersisted() {
+		return node.MustMNode().getCommitTSVec(maxRow, mp)
+	} else {
+		vec, err := obj.LoadPersistedCommitTS(0)
+		return vec, err
+	}
+}
 func (obj *aobject) resolveColumnDatas(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -223,7 +232,9 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	// it is a coarse-grained check
 	return false
 }
-
+func (obj *aobject) GetCommitVec() (containers.Vector, error) {
+	return nil, nil
+}
 func (obj *aobject) resolveColumnData(
 	ctx context.Context,
 	txn txnif.TxnReader,

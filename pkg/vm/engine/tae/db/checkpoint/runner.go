@@ -864,7 +864,7 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 	scopes := make([]common.ID, 0, len(metas))
 	for _, meta := range metas {
 		if !meta.GetObjectData().PrepareCompact() {
-			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked().Name, meta.ID.String())
+			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID.String())
 			return moerr.GetOkExpectedEOB()
 		}
 		scopes = append(scopes, *meta.AsCommonID())
@@ -873,7 +873,7 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 	factory := jobs.FlushTableTailTaskFactory(metas, tombstoneMetas, r.rt, endTs)
 	if _, err := r.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory); err != nil {
 		if err != tasks.ErrScheduleScopeConflict {
-			logutil.Infof("[FlushTabletail] %d-%s %v", table.ID, table.GetLastestSchemaLocked().Name, err)
+			logutil.Infof("[FlushTabletail] %d-%s %v", table.ID, table.GetLastestSchemaLocked(false).Name, err)
 		}
 		return moerr.GetOkExpectedEOB()
 	}
@@ -935,14 +935,14 @@ func (r *runner) tryCompactTree(entry *logtail.DirtyTreeEntry, force bool) {
 		// debug log, delete later
 		if !stats.LastFlush.IsEmpty() && asize+dsize > 2*1000*1024 {
 			logutil.Infof("[flushtabletail] %v(%v) %v dels  FlushCountDown %v",
-				table.GetLastestSchemaLocked().Name,
+				table.GetLastestSchemaLocked(false).Name,
 				common.HumanReadableBytes(asize+dsize),
 				common.HumanReadableBytes(dsize),
 				time.Until(stats.FlushDeadline))
 		}
 
 		if force {
-			logutil.Infof("[flushtabletail] force flush %v-%s", table.ID, table.GetLastestSchemaLocked().Name)
+			logutil.Infof("[flushtabletail] force flush %v-%s", table.ID, table.GetLastestSchemaLocked(false).Name)
 			if err := r.fireFlushTabletail(table, dirtyTree, endTs); err == nil {
 				stats.ResetDeadlineWithLock()
 			}

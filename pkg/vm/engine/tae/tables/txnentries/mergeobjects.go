@@ -41,8 +41,9 @@ type mergeObjectsEntry struct {
 	totalCreatedBlkCnt int
 	transMappings      *api.BlkTransferBooking
 
-	rt      *dbutils.Runtime
-	pageIds []*common.ID
+	rt          *dbutils.Runtime
+	pageIds     []*common.ID
+	isTombstone bool
 }
 
 func NewMergeObjectsEntry(
@@ -50,6 +51,7 @@ func NewMergeObjectsEntry(
 	relation handle.Relation,
 	droppedObjs, createdObjs []*catalog.ObjectEntry,
 	transMappings *api.BlkTransferBooking,
+	isTombstone bool,
 	rt *dbutils.Runtime,
 ) *mergeObjectsEntry {
 	createdBlkCnt := make([]int, len(createdObjs))
@@ -67,12 +69,16 @@ func NewMergeObjectsEntry(
 		droppedObjs:        droppedObjs,
 		transMappings:      transMappings,
 		rt:                 rt,
+		isTombstone:        isTombstone,
 	}
 	entry.prepareTransferPage()
 	return entry
 }
 
 func (entry *mergeObjectsEntry) prepareTransferPage() {
+	if entry.isTombstone {
+		return
+	}
 	k := 0
 	for _, obj := range entry.droppedObjs {
 		for j := 0; j < obj.BlockCnt(); j++ {
@@ -85,7 +91,7 @@ func (entry *mergeObjectsEntry) prepareTransferPage() {
 				panic("cannot tranfer empty block")
 			}
 			tblEntry := obj.GetTable()
-			isTransient := !tblEntry.GetLastestSchema().HasPK()
+			isTransient := !tblEntry.GetLastestSchema(false).HasPK()
 			id := obj.AsCommonID()
 			id.SetBlockOffset(uint16(j))
 			page := model.NewTransferHashPage(id, time.Now(), isTransient)

@@ -32,7 +32,7 @@ type Relation interface {
 	String() string
 	SimplePPString(common.PPLevel) string
 	GetCardinality(attr string) int64
-	Schema() any
+	Schema(bool) any
 	AlterTable(ctx context.Context, req *apipb.AlterTableReq) error
 	MakeObjectIt(bool) ObjectIt
 	MakeObjectItOnSnap(bool) ObjectIt

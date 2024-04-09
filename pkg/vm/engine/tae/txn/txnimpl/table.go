@@ -654,8 +654,7 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 	}
 	schema := tbl.schema
 	if isTombstone {
-		pkType := schema.GetPrimaryKey().GetType()
-		schema = catalog.GetTombstoneSchema(true, pkType)
+		schema = tbl.tombstoneSchema
 	}
 	if schema.HasPK() {
 		dedupType := tbl.store.txn.GetDedupType()
@@ -862,7 +861,7 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		tableSpace = tbl.tableSpace
 		schema = tbl.schema
 	}
-	if tableSpace == nil || schema.HasPK() {
+	if tableSpace == nil || !schema.HasPK() {
 		return
 	}
 	var zm index.ZM

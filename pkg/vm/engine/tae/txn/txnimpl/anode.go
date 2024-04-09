@@ -56,6 +56,7 @@ func (n *anode) Rows() uint32 {
 
 // fill in commitTSVec and abortVec
 func (n *anode) prepareApply(startOffset int, commitTS types.TS) {
+	return
 	if !n.isTombstone {
 		return
 	}
@@ -137,11 +138,11 @@ func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err er
 		if attr == catalog.PhyAddrColumnName {
 			continue
 		}
-		if n.isTombstone {
-			if attr == catalog.AttrCommitTs || attr == catalog.AttrAborted {
-				continue
-			}
-		}
+		// if n.isTombstone {
+		// 	if attr == catalog.AttrCommitTs || attr == catalog.AttrAborted {
+		// 		continue
+		// 	}
+		// }
 		def := schema.ColDefs[schema.GetColIdx(attr)]
 		destVec := n.data.Vecs[def.Idx]
 		// logutil.Infof("destVec: %s, %d, %d", destVec.String(), cnt, data.Length())
@@ -153,7 +154,7 @@ func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err er
 }
 
 func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
-	if n.isTombstone{
+	if n.isTombstone {
 		return
 	}
 	col := n.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)

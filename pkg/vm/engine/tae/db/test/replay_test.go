@@ -1306,7 +1306,7 @@ func TestReplay10(t *testing.T) {
 	txn, rel := testutil.GetDefaultRelation(t, tae, schema.Name)
 	testutil.CheckAllColRowsByScan(t, rel, bat.Length(), false)
 	assert.NoError(t, txn.Commit(context.Background()))
-	schema1 := rel.Schema().(*catalog.Schema)
+	schema1 := rel.Schema(false).(*catalog.Schema)
 
 	d1 := &plan.Default{}
 	assert.NoError(t, types.Decode(schema1.ColDefs[1].Default, d1))

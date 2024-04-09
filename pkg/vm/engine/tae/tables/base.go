@@ -524,18 +524,22 @@ func (blk *baseObject) GetAllColumns(
 			if err != nil {
 				return nil, err
 			}
-			vecs, err := LoadPersistedColumnDatas(ctx, readSchema.(*catalog.Schema), blk.rt, id, nil, location, mp)
+			vecs, err := LoadPersistedColumnDatas(ctx, readSchema.(*catalog.Schema), blk.rt, id, catalog.TombstoneBatchIdxes, location, mp)
+			if err != nil {
+				return nil, err
+			}
 			if bat == nil {
-				bat := containers.NewBatch()
+				bat = containers.NewBatch()
 				for i, vec := range vecs {
 					bat.AddVector(readSchema.(*catalog.Schema).ColDefs[i].Name, vec)
 				}
 			} else {
 				for i, vec := range vecs {
 					bat.Vecs[i].Extend(vec)
+					vec.Close()
 				}
 			}
 		}
-		return nil, err
+		return bat, err
 	}
 }

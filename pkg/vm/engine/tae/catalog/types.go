@@ -61,16 +61,31 @@ var (
 	}
 )
 
-func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
+const (
+	TombstonePrimaryKeyIdx int = 0
+)
+
+var (
+	TombstoneBatchIdxes = []int{0, 1}
+)
+
+func GetTombstoneSchema(isPersistedByCN bool, objectSchema *Schema) *Schema {
+	pkType := objectSchema.GetPrimaryKey().GetType()
+	schema := NewEmptySchema("tombstone")
+	schema.BlockMaxRows = objectSchema.BlockMaxRows
+	schema.ObjectMaxBlocks = objectSchema.ObjectMaxBlocks
 	if !isPersistedByCN {
-		schema := NewEmptySchema("tombstone")
+		// colTypes := []types.Type{
+		// 	types.T_Rowid.ToType(),
+		// 	types.T_TS.ToType(),
+		// 	pkType,
+		// 	types.T_bool.ToType(),
+		// }
 		colTypes := []types.Type{
 			types.T_Rowid.ToType(),
-			types.T_TS.ToType(),
 			pkType,
-			types.T_bool.ToType(),
 		}
-		for i, colname := range TNTombstoneSchemaAttr {
+		for i, colname := range CNTombstoneCNSchemaAttr {
 			if i == 0 {
 				if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
 					panic(err)
@@ -84,7 +99,6 @@ func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
 		schema.Finalize(false)
 		return schema
 	} else {
-		schema := NewEmptySchema("tombstone")
 		colTypes := []types.Type{
 			types.T_Rowid.ToType(),
 			pkType,
@@ -121,12 +135,12 @@ func NewTombstoneBatch(pkType types.Type, mp *mpool.MPool) *containers.Batch {
 func NewTombstoneBatchWithPKVector(pkVec containers.Vector, mp *mpool.MPool) *containers.Batch {
 	bat := containers.NewBatch()
 	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), mp)
-	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
-	abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
+	// commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
+	// abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
 	bat.AddVector(AttrRowID, rowIDVec)
-	bat.AddVector(AttrCommitTs, commitTSVec)
+	// bat.AddVector(AttrCommitTs, commitTSVec)
 	bat.AddVector(AttrPKVal, pkVec)
-	bat.AddVector(AttrAborted, abortVec)
+	// bat.AddVector(AttrAborted, abortVec)
 	return bat
 }
 

@@ -52,8 +52,7 @@ func newMemoryNode(object *baseObject, isTombstone bool) *memoryNode {
 
 	var schema *catalog.Schema
 	if isTombstone {
-		pkType := object.meta.GetSchemaLocked().GetPrimaryKey().GetType()
-		schema = catalog.GetTombstoneSchema(false, pkType)
+		schema = object.meta.GetTable().GetLastestSchemaLocked(true)
 	} else {
 		// Get the lastest schema, it will not be modified, so just keep the pointer
 		schema = object.meta.GetSchemaLocked()
@@ -502,6 +501,10 @@ func (node *memoryNode) CollectAppendInRange(
 	}
 
 	return
+}
+func (node *memoryNode) getCommitTSVec(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
+	commitVec := node.object.appendMVCC.GetCommitTSVec(maxRow, mp)
+	return commitVec, nil
 }
 
 // Note: With PinNode Context

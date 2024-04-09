@@ -82,8 +82,8 @@ func (it *txnRelationIt) Next() {
 		entry.RLock()
 		// SystemDB can hold table created by different tenant, filter needed.
 		// while the 3 shared tables are not affected
-		if it.txnDB.entry.IsSystemDB() && !isSysTable(entry.GetLastestSchemaLocked().Name) &&
-			entry.GetLastestSchemaLocked().AcInfo.TenantID != txn.GetTenantID() {
+		if it.txnDB.entry.IsSystemDB() && !isSysTable(entry.GetLastestSchemaLocked(false).Name) &&
+			entry.GetLastestSchemaLocked(false).AcInfo.TenantID != txn.GetTenantID() {
 			entry.RUnlock()
 			continue
 		}
@@ -152,7 +152,7 @@ func (h *txnRelation) Close() error { return nil }
 func (h *txnRelation) GetMeta() any { return h.table.entry }
 
 // Schema return schema in txnTable, not the lastest schema in TableEntry
-func (h *txnRelation) Schema() any { return h.table.GetLocalSchema(false) }
+func (h *txnRelation) Schema(isTombstone bool) any { return h.table.GetLocalSchema(isTombstone) }
 
 func (h *txnRelation) GetCardinality(attr string) int64 { return 0 }
 
@@ -161,7 +161,7 @@ func (h *txnRelation) BatchDedup(col containers.Vector) error {
 }
 
 func (h *txnRelation) Append(ctx context.Context, data *containers.Batch) error {
-	if !h.table.GetLocalSchema(false).IsSameColumns(h.table.GetMeta().GetLastestSchemaLocked()) {
+	if !h.table.GetLocalSchema(false).IsSameColumns(h.table.GetMeta().GetLastestSchemaLocked(false)) {
 		return moerr.NewInternalErrorNoCtx("schema changed, please rollback and retry")
 	}
 	return h.Txn.GetStore().Append(ctx, h.table.entry.GetDB().ID, h.table.entry.GetID(), data)
@@ -187,7 +187,7 @@ func (h *txnRelation) CreateObject(is1PC bool, isTombstone bool) (obj handle.Obj
 }
 
 func (h *txnRelation) CreateNonAppendableObject(is1PC bool, isTombstone bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
-	return h.Txn.GetStore().CreateNonAppendableObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), is1PC, isTombstone, opt)
+	return h.Txn.GetStore().CreateNonAppendableObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), isTombstone, is1PC, opt)
 }
 
 func (h *txnRelation) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err error) {

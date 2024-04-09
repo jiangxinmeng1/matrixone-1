@@ -123,13 +123,7 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 			releaseF()
 		}
 	}()
-	schema := task.rel.Schema().(*catalog.Schema)
-	var cnSchema *catalog.Schema // for tombstone
-	if task.isTombstone {
-		pkType := schema.GetPrimaryKey().GetType()
-		schema = catalog.GetTombstoneSchema(false, pkType)
-		cnSchema = catalog.GetTombstoneSchema(true, pkType)
-	}
+	schema := task.rel.Schema(task.isTombstone).(*catalog.Schema)
 	idxs := make([]int, 0, len(schema.ColDefs)-1)
 	attrs := make([]string, 0, len(schema.ColDefs)-1)
 	// for tombstone
@@ -143,7 +137,7 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 		attrs = append(attrs, def.Name)
 	}
 	if task.isTombstone {
-		for _, def := range cnSchema.ColDefs {
+		for _, def := range schema.ColDefs {
 			if def.IsPhyAddr() {
 				continue
 			}
@@ -216,7 +210,7 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 }
 
 func (task *mergeObjectsTask) PrepareCommitEntry() *mergesort.MergeCommitEntry {
-	schema := task.rel.Schema().(*catalog.Schema)
+	schema := task.rel.Schema(false).(*catalog.Schema)
 	commitEntry := &mergesort.MergeCommitEntry{}
 	commitEntry.DbID = task.did
 	commitEntry.TableID = task.tid
@@ -231,7 +225,7 @@ func (task *mergeObjectsTask) PrepareCommitEntry() *mergesort.MergeCommitEntry {
 }
 
 func (task *mergeObjectsTask) PrepareNewWriterFunc() func() *blockio.BlockWriter {
-	schema := task.rel.Schema().(*catalog.Schema)
+	schema := task.rel.Schema(task.isTombstone).(*catalog.Schema)
 	seqnums := make([]uint16, 0, len(schema.ColDefs)-1)
 	for _, def := range schema.ColDefs {
 		if def.IsPhyAddr() {
@@ -262,7 +256,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 		}
 	}()
 
-	schema := task.rel.Schema().(*catalog.Schema)
+	schema := task.rel.Schema(task.isTombstone).(*catalog.Schema)
 	sortkeyPos := -1
 	if schema.HasSortKey() {
 		sortkeyPos = schema.GetSingleSortKeyIdx()
@@ -330,6 +324,7 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *mergesort.MergeCommitEntry
 		mergedObjs,
 		createdObjs,
 		entry.Booking,
+		isTombstone,
 		rt,
 	)
 

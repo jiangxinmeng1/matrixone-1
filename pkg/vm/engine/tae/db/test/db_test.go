@@ -410,7 +410,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		database, err := txn.GetDatabase("db")
 		assert.Nil(t, err)
 		rel, err := database.GetRelationByName(schema.Name)
-		readSchema := rel.Schema()
+		readSchema := rel.Schema(false)
 		assert.Nil(t, err)
 		obj, err := rel.CreateNonAppendableObject(false, false, nil)
 		assert.Nil(t, err)
@@ -6002,7 +6002,7 @@ func TestAlterFakePk(t *testing.T) {
 		obj, err := rel.GetObject(blkFp.ObjectID(), false)
 		require.NoError(t, err)
 		// check non-exist column foreach
-		newSchema := obj.GetRelation().Schema()
+		newSchema := obj.GetRelation().Schema(false)
 		blkdata := obj.GetMeta().(*catalog.ObjectEntry).GetObjectData()
 		sels := []uint32{1, 3}
 		rows := make([]int, 0, 4)
@@ -6103,7 +6103,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	require.Equal(t, uint32(3), row)
 	require.NoError(t, err)
 
-	for _, col := range rel0.Schema().(*catalog.Schema).ColDefs {
+	for _, col := range rel0.Schema(false).(*catalog.Schema).ColDefs {
 		val, null, err := rel0.GetValue(id, 2, uint16(col.Idx))
 		require.NoError(t, err)
 		require.False(t, null)
@@ -6119,7 +6119,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	tae.Restart(ctx)
 
 	txn, rel = tae.GetRelation()
-	schema1 := rel.Schema().(*catalog.Schema)
+	schema1 := rel.Schema(false).(*catalog.Schema)
 	bats = catalog.MockBatch(schema1, 16).Split(4)
 	require.Error(t, rel.Append(context.Background(), bats[0])) // dup error
 	require.NoError(t, rel.Append(context.Background(), bats[1]))
@@ -6136,7 +6136,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	}
 	require.Equal(t, 2, cnt) // 2 blocks because the first is freezed
 
-	for _, col := range rel.Schema().(*catalog.Schema).ColDefs {
+	for _, col := range rel.Schema(false).(*catalog.Schema).ColDefs {
 		val, null, err := rel.GetValue(id, 3, uint16(col.Idx)) // get first blk
 		require.NoError(t, err)
 		if col.Name == "xyz" {
@@ -6169,7 +6169,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	require.NoError(t, txn.Commit(context.Background()))
 
 	txn, rel = tae.GetRelation()
-	schema2 := rel.Schema().(*catalog.Schema)
+	schema2 := rel.Schema(false).(*catalog.Schema)
 	bats = catalog.MockBatch(schema2, 20).Split(5)
 	require.NoError(t, rel.Append(context.Background(), bats[4])) // new 4th block and append 4 blocks
 
@@ -6447,7 +6447,7 @@ func TestGlobalCheckpoint2(t *testing.T) {
 	require.NoError(t, txn.Commit(context.Background()))
 
 	txn, rel = tae.GetRelation()
-	newschema := rel.Schema().(*catalog.Schema)
+	newschema := rel.Schema(false).(*catalog.Schema)
 	require.Equal(t, uint32(1), newschema.Version)
 	require.Equal(t, uint32(10), newschema.Extra.NextColSeqnum)
 	require.Equal(t, "mock_3", newschema.Extra.DroppedAttrs[0])
@@ -6478,7 +6478,7 @@ func TestGlobalCheckpoint2(t *testing.T) {
 	assert.NoError(t, tae.Catalog.RecurLoop(p))
 	assert.False(t, tableExisted)
 	txn, rel = tae.GetRelation()
-	newschema = rel.Schema().(*catalog.Schema)
+	newschema = rel.Schema(false).(*catalog.Schema)
 	require.Equal(t, uint32(1), newschema.Version)
 	require.Equal(t, uint32(10), newschema.Extra.NextColSeqnum)
 	require.Equal(t, "mock_3", newschema.Extra.DroppedAttrs[0])
@@ -7148,13 +7148,13 @@ func TestMarshalPartioned(t *testing.T) {
 	tae.CreateRelAndAppend(bats[0], true)
 
 	_, rel := tae.GetRelation()
-	partioned := rel.Schema().(*catalog.Schema).Partitioned
+	partioned := rel.Schema(false).(*catalog.Schema).Partitioned
 	assert.Equal(t, int8(1), partioned)
 
 	tae.Restart(ctx)
 
 	_, rel = tae.GetRelation()
-	partioned = rel.Schema().(*catalog.Schema).Partitioned
+	partioned = rel.Schema(false).(*catalog.Schema).Partitioned
 	assert.Equal(t, int8(1), partioned)
 
 	err := tae.BGCheckpointRunner.ForceIncrementalCheckpoint(tae.TxnMgr.Now(), false)
@@ -7167,7 +7167,7 @@ func TestMarshalPartioned(t *testing.T) {
 	tae.Restart(ctx)
 
 	_, rel = tae.GetRelation()
-	partioned = rel.Schema().(*catalog.Schema).Partitioned
+	partioned = rel.Schema(false).(*catalog.Schema).Partitioned
 	assert.Equal(t, int8(1), partioned)
 }
 

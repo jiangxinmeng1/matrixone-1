@@ -93,7 +93,7 @@ func NewFlushTableTailEntry(
 
 // add transfer pages for dropped aobjects
 func (entry *flushTableTailEntry) addTransferPages() {
-	isTransient := !entry.tableEntry.GetLastestSchemaLocked().HasPK()
+	isTransient := !entry.tableEntry.GetLastestSchemaLocked(false).HasPK()
 	for i, mcontainer := range entry.transMappings.Mappings {
 		m := mcontainer.M
 		if len(m) == 0 {
@@ -142,7 +142,7 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 		if bat == nil || bat.Length() == 0 {
 			continue
 		}
-		rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.PhyAddrColumnName).GetDownstreamVector())
+		rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.AttrRowID).GetDownstreamVector())
 		ts := vector.MustFixedCol[types.TS](bat.GetVectorByName(catalog.AttrCommitTs).GetDownstreamVector())
 
 		count := len(rowid)

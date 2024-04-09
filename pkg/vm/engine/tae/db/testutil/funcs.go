@@ -173,7 +173,7 @@ func GetAllBlockMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.O
 }
 
 func CheckAllColRowsByScan(t *testing.T, rel handle.Relation, expectRows int, applyDelete bool) {
-	schema := rel.Schema().(*catalog.Schema)
+	schema := rel.Schema(false).(*catalog.Schema)
 	for _, def := range schema.ColDefs {
 		rows := GetColumnRowsByScan(t, rel, def.Idx, applyDelete)
 		assert.Equal(t, expectRows, rows)

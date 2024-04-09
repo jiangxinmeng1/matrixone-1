@@ -45,16 +45,14 @@ func (e *TableMVCCNode) GetTombstoneSchema(persistedByCN bool) *Schema {
 		if e.CNTombstoneSchema != nil {
 			return e.CNTombstoneSchema
 		} else {
-			pkType := e.Schema.GetPrimaryKey().GetType()
-			e.CNTombstoneSchema = GetTombstoneSchema(true, pkType)
+			e.CNTombstoneSchema = GetTombstoneSchema(true, e.Schema)
 			return e.CNTombstoneSchema
 		}
 	} else {
 		if e.TombstoneSchema != nil {
 			return e.TombstoneSchema
 		} else {
-			pkType := e.Schema.GetPrimaryKey().GetType()
-			e.TombstoneSchema = GetTombstoneSchema(false, pkType)
+			e.TombstoneSchema = GetTombstoneSchema(false, e.Schema)
 			return e.TombstoneSchema
 		}
 	}
@@ -94,7 +92,7 @@ func (e *TableMVCCNode) ReadFromWithVersion(r io.Reader, ver uint16) (n int64, e
 
 type TableNode struct {
 	// The latest schema. A shortcut to the schema in the last mvvcnode.
-	schema atomic.Pointer[Schema]
+	tombstoneSchema, schema atomic.Pointer[Schema]
 }
 
 func (node *TableNode) WriteTo(w io.Writer) (n int64, err error) {

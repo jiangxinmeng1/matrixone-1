@@ -194,7 +194,7 @@ func NewSysObjectEntry(table *TableEntry, id types.Uuid) *ObjectEntry {
 	}
 	e.CreateWithTS(types.SystemDBTS, &ObjectMVCCNode{*objectio.NewObjectStats()})
 	var bid types.Blockid
-	schema := table.GetLastestSchemaLocked()
+	schema := table.GetLastestSchemaLocked(false)
 	if schema.Name == SystemTableSchema.Name {
 		bid = SystemBlock_Table_ID
 	} else if schema.Name == SystemDBSchema.Name {
@@ -569,10 +569,10 @@ func (entry *ObjectEntry) GetTerminationTS() (ts types.TS, terminated bool) {
 }
 
 func (entry *ObjectEntry) GetSchema() *Schema {
-	return entry.table.GetLastestSchema()
+	return entry.table.GetLastestSchema(false)
 }
 func (entry *ObjectEntry) GetSchemaLocked() *Schema {
-	return entry.table.GetLastestSchemaLocked()
+	return entry.table.GetLastestSchemaLocked(false)
 }
 
 // PrepareCompact is performance insensitive

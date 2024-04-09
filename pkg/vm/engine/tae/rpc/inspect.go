@@ -180,7 +180,7 @@ func (c *catalogArg) FromCommand(cmd *cobra.Command) (err error) {
 func (c *catalogArg) String() string {
 	t := "*"
 	if c.tbl != nil {
-		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked().Name)
+		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 	f := "nil"
 	if c.outfile != nil {
@@ -256,7 +256,7 @@ func (c *objStatArg) FromCommand(cmd *cobra.Command) (err error) {
 func (c *objStatArg) String() string {
 	t := "*"
 	if c.tbl != nil {
-		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked().Name)
+		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 	return t
 }
@@ -470,7 +470,7 @@ func (c *infoArg) FromCommand(cmd *cobra.Command) (err error) {
 func (c *infoArg) String() string {
 	t := "*"
 	if c.tbl != nil {
-		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked().Name)
+		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 
 	if c.obj != nil {
@@ -587,7 +587,7 @@ func (c *manuallyMergeArg) FromCommand(cmd *cobra.Command) (err error) {
 func (c *manuallyMergeArg) String() string {
 	t := "*"
 	if c.tbl != nil {
-		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked().Name)
+		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 
 	b := &bytes.Buffer{}
@@ -605,7 +605,7 @@ func (c *manuallyMergeArg) Run() error {
 	}
 	c.ctx.resp.Payload = []byte(fmt.Sprintf(
 		"success. see more to run select mo_ctl('dn', 'inspect', 'object -t %s.%s')\\G",
-		c.tbl.GetDB().GetName(), c.tbl.GetLastestSchemaLocked().Name,
+		c.tbl.GetDB().GetName(), c.tbl.GetLastestSchemaLocked(false).Name,
 	))
 	return nil
 }
@@ -656,7 +656,7 @@ func (c *compactPolicyArg) FromCommand(cmd *cobra.Command) (err error) {
 func (c *compactPolicyArg) String() string {
 	t := "*"
 	if c.tbl != nil {
-		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked().Name)
+		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 	return fmt.Sprintf(
 		"(%s) maxMergeObjN: %v, minRowsQualified: %v, hints: %v",
@@ -716,7 +716,7 @@ func (c *RenameColArg) PrepareCommand() *cobra.Command {
 }
 
 func (c *RenameColArg) String() string {
-	return fmt.Sprintf("rename col: %v, %v,%v,%v", c.tbl.GetLastestSchemaLocked().Name, c.oldName, c.newName, c.seq)
+	return fmt.Sprintf("rename col: %v, %v,%v,%v", c.tbl.GetLastestSchemaLocked(false).Name, c.oldName, c.newName, c.seq)
 }
 
 func (c *RenameColArg) Run() (err error) {
@@ -730,7 +730,7 @@ func (c *RenameColArg) Run() (err error) {
 	if err != nil {
 		return err
 	}
-	tblHdl, err := dbHdl.GetRelationByName(c.tbl.GetLastestSchemaLocked().Name)
+	tblHdl, err := dbHdl.GetRelationByName(c.tbl.GetLastestSchemaLocked(false).Name)
 	if err != nil {
 		return err
 	}
@@ -1057,7 +1057,7 @@ func storageUsageDetails(c *storageUsageHistoryArg) (err error) {
 		if r == nil {
 			return h.GetName(), "deleted"
 		}
-		return h.GetName(), r.Schema().(*catalog.Schema).Name
+		return h.GetName(), r.Schema(false).(*catalog.Schema).Name
 	}
 
 	getAllDbAndTblNames := func(usages []logtail.UsageData) (dbs, tbls []string, maxDbLen, maxTblLen int) {

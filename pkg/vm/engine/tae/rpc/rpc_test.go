@@ -369,7 +369,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	// set blockmaxrow as 10
 	p := &catalog.LoopProcessor{}
 	p.TableFn = func(te *catalog.TableEntry) error {
-		schema := te.GetLastestSchemaLocked()
+		schema := te.GetLastestSchemaLocked(false)
 		if schema.Name == "tbtest" {
 			schema.BlockMaxRows = 10
 		}

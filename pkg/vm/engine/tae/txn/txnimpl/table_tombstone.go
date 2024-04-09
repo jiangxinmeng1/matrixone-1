@@ -201,8 +201,7 @@ func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.F
 	objectio.SetObjectStatsRowCnt(&stats, objectDataMeta.BlockHeader().Rows())
 	objectio.SetObjectStatsBlkCnt(&stats, objectDataMeta.BlockCount())
 	objectio.SetObjectStatsSize(&stats, loc.Extent().End()+objectio.FooterSize)
-	pkType := tbl.schema.GetPrimaryKey().GetType()
-	schema := catalog.GetTombstoneSchema(true, pkType)
+	schema := tbl.tombstoneSchema
 	originSize := uint32(0)
 	for _, col := range schema.ColDefs {
 		if col.IsPhyAddr() {

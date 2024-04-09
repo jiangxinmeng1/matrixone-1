@@ -93,6 +93,9 @@ func (obj *object) GetColumnDataByIds(
 		ctx, txn, schema, blkID, colIdxes, false, mp,
 	)
 }
+func (obj *object) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
+	panic("not support")
+}
 
 // GetColumnDataById Get the snapshot at txn's start timestamp of column data.
 // Notice that for non-appendable object, if it is visible to txn,
@@ -136,7 +139,7 @@ func (obj *object) BatchDedup(
 	defer func() {
 		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 			logutil.Infof("BatchDedup %s (%v)obj-%s: %v",
-				obj.meta.GetTable().GetLastestSchemaLocked().Name,
+				obj.meta.GetTable().GetLastestSchemaLocked(false).Name,
 				obj.IsAppendable(),
 				obj.meta.ID.String(),
 				err)

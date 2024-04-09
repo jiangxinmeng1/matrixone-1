@@ -106,10 +106,10 @@ func (entry *TableEntry) CollectDeleteInRange(
 		ctx, blockID, start, end, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if bat == nil {
-				pkType := entry.GetLastestSchema().GetPrimaryKey().Type
+				pkType := entry.GetLastestSchema(false).GetPrimaryKey().Type
 				bat = NewTombstoneBatch(pkType, mp)
 			}
-			bat.GetVectorByName(PhyAddrColumnName).Append(rowID, false)
+			bat.GetVectorByName(AttrRowID).Append(rowID, false)
 			bat.GetVectorByName(AttrCommitTs).Append(commitTS, false)
 			bat.GetVectorByName(AttrPKVal).Append(pk, false)
 			bat.GetVectorByName(AttrAborted).Append(aborted, false)

@@ -467,12 +467,12 @@ func (space *tableSpace) GetByFilter(filter *handle.Filter) (id *common.ID, offs
 }
 
 func (space *tableSpace) GetPKColumn() containers.Vector {
-	schema := space.table.entry.GetLastestSchemaLocked()
+	schema := space.table.entry.GetLastestSchemaLocked(false)
 	return space.index.KeyToVector(schema.GetSingleSortKeyType())
 }
 
 func (space *tableSpace) GetPKVecs() []containers.Vector {
-	schema := space.table.entry.GetLastestSchemaLocked()
+	schema := space.table.entry.GetLastestSchemaLocked(false)
 	return space.index.KeyToVectors(schema.GetSingleSortKeyType())
 }
 

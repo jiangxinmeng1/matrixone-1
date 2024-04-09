@@ -998,9 +998,9 @@ func (h *Handle) HandleWrite(
 			}
 		}
 		// TODO: debug for #13342, remove me later
-		if h.IsInterceptTable(tb.Schema().(*catalog2.Schema).Name) {
-			if tb.Schema().(*catalog2.Schema).HasPK() {
-				idx := tb.Schema().(*catalog2.Schema).GetSingleSortKeyIdx()
+		if h.IsInterceptTable(tb.Schema(false).(*catalog2.Schema).Name) {
+			if tb.Schema(false).(*catalog2.Schema).HasPK() {
+				idx := tb.Schema(false).(*catalog2.Schema).GetSingleSortKeyIdx()
 				for i := 0; i < req.Batch.Vecs[0].Length(); i++ {
 					logutil.Infof("op1 %v, %v", txn.GetStartTS().ToString(), common.MoVectorToString(req.Batch.Vecs[idx], i))
 				}
@@ -1080,8 +1080,8 @@ func (h *Handle) HandleWrite(
 	pkVec := containers.ToTNVector(req.Batch.GetVector(1), common.WorkspaceAllocator)
 	//defer pkVec.Close()
 	// TODO: debug for #13342, remove me later
-	if h.IsInterceptTable(tb.Schema().(*catalog2.Schema).Name) {
-		if tb.Schema().(*catalog2.Schema).HasPK() {
+	if h.IsInterceptTable(tb.Schema(false).(*catalog2.Schema).Name) {
+		if tb.Schema(false).(*catalog2.Schema).HasPK() {
 			for i := 0; i < rowIDVec.Length(); i++ {
 				rowID := objectio.HackBytes2Rowid(req.Batch.Vecs[0].GetRawBytesAt(i))
 				logutil.Infof("op2 %v %v %v", txn.GetStartTS().ToString(), common.MoVectorToString(req.Batch.Vecs[1], i), rowID.String())

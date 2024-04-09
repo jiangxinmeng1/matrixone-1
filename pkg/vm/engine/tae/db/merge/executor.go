@@ -139,7 +139,7 @@ func (e *MergeExecutor) ManuallyExecute(entry *catalog.TableEntry, objs []*catal
 	} else if err != nil {
 		return moerr.NewInternalErrorNoCtx("schedule error: %v", err)
 	}
-	logMergeTask(entry.GetLastestSchemaLocked().Name, task.ID(), objs, osize, esize)
+	logMergeTask(entry.GetLastestSchemaLocked(false).Name, task.ID(), objs, osize, esize)
 	if err = task.WaitDone(context.Background()); err != nil {
 		return moerr.NewInternalErrorNoCtx("merge error: %v", err)
 	}
@@ -147,7 +147,7 @@ func (e *MergeExecutor) ManuallyExecute(entry *catalog.TableEntry, objs []*catal
 }
 
 func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
-	e.tableName = fmt.Sprintf("%v-%v", entry.ID, entry.GetLastestSchema().Name)
+	e.tableName = fmt.Sprintf("%v-%v", entry.ID, entry.GetLastestSchema(false).Name)
 
 	objectList := policy.Revise(int64(e.cpuPercent), int64(e.MemAvailBytes()))
 

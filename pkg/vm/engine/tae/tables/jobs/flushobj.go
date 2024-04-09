@@ -84,10 +84,14 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	if task.isAObj {
 		writer.SetAppendable()
 	}
-	if task.meta.GetSchema().HasPK() {
-		writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
-	} else if task.meta.GetSchema().HasSortKey() {
-		writer.SetSortKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
+	if task.meta.IsTombstone {
+		writer.SetPrimaryKey(uint16(catalog.TombstonePrimaryKeyIdx))
+	} else {
+		if task.meta.GetSchema().HasPK() {
+			writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
+		} else if task.meta.GetSchema().HasSortKey() {
+			writer.SetSortKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
+		}
 	}
 
 	cnBatch := containers.ToCNBatch(task.data)

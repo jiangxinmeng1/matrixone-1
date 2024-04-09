@@ -158,7 +158,7 @@ func NewFlushTableTailTask(
 	if err != nil {
 		return
 	}
-	task.schema = rel.Schema().(*catalog.Schema)
+	task.schema = rel.Schema(false).(*catalog.Schema)
 
 	for _, obj := range objs {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
@@ -180,8 +180,7 @@ func NewFlushTableTailTask(
 		}
 	}
 
-	pkType := task.schema.GetPrimaryKey().GetType()
-	task.tombstoneSchema = catalog.GetTombstoneSchema(false, pkType)
+	task.tombstoneSchema = rel.Schema(true).(*catalog.Schema)
 
 	for _, obj := range tombStones {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
@@ -337,8 +336,8 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	//// phase seperator
 	///////////////////
 
-	phaseDesc = "1-waiting flushing appendable blocks for snapshot"
-	if err = task.waitFlushAObjForSnapshot(ctx, tombstoneSnapshotSubtasks, false); err != nil {
+	phaseDesc = "1-waiting flushing appendable tombstones for snapshot"
+	if err = task.waitFlushAObjForSnapshot(ctx, tombstoneSnapshotSubtasks, true); err != nil {
 		return
 	}
 
@@ -436,7 +435,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		bat.AddVector(task.schema.ColDefs[colidx].Name, vec.TryConvertConst())
 	}
 
-	if isTombstone && deletes == nil {
+	if isTombstone && deletes != nil {
 		panic(fmt.Sprintf("logic err, tombstone %v has deletes", obj.GetID().String()))
 	}
 
@@ -534,7 +533,9 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 				return err
 			}
 		}
-		mergesort.CleanTransMapping(task.transMappings)
+		if !isTombstone {
+			mergesort.CleanTransMapping(task.transMappings)
+		}
 		return nil
 	}
 
@@ -600,14 +601,18 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 
 		// modify sortidx and mapping
 		orderedVecs = mergesort.MergeColumn(sortVecs, sortedIdx, mapping, fromLayout, toLayout, task.rt.VectorPool.Transient)
-		mergesort.UpdateMappingAfterMerge(task.transMappings, mapping, fromLayout, toLayout)
+		if !isTombstone {
+			mergesort.UpdateMappingAfterMerge(task.transMappings, mapping, fromLayout, toLayout)
+		}
 		// free mapping, which is never used again
 		common.MergeAllocator.Free(mappingNode)
 	} else {
 		// just do reshape
 		orderedVecs = mergesort.ReshapeColumn(sortVecs, fromLayout, toLayout, task.rt.VectorPool.Transient)
 		// UpdateMappingAfterMerge will handle the nil mapping
-		mergesort.UpdateMappingAfterMerge(task.transMappings, nil, fromLayout, toLayout)
+		if !isTombstone {
+			mergesort.UpdateMappingAfterMerge(task.transMappings, nil, fromLayout, toLayout)
+		}
 	}
 	for _, vec := range orderedVecs {
 		defer vec.Close()

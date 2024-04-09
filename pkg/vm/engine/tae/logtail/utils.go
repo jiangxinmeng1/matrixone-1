@@ -2885,9 +2885,9 @@ func (collector *BaseCollector) VisitTable(entry *catalog.TableEntry) (err error
 			}
 
 			tableColInsTxnBat.GetVectorByName(
-				SnapshotAttr_BlockMaxRow).Append(entry.GetLastestSchemaLocked().BlockMaxRows, false)
+				SnapshotAttr_BlockMaxRow).Append(entry.GetLastestSchemaLocked(false).BlockMaxRows, false)
 			tableColInsTxnBat.GetVectorByName(
-				SnapshotAttr_ObjectMaxBlock).Append(entry.GetLastestSchemaLocked().ObjectMaxBlocks, false)
+				SnapshotAttr_ObjectMaxBlock).Append(entry.GetLastestSchemaLocked(false).ObjectMaxBlocks, false)
 			tableColInsTxnBat.GetVectorByName(
 				SnapshotAttr_SchemaExtra).Append(tblNode.BaseNode.Schema.MustGetExtraBytes(), false)
 

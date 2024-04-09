@@ -488,7 +488,7 @@ func (c *infoArg) Run() error {
 	}
 	if c.obj != nil {
 		b.WriteRune('\n')
-		b.WriteString(fmt.Sprintf("persisted_ts: %v\n", c.obj.GetObjectData().GetDeltaPersistedTS().ToString()))
+		// b.WriteString(fmt.Sprintf("persisted_ts: %v\n", c.obj.GetObjectData().GetDeltaPersistedTS().ToString()))
 		r, reason := c.obj.GetObjectData().PrepareCompactInfo()
 		rows, err := c.obj.GetObjectData().Rows()
 		if err != nil {
@@ -568,7 +568,7 @@ func (c *manuallyMergeArg) FromCommand(cmd *cobra.Command) (err error) {
 		if err != nil {
 			return err
 		}
-		objects, err := c.tbl.GetObjectsByID(&uid)
+		objects, err := c.tbl.GetObjectsByID(&uid,false)
 		if err != nil {
 			return moerr.NewInvalidInputNoCtx("not found object %s", o)
 		}
@@ -763,7 +763,7 @@ func parseBlkTarget(address string, tbl *catalog.TableEntry) (*catalog.ObjectEnt
 	}
 	bid := objectio.NewBlockid(&uid, uint16(fn), uint16(bn))
 	objid := bid.Object()
-	oentry, err := tbl.GetObjectByID(objid)
+	oentry, err := tbl.GetObjectByID(objid,false)
 	if err != nil {
 		return nil, err
 	}

@@ -920,15 +920,15 @@ func (n *MVCCHandle) CollectDeleteInRangeAfterDeltalocation(
 	// there's another delta location committed.
 	// It includes more deletes than former delta location.
 	if persisted.Greater(&start) {
-		deletes, err = n.meta.GetObjectData().PersistedCollectDeleteInRange(
-			ctx,
-			deletes,
-			n.blkID,
-			start,
-			end,
-			withAborted,
-			mp,
-		)
+		// deletes, err = n.meta.GetObjectData().PersistedCollectDeleteInRange(
+		// 	ctx,
+		// 	deletes,
+		// 	n.blkID,
+		// 	start,
+		// 	end,
+		// 	withAborted,
+		// 	mp,
+		// )
 	}
 	if deletes != nil && deletes.Length() != 0 {
 		if bat == nil {

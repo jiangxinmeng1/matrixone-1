@@ -458,7 +458,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 		checkpoint:    ckp,
 	}
 	b.ObjectFn = b.VisitObj
-	b.TombstoneFn = b.visitDelete
+	// b.TombstoneFn = b.visitDelete
 
 	b.did = tbl.GetDB().GetID()
 	b.tid = tbl.ID

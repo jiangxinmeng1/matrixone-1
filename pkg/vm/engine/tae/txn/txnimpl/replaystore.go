@@ -182,38 +182,38 @@ func (store *replayTxnStore) replayDataCmds(cmd *updates.UpdateCmd, observer wal
 	switch cmd.GetType() {
 	case updates.IOET_WALTxnCommand_AppendNode:
 		store.replayAppend(cmd, observer)
-	case updates.IOET_WALTxnCommand_DeleteNode, updates.IOET_WALTxnCommand_PersistedDeleteNode:
-		store.replayDelete(cmd, observer)
+	// case updates.IOET_WALTxnCommand_DeleteNode, updates.IOET_WALTxnCommand_PersistedDeleteNode:
+	// 	store.replayDelete(cmd, observer)
 	}
 }
 
-func (store *replayTxnStore) replayDelete(cmd *updates.UpdateCmd, observer wal.ReplayObserver) {
-	deleteNode := cmd.GetDeleteNode()
-	if deleteNode.Is1PC() {
-		if _, err := deleteNode.TxnMVCCNode.ApplyCommit(); err != nil {
-			panic(err)
-		}
-	}
-	id := deleteNode.GetID()
-	database, err := store.catalog.GetDatabaseByID(id.DbID)
-	if err != nil {
-		panic(err)
-	}
-	blk, err := database.GetBlockEntryByID(id)
-	if err != nil {
-		panic(err)
-	}
-	if !blk.IsActive() {
-		return
-	}
-	blkData := blk.GetObjectData()
-	_, blkOffset := id.BlockID.Offsets()
-	err = blkData.OnReplayDelete(blkOffset, deleteNode)
-	if err != nil {
-		panic(err)
-	}
+// func (store *replayTxnStore) replayDelete(cmd *updates.UpdateCmd, observer wal.ReplayObserver) {
+// 	deleteNode := cmd.GetDeleteNode()
+// 	if deleteNode.Is1PC() {
+// 		if _, err := deleteNode.TxnMVCCNode.ApplyCommit(); err != nil {
+// 			panic(err)
+// 		}
+// 	}
+// 	id := deleteNode.GetID()
+// 	database, err := store.catalog.GetDatabaseByID(id.DbID)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	blk, err := database.GetBlockEntryByID(id)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	if !blk.IsActive() {
+// 		return
+// 	}
+// 	blkData := blk.GetObjectData()
+// 	_, blkOffset := id.BlockID.Offsets()
+// 	err = blkData.OnReplayDelete(blkOffset, deleteNode)
+// 	if err != nil {
+// 		panic(err)
+// 	}
 
-}
+// }
 
 func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, observer wal.ReplayObserver) {
 	appendNode := cmd.GetAppendNode()

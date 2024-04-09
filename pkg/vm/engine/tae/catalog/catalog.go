@@ -56,6 +56,8 @@ const (
 	ObjectAttr_ObjectStats      = "object_stats"
 	ObjectAttr_State            = "state"
 	ObjectAttr_Sorted           = "sorted"
+	ObjectAttr_CNPersisted      = "is_persisted_by_cn"
+	ObjectAttr_IsTombstone      = "is_tombstone"
 	EntryNode_CreateAt          = "create_at"
 	EntryNode_DeleteAt          = "delete_at"
 )
@@ -526,7 +528,7 @@ func (catalog *Catalog) onReplayUpdateObject(
 		logutil.Info(catalog.SimplePPString(3))
 		panic(err)
 	}
-	obj, err := tbl.GetObjectByID(cmd.ID.ObjectID())
+	obj, err := tbl.GetObjectByID(cmd.ID.ObjectID(), cmd.node.IsTombstone)
 	un := cmd.mvccNode
 	if un.Is1PC() {
 		if err := un.ApplyCommit(); err != nil {
@@ -563,11 +565,13 @@ func (catalog *Catalog) OnReplayObjectBatch(objectInfo *containers.Batch, dataFa
 		txnNode := txnbase.ReadTuple(objectInfo, i)
 		entryNode := ReadEntryNodeTuple(objectInfo, i)
 		state := objectInfo.GetVectorByName(ObjectAttr_State).Get(i).(bool)
+		persistedByCN := objectInfo.GetVectorByName(ObjectAttr_CNPersisted).Get(i).(bool)
+		isTombstone := objectInfo.GetVectorByName(ObjectAttr_IsTombstone).Get(i).(bool)
 		entryState := ES_Appendable
 		if !state {
 			entryState = ES_NotAppendable
 		}
-		catalog.onReplayCheckpointObject(dbid, tid, sid, objectNode, entryNode, txnNode, entryState, dataFactory)
+		catalog.onReplayCheckpointObject(dbid, tid, sid, objectNode, entryNode, txnNode, entryState, persistedByCN, isTombstone, dataFactory)
 	}
 }
 
@@ -578,6 +582,8 @@ func (catalog *Catalog) onReplayCheckpointObject(
 	entryNode *EntryMVCCNode,
 	txnNode *txnbase.TxnMVCCNode,
 	state EntryState,
+	persistedByCN bool,
+	isTombstone bool,
 	dataFactory DataFactory,
 ) {
 	db, err := catalog.GetDatabaseByID(dbid)
@@ -590,15 +596,17 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		logutil.Info(catalog.SimplePPString(common.PPL3))
 		panic(err)
 	}
-	obj, _ := rel.GetObjectByID(objid)
+	obj, _ := rel.GetObjectByID(objid, isTombstone)
 	if obj == nil {
 		obj = NewReplayObjectEntry()
 		obj.ID = *objid
 		obj.table = rel
 		obj.ObjectNode = &ObjectNode{
-			state:    state,
-			sorted:   state == ES_NotAppendable,
-			SortHint: catalog.NextObject(),
+			state:         state,
+			sorted:        state == ES_NotAppendable,
+			SortHint:      catalog.NextObject(),
+			PersistedByCN: persistedByCN,
+			IsTombstone:   isTombstone,
 		}
 		rel.AddEntryLocked(obj)
 	}

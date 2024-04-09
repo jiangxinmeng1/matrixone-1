@@ -45,6 +45,8 @@ const (
 	ObjectAttr_ObjectStats                      = catalog.ObjectAttr_ObjectStats
 	ObjectAttr_State                            = catalog.ObjectAttr_State
 	ObjectAttr_Sorted                           = catalog.ObjectAttr_Sorted
+	ObjectAttr_CNPersisted                      = catalog.ObjectAttr_CNPersisted
+	ObjectAttr_IsTombstone                      = catalog.ObjectAttr_IsTombstone
 	EntryNode_CreateAt                          = catalog.EntryNode_CreateAt
 	EntryNode_DeleteAt                          = catalog.EntryNode_DeleteAt
 	SnapshotMetaAttr_BlockInsertBatchStart      = "block_insert_batch_start"
@@ -314,6 +316,8 @@ var (
 		txnbase.SnapshotAttr_StartTS,
 		txnbase.SnapshotAttr_PrepareTS,
 		txnbase.SnapshotAttr_CommitTS,
+		ObjectAttr_CNPersisted,
+		ObjectAttr_IsTombstone,
 	}
 	ObjectInfoTypes = []types.Type{
 		types.New(types.T_varchar, types.MaxVarcharLen, 0),
@@ -326,6 +330,8 @@ var (
 		types.New(types.T_TS, 0, 0),
 		types.New(types.T_TS, 0, 0),
 		types.New(types.T_TS, 0, 0),
+		types.New(types.T_bool, 0, 0),
+		types.New(types.T_bool, 0, 0),
 	}
 
 	StorageUsageSchemaAttrs = []string{

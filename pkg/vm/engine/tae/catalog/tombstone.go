@@ -33,7 +33,7 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 		return entry.foreachATombstoneInRange(ctx, start, end, mp, op)
 	}
 	var createTS types.TS
-	if entry.persistedByCN {
+	if entry.PersistedByCN {
 		entry.RLock()
 		createTS := entry.GetCreatedAtLocked()
 		entry.RUnlock()
@@ -42,21 +42,21 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 		}
 	}
 	pkType := entry.GetTable().schema.Load().GetPrimaryKey().Type
-	bat, err := entry.GetObjectData().GetAllColumns(ctx, GetTombstoneSchema(entry.persistedByCN, pkType), mp)
+	bat, err := entry.GetObjectData().GetAllColumns(ctx, GetTombstoneSchema(entry.PersistedByCN, pkType), mp)
 	if err != nil {
 		return err
 	}
 	rowIDVec := bat.GetVectorByName(AttrRowID).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 	var commitTSs []types.TS
-	if !entry.persistedByCN {
+	if !entry.PersistedByCN {
 		commitTSVec := bat.GetVectorByName(AttrCommitTs).GetDownstreamVector()
 		commitTSs = vector.MustFixedCol[types.TS](commitTSVec)
 	}
 	abortVec := bat.GetVectorByName(AttrAborted).GetDownstreamVector()
 	aborts := vector.MustFixedCol[bool](abortVec)
 	for i := 0; i < bat.Length(); i++ {
-		if entry.persistedByCN {
+		if entry.PersistedByCN {
 			pk := bat.GetVectorByName(AttrPKVal).Get(i)
 			goNext, err := op(rowIDs[i], createTS, false, pk)
 			if err != nil {
@@ -88,7 +88,7 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	if entry.persistedByCN {
+	if entry.PersistedByCN {
 		panic("logic err")
 	}
 	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, mp)
@@ -128,12 +128,12 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 	var bat *containers.BlockView
 	var err error
 	var idx []int
-	if entry.persistedByCN {
+	if entry.PersistedByCN {
 		idx = []int{0, 1}
 	} else {
 		idx = []int{0, 1, 2, 3}
 	}
-	schema := GetTombstoneSchema(entry.persistedByCN, pkType)
+	schema := GetTombstoneSchema(entry.PersistedByCN, pkType)
 	bat, err = entry.GetObjectData().GetColumnDataByIds(ctx, txn, schema, blkOffset, idx, mp)
 	if err != nil {
 		return err
@@ -141,14 +141,14 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 	rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 	var commitTSs []types.TS
-	if !entry.persistedByCN {
+	if !entry.PersistedByCN {
 		commitTSVec := bat.GetColumnData(1).GetDownstreamVector()
 		commitTSs = vector.MustFixedCol[types.TS](commitTSVec)
 	}
 	abortVec := bat.GetColumnData(3).GetDownstreamVector()
 	aborts := vector.MustFixedCol[bool](abortVec)
 	for i := 0; i < rowIDVec.Length(); i++ {
-		if entry.persistedByCN {
+		if entry.PersistedByCN {
 			pk := bat.GetColumnData(1).Get(i)
 			goNext, err := op(rowIDs[i], types.TS{}, false, pk)
 			if err != nil {

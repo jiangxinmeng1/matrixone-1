@@ -227,17 +227,17 @@ func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, observer wal.R
 	if err != nil {
 		panic(err)
 	}
-	blk, err := database.GetBlockEntryByID(id)
+	obj, err := database.GetObjectEntryByID(id,cmd.GetDest().IsTombstone)
 	if err != nil {
 		panic(err)
 	}
-	if !blk.IsActive() {
+	if !obj.IsActive() {
 		return
 	}
-	if blk.ObjectPersisted() {
+	if obj.ObjectPersisted() {
 		return
 	}
-	if err = blk.GetObjectData().OnReplayAppend(appendNode); err != nil {
+	if err = obj.GetObjectData().OnReplayAppend(appendNode); err != nil {
 		panic(err)
 	}
 }

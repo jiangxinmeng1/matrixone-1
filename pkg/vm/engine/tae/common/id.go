@@ -34,6 +34,7 @@ type ID struct {
 	TableID uint64
 	// Internal block id
 	BlockID types.Blockid
+	IsTombstone bool
 }
 
 const (

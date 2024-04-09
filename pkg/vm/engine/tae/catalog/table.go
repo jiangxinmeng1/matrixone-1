@@ -561,12 +561,20 @@ func (entry *TableEntry) RecurLoop(processor Processor) (err error) {
 		}
 		objIt.Next()
 	}
-	tombstones := entry.deleteList.Copy().Items()
-	for _, deletes := range tombstones {
-		err = processor.OnTombstone(deletes)
-		if err != nil {
-			return
+	objIt = entry.MakeObjectIt(true, true)
+	for objIt.Valid() {
+		objectEntry := objIt.Get().GetPayload()
+		if err := processor.OnTombstone(objectEntry); err != nil {
+			if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
+				objIt.Next()
+				continue
+			}
+			return err
 		}
+		if err := processor.OnPostObject(objectEntry); err != nil {
+			return err
+		}
+		objIt.Next()
 	}
 	return
 }

@@ -833,8 +833,8 @@ func (catalog *Catalog) ReplayTableRows() {
 		rows += be.GetObjectData().GetRowsOnReplay()
 		return nil
 	}
-	tableProcessor.TombstoneFn = func(t data.Tombstone) error {
-		rows -= uint64(t.GetDeleteCnt())
+	tableProcessor.TombstoneFn = func(t *ObjectEntry) error {
+		rows -= uint64(t.GetDeleteCount())
 		return nil
 	}
 	processor := new(LoopProcessor)

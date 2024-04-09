@@ -505,6 +505,7 @@ func (entry *ObjectEntry) AsCommonID() *common.ID {
 	id := &common.ID{
 		DbID:    entry.GetTable().GetDB().ID,
 		TableID: entry.GetTable().ID,
+		IsTombstone: entry.IsTombstone,
 	}
 	id.SetObjectID(&entry.ID)
 	return id

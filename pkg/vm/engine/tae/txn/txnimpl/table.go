@@ -439,7 +439,7 @@ func (tbl *txnTable) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err
 	if txnEntry != nil {
 		tbl.txnEntries.Append(txnEntry)
 	}
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().GetID(), tbl.entry.ID, id)
+	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().GetID(), tbl.entry.ID, id, isTombstone)
 	return
 }
 
@@ -468,7 +468,7 @@ func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *ob
 	}
 	obj = newObject(tbl, meta)
 	tbl.store.IncreateWriteCnt()
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID)
+	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
 	if is1PC {
 		meta.Set1PC()
 	}
@@ -781,7 +781,7 @@ func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStat
 	if err != nil {
 		return err
 	}
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID)
+	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
 	if isNewNode {
 		tbl.txnEntries.Append(meta)
 	}

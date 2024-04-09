@@ -153,13 +153,13 @@ func (space *tableSpace) PrepareApply() (err error) {
 	return
 }
 
-func (space *tableSpace) prepareApplyANode(node *anode) error {
+func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) error {
 	node.Compact()
 	tableData := space.table.entry.GetTableData()
 	if space.tableHandle == nil {
 		space.tableHandle = tableData.GetHandle()
 	}
-	appended := uint32(0)
+	appended := startOffset
 	vec := space.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	for appended < node.Rows() {
 		appender, err := space.tableHandle.GetAppender()
@@ -228,7 +228,7 @@ func (space *tableSpace) prepareApplyANode(node *anode) error {
 		id := appender.GetID()
 		space.table.store.warChecker.Insert(appender.GetMeta().(*catalog.ObjectEntry))
 		space.table.store.txn.GetMemo().AddObject(space.table.entry.GetDB().ID,
-			id.TableID, id.ObjectID())
+			id.TableID, id.ObjectID(), space.isTombstone)
 		space.appends = append(space.appends, ctx)
 		// logutil.Debugf("%s: toAppend %d, appended %d, blks=%d",
 		// 	id.String(), toAppend, appended, len(space.appends))
@@ -269,7 +269,7 @@ func (space *tableSpace) prepareApplyObjectStats(stats objectio.ObjectStats) (er
 
 func (space *tableSpace) prepareApplyNode(node InsertNode) (err error) {
 	if !node.IsPersisted() {
-		return space.prepareApplyANode(node.(*anode))
+		return space.prepareApplyANode(node.(*anode), 0)
 	}
 	return nil
 }

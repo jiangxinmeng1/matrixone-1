@@ -41,19 +41,19 @@ type flushTableTailEntry struct {
 	taskID     uint64
 	tableEntry *catalog.TableEntry
 
-	transMappings      *api.BlkTransferBooking
-	ablksMetas         []*catalog.ObjectEntry
-	delSrcMetas        []*catalog.ObjectEntry
-	ablksHandles       []handle.Object
-	delSrcHandles      []handle.Object
-	createdBlkHandles  handle.Object
-	pageIds            []*common.ID
-	nextRoundDirties   []*catalog.ObjectEntry
-	createdDeletesFile string
-	createdMergeFile   string
-	dirtyLen           int
-	rt                 *dbutils.Runtime
-	dirtyEndTs         types.TS
+	ablksMetas        []*catalog.ObjectEntry
+	ablksHandles      []handle.Object
+	createdBlkHandles handle.Object
+	createdMergeFile  string
+	transMappings     *api.BlkTransferBooking
+	pageIds           []*common.ID
+
+	atombstonesMetas        []*catalog.ObjectEntry
+	atombstoneksHandles     []handle.Object
+	createdTombstoneHandles handle.Object
+	createdDeletesFile      string
+
+	rt *dbutils.Runtime
 }
 
 func NewFlushTableTailEntry(
@@ -73,20 +73,19 @@ func NewFlushTableTailEntry(
 ) *flushTableTailEntry {
 
 	entry := &flushTableTailEntry{
-		txn:                txn,
-		taskID:             taskID,
-		transMappings:      mapping,
-		tableEntry:         tableEntry,
-		ablksMetas:         ablksMetas,
-		delSrcMetas:        nblksMetas,
-		ablksHandles:       ablksHandles,
-		delSrcHandles:      nblksHandles,
-		createdBlkHandles:  createdBlkHandles,
-		createdDeletesFile: createdDeletesFile,
-		createdMergeFile:   createdMergeFile,
-		dirtyLen:           dirtyLen,
-		rt:                 rt,
-		dirtyEndTs:         dirtyEndTs,
+		txn:                     txn,
+		taskID:                  taskID,
+		transMappings:           mapping,
+		tableEntry:              tableEntry,
+		ablksMetas:              aobjsMetas,
+		ablksHandles:            aobjsHandles,
+		createdBlkHandles:       createdObjHandles,
+		createdMergeFile:        createdMergedObjFile,
+		atombstonesMetas:        atombstonesMetas,
+		atombstoneksHandles:     atombstonesHandles,
+		createdTombstoneHandles: createdTombstoneHandles,
+		createdDeletesFile:      createdMergedTombstoneFile,
+		rt:                      rt,
 	}
 	entry.addTransferPages()
 	return entry
@@ -159,13 +158,14 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 				delTbls[destpos.Idx] = model.NewTransDels(entry.txn.GetPrepareTS())
 			}
 			delTbls[destpos.Idx].Mapping[int(destpos.Row)] = ts[i]
-			if err = entry.createdBlkHandles.RangeDelete(
-				uint16(destpos.Idx), uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact, common.MergeAllocator,
+			id := entry.createdBlkHandles.Fingerprint()
+			id.SetBlockOffset(uint16(destpos.Idx))
+			if err = entry.createdBlkHandles.GetRelation().RangeDelete(
+				id, uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact,
 			); err != nil {
 				return err
 			}
 		}
-		entry.nextRoundDirties = append(entry.nextRoundDirties, blk)
 	}
 	for i, delTbl := range delTbls {
 		if delTbl != nil {
@@ -202,7 +202,16 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 	ablkNames := make([]string, 0, len(entry.ablksMetas))
 	for _, blk := range entry.ablksMetas {
 		if !blk.HasPersistedData() {
-			logutil.Infof("[FlushTabletail] skip empty ablk %s when rollback", blk.ID.String())
+			logutil.Infof("[FlushTabletail] skip empty aobject %s when rollback", blk.ID.String())
+			continue
+		}
+		seg := blk.ID.Segment()
+		name := objectio.BuildObjectName(seg, 0).String()
+		ablkNames = append(ablkNames, name)
+	}
+	for _, blk := range entry.atombstonesMetas {
+		if !blk.HasPersistedData() {
+			logutil.Infof("[FlushTabletail] skip empty atombstone %s when rollback", blk.ID.String())
 			continue
 		}
 		seg := blk.ID.Segment()
@@ -231,18 +240,6 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 
 // ApplyCommit Gc in memory deletes and update table compact status
 func (entry *flushTableTailEntry) ApplyCommit() (err error) {
-	tbl := entry.tableEntry
-	tbl.Stats.Lock()
-	defer tbl.Stats.Unlock()
-	tbl.Stats.LastFlush = entry.dirtyEndTs
-	// no merge tasks touch the dirties, we are good to clean all
-	if entry.dirtyLen == len(tbl.DeletedDirties) {
-		tbl.DeletedDirties = tbl.DeletedDirties[:0]
-	} else {
-		// some merge tasks touch the dirties, we need to keep those new dirties
-		tbl.DeletedDirties = tbl.DeletedDirties[entry.dirtyLen:]
-	}
-	tbl.DeletedDirties = append(tbl.DeletedDirties, entry.nextRoundDirties...)
 	return
 }
 

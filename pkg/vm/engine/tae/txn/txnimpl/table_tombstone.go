@@ -133,6 +133,11 @@ func (tbl *txnTable) RangeDelete(
 	if err != nil {
 		return
 	}
+	if dt == handle.DT_MergeCompact {
+		anode := tbl.tombstoneTableSpace.nodes[0].(*anode)
+		startOffset := anode.data.Length() - deleteBatch.Length()
+		tbl.tombstoneTableSpace.prepareApplyANode(anode, uint32(startOffset))
+	}
 	obj, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		id.TableID, id.ObjectID(),

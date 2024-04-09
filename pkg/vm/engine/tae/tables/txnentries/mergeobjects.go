@@ -191,8 +191,10 @@ func (entry *mergeObjectsEntry) transferBlockDeletes(
 			delTbls[destpos.Idx] = model.NewTransDels(entry.txn.GetPrepareTS())
 		}
 		delTbls[destpos.Idx].Mapping[int(destpos.Row)] = ts[i]
-		if err = created.RangeDelete(
-			uint16(destpos.Idx), uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact, common.MergeAllocator,
+		id := created.Fingerprint()
+		id.SetBlockOffset(uint16(destpos.Idx))
+		if err = created.GetRelation().RangeDelete(
+			id, uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact,
 		); err != nil {
 			return err
 		}
@@ -205,7 +207,7 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 	if len(entry.createdBlkCnt) == 0 {
 		return
 	}
-	created, err := entry.relation.GetObject(&entry.createdObjs[0].ID)
+	created, err := entry.relation.GetObject(&entry.createdObjs[0].ID, false)
 	if err != nil {
 		return
 	}

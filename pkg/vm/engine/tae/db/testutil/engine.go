@@ -35,7 +35,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
@@ -212,7 +211,7 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 	txn, rel := e.GetRelation()
 	schema := rel.GetMeta().(*catalog.TableEntry).GetLastestSchemaLocked()
 	pkName := schema.GetPrimaryKey().Name
-	it := rel.MakeObjectIt()
+	it := rel.MakeObjectIt(false)
 	for it.Valid() {
 		blk := it.GetObject()
 		defer blk.Close()
@@ -331,7 +330,7 @@ func (e *TestEngine) TryDeleteByDeltalocWithTxn(vals []any, txn txnif.AsyncTxn) 
 	}
 
 	for id, offsets := range idOffsetsMap {
-		obj, err := rel.GetMeta().(*catalog.TableEntry).GetObjectByID(id.ObjectID())
+		obj, err := rel.GetMeta().(*catalog.TableEntry).GetObjectByID(id.ObjectID(), false)
 		assert.NoError(e.t, err)
 		_, blkOffset := id.BlockID.Offsets()
 		deltaLoc, err := MockCNDeleteInS3(e.Runtime.Fs, obj.GetObjectData(), blkOffset, e.schema, txn, offsets)
@@ -594,11 +593,11 @@ func checkMOColumns(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *
 func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cnIns, seg *api.Batch, start, end types.TS, c *catalog.Catalog) {
 	collector := logtail.NewIncrementalCollector(start, end, false)
 	p := &catalog.LoopProcessor{}
-	p.TombstoneFn = func(be data.Tombstone) error {
-		if be.GetObject().(*catalog.ObjectEntry).GetTable().ID != tid {
+	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
+		if be.GetTable().ID != tid {
 			return nil
 		}
-		return collector.VisitTombstone(be)
+		return collector.VisitObj(be)
 	}
 	p.ObjectFn = func(se *catalog.ObjectEntry) error {
 		if se.GetTable().ID != tid {
@@ -704,7 +703,7 @@ func (e *TestEngine) CheckCollectDeleteInRange() {
 	ForEachObject(rel, func(obj handle.Object) error {
 		meta := obj.GetMeta().(*catalog.ObjectEntry)
 		deleteBat, _, err := meta.GetObjectData().CollectDeleteInRange(
-			context.Background(), types.TS{}, txn.GetStartTS(), false, common.DefaultAllocator,
+			context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
 		)
 		assert.NoError(e.t, err)
 		pkDef := e.schema.GetPrimaryKey()

@@ -467,11 +467,11 @@ func (entry *ObjectEntry) getBlockCntFromStats() (blkCnt uint32) {
 	return node.BaseNode.ObjectStats.BlkCnt()
 }
 
-func (entry *ObjectEntry) tryUpdateBlockCnt(cnt int) {
-	if entry.blkCnt < cnt {
-		entry.blkCnt = cnt
-	}
-}
+// func (entry *ObjectEntry) tryUpdateBlockCnt(cnt int) {
+// 	if entry.blkCnt < cnt {
+// 		entry.blkCnt = cnt
+// 	}
+// }
 
 func (entry *ObjectEntry) IsAppendable() bool {
 	return entry.state == ES_Appendable
@@ -503,8 +503,8 @@ func (entry *ObjectEntry) GetNonAppendableBlockCnt() int {
 
 func (entry *ObjectEntry) AsCommonID() *common.ID {
 	id := &common.ID{
-		DbID:    entry.GetTable().GetDB().ID,
-		TableID: entry.GetTable().ID,
+		DbID:        entry.GetTable().GetDB().ID,
+		TableID:     entry.GetTable().ID,
 		IsTombstone: entry.IsTombstone,
 	}
 	id.SetObjectID(&entry.ID)

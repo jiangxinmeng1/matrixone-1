@@ -68,8 +68,8 @@ func (rel *TxnRelation) Rows() int64                                            
 func (rel *TxnRelation) Size(attr string) int64                                   { return 0 }
 func (rel *TxnRelation) GetCardinality(attr string) int64                         { return 0 }
 func (rel *TxnRelation) Schema() any                                              { return nil }
-func (rel *TxnRelation) MakeObjectIt() handle.ObjectIt                            { return nil }
-func (rel *TxnRelation) MakeObjectItOnSnap() handle.ObjectIt                      { return nil }
+func (rel *TxnRelation) MakeObjectIt(bool) handle.ObjectIt                            { return nil }
+func (rel *TxnRelation) MakeObjectItOnSnap(bool) handle.ObjectIt                      { return nil }
 func (rel *TxnRelation) BatchDedup(containers.Vector) error                       { return nil }
 func (rel *TxnRelation) Append(ctx context.Context, data *containers.Batch) error { return nil }
 func (rel *TxnRelation) AddObjsWithMetaLoc(context.Context, containers.Vector) error {

@@ -309,8 +309,13 @@ func (entry *TableEntry) Is1PC() bool {
 	return entry.GetLatestNodeLocked().Is1PC()
 }
 func (entry *TableEntry) AddEntryLocked(objectEntry *ObjectEntry) {
-	n := entry.link.Insert(objectEntry)
-	entry.entries[objectEntry.ID] = n
+	if objectEntry.IsTombstone {
+		n := entry.tombstoneLink.Insert(objectEntry)
+		entry.tombstoneEntries[objectEntry.ID] = n
+	} else {
+		n := entry.link.Insert(objectEntry)
+		entry.entries[objectEntry.ID] = n
+	}
 }
 
 func (entry *TableEntry) deleteEntryLocked(objectEntry *ObjectEntry) error {

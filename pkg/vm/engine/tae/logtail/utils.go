@@ -811,7 +811,7 @@ func NewIncrementalCollector(start, end types.TS, skipLoadObjectStats bool) *Inc
 	collector.DatabaseFn = collector.VisitDB
 	collector.TableFn = collector.VisitTable
 	collector.ObjectFn = collector.VisitObj
-	collector.TombstoneFn = collector.VisitTombstone
+	collector.TombstoneFn = collector.VisitObj
 	return collector
 }
 
@@ -825,7 +825,7 @@ func NewBackupCollector(start, end types.TS) *IncrementalCollector {
 		},
 	}
 	// TODO
-	collector.TombstoneFn = collector.VisitTombstone
+	collector.TombstoneFn = collector.VisitObj
 	collector.ObjectFn = collector.VisitObjForBackup
 	return collector
 }
@@ -849,7 +849,7 @@ func NewGlobalCollector(end types.TS, versionInterval time.Duration) *GlobalColl
 	collector.DatabaseFn = collector.VisitDB
 	collector.TableFn = collector.VisitTable
 	collector.ObjectFn = collector.VisitObj
-	collector.TombstoneFn = collector.VisitTombstone
+	collector.TombstoneFn = collector.VisitObj
 
 	collector.Usage.ReservedAccIds = make(map[uint64]struct{})
 
@@ -868,9 +868,10 @@ func (data *CheckpointData) ApplyReplayTo(
 	objectInfo = data.GetObjectBatchs()
 	c.OnReplayObjectBatch(objectInfo, dataFactory)
 	ins, tnins, del, tndel = data.GetTNBlkBatchs()
-	c.OnReplayBlockBatch(ins, tnins, del, tndel, dataFactory)
-	ins, tnins, del, tndel = data.GetBlkBatchs()
-	c.OnReplayBlockBatch(ins, tnins, del, tndel, dataFactory)
+	// TODO compatibility
+	// c.OnReplayBlockBatch(ins, tnins, del, tndel, dataFactory)
+	// ins, tnins, del, tndel = data.GetBlkBatchs()
+	// c.OnReplayBlockBatch(ins, tnins, del, tndel, dataFactory)
 	return
 }
 

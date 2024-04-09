@@ -34,8 +34,8 @@ type Relation interface {
 	GetCardinality(attr string) int64
 	Schema() any
 	AlterTable(ctx context.Context, req *apipb.AlterTableReq) error
-	MakeObjectIt() ObjectIt
-	MakeObjectItOnSnap() ObjectIt
+	MakeObjectIt(bool) ObjectIt
+	MakeObjectItOnSnap(bool) ObjectIt
 
 	DeleteByPhyAddrKey(key any) error
 	GetValueByPhyAddrKey(key any, col int) (any, bool, error)

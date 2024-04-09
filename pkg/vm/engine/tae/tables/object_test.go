@@ -39,7 +39,7 @@ func TestGetActiveRow(t *testing.T) {
 
 	db, _ := c.CreateDBEntry("db", "", "", nil)
 	table, _ := db.CreateTableEntry(schema, nil, nil)
-	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil)
+	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil, false)
 	mvcc := updates.NewAppendMVCCHandle(obj)
 	// blk := &dataBlock{
 	// 	mvcc: mvcc,

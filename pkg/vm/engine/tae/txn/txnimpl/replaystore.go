@@ -130,7 +130,7 @@ func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.Repla
 		if err != nil {
 			panic(err)
 		}
-		blk, err := database.GetBlockEntryByID(id)
+		blk, err := database.GetObjectEntryByID(id,id.IsTombstone)
 		if err != nil {
 			panic(err)
 		}
@@ -158,7 +158,7 @@ func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.Repla
 		if err != nil {
 			panic(err)
 		}
-		blk, err := database.GetBlockEntryByID(id)
+		blk, err := database.GetObjectEntryByID(id, id.IsTombstone)
 		if err != nil {
 			panic(err)
 		}

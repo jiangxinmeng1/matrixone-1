@@ -168,13 +168,31 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 				return nil, nil, nil, err
 			}
 			meta := task.mergedObjs[i]
-			// convert
 			if task.isTombstone && meta.PersistedByCN {
 				view := views[minBlockOffset+j]
 				meta.RLock()
 				commitTS := meta.GetCreatedAtLocked()
 				meta.RUnlock()
 				views[minBlockOffset+j] = catalog.CNTombstoneView2DNTombstoneView(view, commitTS)
+			}
+			// if the object is dropped, skip the tombstone row
+			if task.isTombstone {
+				view := views[minBlockOffset+i]
+				tbl := task.rel.GetMeta().(*catalog.TableEntry)
+				rowidVec := view.Columns[0].GetData()
+				rowidVec.Foreach(func(v any, isNull bool, row int) error {
+					rowID := v.(types.Rowid)
+					objectID := rowID.BorrowObjectID()
+					obj, err := tbl.GetObjectByID(objectID, true)
+					if err != nil {
+						panic(err)
+					}
+					if obj.HasDropCommitted() {
+						view.DeleteMask.Add(uint64(row))
+					}
+					return nil
+				}, nil)
+				view.ApplyDeletes()
 			}
 		}
 	}

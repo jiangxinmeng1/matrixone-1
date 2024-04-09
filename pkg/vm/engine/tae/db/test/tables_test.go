@@ -56,7 +56,7 @@ func TestTables1(t *testing.T) {
 	handle := table.GetHandle()
 	_, err := handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
-	obj, _ := rel.CreateObject(false)
+	obj, _ := rel.CreateObject(false, false)
 	id := obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender := handle.SetAppender(id)
 	assert.NotNil(t, appender)
@@ -75,7 +75,7 @@ func TestTables1(t *testing.T) {
 	_, err = handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
 
-	obj, _ = rel.CreateObject(false)
+	obj, _ = rel.CreateObject(false, false)
 	id = obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender = handle.SetAppender(id)
 
@@ -86,7 +86,7 @@ func TestTables1(t *testing.T) {
 	_, err = handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
 
-	obj, _ = rel.CreateObject(false)
+	obj, _ = rel.CreateObject(false, false)
 
 	id = obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender = handle.SetAppender(id)
@@ -159,14 +159,14 @@ func TestTxn1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		_, err = rel.CreateObject(false)
+		_, err = rel.CreateObject(false, false)
 		assert.Nil(t, err)
 	}
 	{
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		objIt := rel.MakeObjectIt()
+		objIt := rel.MakeObjectIt(false)
 		objCnt := uint32(0)
 		blkCnt := uint32(0)
 		for objIt.Valid() {
@@ -411,7 +411,7 @@ func TestTxn6(t *testing.T) {
 			_, _, err = rel.GetValueByFilter(context.Background(), filter, 3)
 			assert.Error(t, err)
 
-			it := rel.MakeObjectIt()
+			it := rel.MakeObjectIt(false)
 			for it.Valid() {
 				obj := it.GetObject()
 				for j := 0; j < obj.BlkCnt(); j++ {
@@ -472,26 +472,34 @@ func TestFlushAblkMerge(t *testing.T) {
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		blks := make([]*catalog.ObjectEntry, 0)
-		it := rel.MakeObjectIt()
+		tombstones := make([]*catalog.ObjectEntry, 0)
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			blks = append(blks, meta)
 			it.Next()
 		}
+		it = rel.MakeObjectIt(true)
+		for it.Valid() {
+			blk := it.GetObject()
+			meta := blk.GetMeta().(*catalog.ObjectEntry)
+			tombstones = append(tombstones, meta)
+			it.Next()
+		}
 		{
 			txn, _ := db.StartTxn(nil)
 			database, _ := txn.GetDatabase("db")
 			rel, _ := database.GetRelationByName(schema.Name)
-			it := rel.MakeObjectIt()
+			it := rel.MakeObjectIt(false)
 			blk := it.GetObject()
-			err := blk.RangeDelete(0, 4, 4, handle.DT_Normal, common.DefaultAllocator)
+			err := rel.RangeDelete(blk.Fingerprint(), 4, 4, handle.DT_Normal)
 			assert.Nil(t, err)
 			assert.Nil(t, txn.Commit(context.Background()))
 		}
 		start := time.Now()
 		{
-			task, err := jobs.NewFlushTableTailTask(nil, txn, blks, db.Runtime, types.MaxTs())
+			task, err := jobs.NewFlushTableTailTask(nil, txn, blks, tombstones, db.Runtime, types.MaxTs())
 			assert.Nil(t, err)
 			err = task.OnExec(context.Background())
 			assert.Nil(t, err)
@@ -504,7 +512,7 @@ func TestFlushAblkMerge(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -611,7 +619,7 @@ func TestCompaction1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -635,7 +643,7 @@ func TestCompaction1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -683,7 +691,7 @@ func TestCompaction2(t *testing.T) {
 		txn, _ := db.TxnMgr.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -700,7 +708,7 @@ func TestCompaction2(t *testing.T) {
 		txn, _ := db.TxnMgr.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {

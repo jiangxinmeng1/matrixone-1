@@ -131,7 +131,14 @@ func (h *txnRelation) SimplePPString(level common.PPLevel) string {
 	if level < common.PPL1 {
 		return s
 	}
-	it := h.MakeObjectIt()
+	it := h.MakeObjectIt(false)
+	for it.Valid() {
+		object := it.GetObject()
+		defer object.Close()
+		s = fmt.Sprintf("%s\n%s", s, object.String())
+		it.Next()
+	}
+	it = h.MakeObjectIt(true)
 	for it.Valid() {
 		object := it.GetObject()
 		defer object.Close()
@@ -189,11 +196,11 @@ func (h *txnRelation) SoftDeleteObject(id *types.Objectid, isTombstone bool) (er
 	return h.Txn.GetStore().SoftDeleteObject(isTombstone, fp)
 }
 
-func (h *txnRelation) MakeObjectItOnSnap() handle.ObjectIt {
+func (h *txnRelation) MakeObjectItOnSnap(isTombstone bool) handle.ObjectIt {
 	return newObjectItOnSnap(h.table, false)
 }
 
-func (h *txnRelation) MakeObjectIt() handle.ObjectIt {
+func (h *txnRelation) MakeObjectIt(isTombstone bool) handle.ObjectIt {
 	return newObjectIt(h.table, false)
 }
 

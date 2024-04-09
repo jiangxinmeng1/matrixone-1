@@ -727,7 +727,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		err = nil
 	}
 	h := newRelation(tbl)
-	blockIt := h.MakeObjectIt()
+	blockIt := h.MakeObjectIt(false)
 	for blockIt.Valid() {
 		h := blockIt.GetObject()
 		defer h.Close()

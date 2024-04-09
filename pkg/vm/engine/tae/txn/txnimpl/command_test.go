@@ -46,7 +46,7 @@ func TestComposedCmd(t *testing.T) {
 	assert.Nil(t, err)
 	composed.AddCmd(tblCmd)
 
-	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil)
+	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil, false)
 	objCmd, err := obj.MakeCommand(1)
 	assert.Nil(t, err)
 	composed.AddCmd(objCmd)

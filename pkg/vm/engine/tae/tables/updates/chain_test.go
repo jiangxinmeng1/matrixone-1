@@ -45,7 +45,7 @@ func TestDeleteChain1(t *testing.T) {
 
 	db, _ := c.CreateDBEntry("db", "", "", nil)
 	table, _ := db.CreateTableEntry(schema, nil, nil)
-	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil)
+	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil, false)
 	objHandle := NewObjectMVCCHandle(obj)
 
 	controller := NewMVCCHandle(objHandle, 0)
@@ -159,7 +159,7 @@ func TestDeleteChain2(t *testing.T) {
 	defer c.Close()
 	db, _ := c.CreateDBEntry("db", "", "", nil)
 	table, _ := db.CreateTableEntry(schema, nil, nil)
-	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil)
+	obj, _ := table.CreateObject(nil, catalog.ES_Appendable, nil, nil, false)
 	objHandle := NewObjectMVCCHandle(obj)
 	controller := NewMVCCHandle(objHandle, 0)
 	chain := NewDeleteChain(nil, controller)

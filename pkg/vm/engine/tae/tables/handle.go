@@ -39,7 +39,7 @@ func newHandle(table *dataTable, object *aobject) *tableHandle {
 
 func (h *tableHandle) SetAppender(id *common.ID) (appender data.ObjectAppender) {
 	tableMeta := h.table.meta
-	objMeta, _ := tableMeta.GetObjectByID(id.ObjectID())
+	objMeta, _ := tableMeta.GetObjectByID(id.ObjectID(), h.object.meta.IsTombstone)
 	h.object = objMeta.GetObjectData().(*aobject)
 	h.appender, _ = h.object.MakeAppender()
 	h.object.Ref()
@@ -56,7 +56,7 @@ func (h *tableHandle) ThrowAppenderAndErr() (appender data.ObjectAppender, err e
 func (h *tableHandle) GetAppender() (appender data.ObjectAppender, err error) {
 	var objEntry *catalog.ObjectEntry
 	if h.appender == nil {
-		objEntry = h.table.meta.LastAppendableObject()
+		objEntry = h.table.meta.LastAppendableObject(h.object.meta.IsTombstone)
 		if objEntry == nil {
 			err = data.ErrAppendableObjectNotFound
 			return

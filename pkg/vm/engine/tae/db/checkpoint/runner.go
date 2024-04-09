@@ -845,11 +845,19 @@ func (r *runner) onWaitWaitableItems(items ...any) {
 func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.TableTree, endTs types.TS) error {
 	metas := make([]*catalog.ObjectEntry, 0, 10)
 	for _, obj := range tree.Objs {
-		object, err := table.GetObjectByID(obj.ID)
+		object, err := table.GetObjectByID(obj.ID, false)
 		if err != nil {
 			panic(err)
 		}
 		metas = append(metas, object)
+	}
+	tombstoneMetas := make([]*catalog.ObjectEntry, 0, 10)
+	for _, obj := range tree.Tombstones {
+		object, err := table.GetObjectByID(obj.ID, true)
+		if err != nil {
+			panic(err)
+		}
+		tombstoneMetas = append(tombstoneMetas, object)
 	}
 
 	// freeze all append
@@ -862,7 +870,7 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 		scopes = append(scopes, *meta.AsCommonID())
 	}
 
-	factory := jobs.FlushTableTailTaskFactory(metas, r.rt, endTs)
+	factory := jobs.FlushTableTailTaskFactory(metas, tombstoneMetas, r.rt, endTs)
 	if _, err := r.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory); err != nil {
 		if err != tasks.ErrScheduleScopeConflict {
 			logutil.Infof("[FlushTabletail] %d-%s %v", table.ID, table.GetLastestSchemaLocked().Name, err)
@@ -874,13 +882,20 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 
 func (r *runner) EstimateTableMemSize(table *catalog.TableEntry, tree *model.TableTree) (asize int, dsize int) {
 	for _, obj := range tree.Objs {
-		object, err := table.GetObjectByID(obj.ID)
+		object, err := table.GetObjectByID(obj.ID, false)
 		if err != nil {
 			panic(err)
 		}
-		a, d := object.GetObjectData().EstimateMemSize()
+		a, _ := object.GetObjectData().EstimateMemSize()
 		asize += a
-		dsize += d
+	}
+	for _, obj := range tree.Tombstones {
+		object, err := table.GetObjectByID(obj.ID, true)
+		if err != nil {
+			panic(err)
+		}
+		a, _ := object.GetObjectData().EstimateMemSize()
+		dsize += a
 	}
 	return
 }

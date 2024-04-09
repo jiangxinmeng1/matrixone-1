@@ -262,10 +262,7 @@ func (obj *object) getPersistedRowByFilter(
 }
 
 func (obj *object) EstimateMemSize() (int, int) {
-	node := obj.PinNode()
-	defer node.Unref()
-	dsize := obj.meta.GetTable().EstimateMemSize(obj.meta.ID)
-	return 0, dsize
+	return 0, 0
 }
 
 func (obj *object) GetRowsOnReplay() uint64 {

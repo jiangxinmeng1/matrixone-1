@@ -411,14 +411,13 @@ func (obj *aobject) Init() (err error) { return }
 func (obj *aobject) EstimateMemSize() (int, int) {
 	node := obj.PinNode()
 	defer node.Unref()
-	dsize := obj.meta.GetTable().EstimateMemSize(obj.meta.ID)
 	obj.RLock()
 	defer obj.RUnlock()
 	asize := obj.appendMVCC.EstimateMemSizeLocked()
 	if !node.IsPersisted() {
 		asize += node.MustMNode().EstimateMemSize()
 	}
-	return asize, dsize
+	return asize, 0
 }
 
 func (obj *aobject) GetRowsOnReplay() uint64 {

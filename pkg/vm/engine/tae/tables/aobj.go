@@ -178,6 +178,9 @@ func (obj *aobject) resolveColumnDatas(
 ) (view *containers.BlockView, err error) {
 	node := obj.PinNode()
 	defer node.Unref()
+	if obj.meta.IsTombstone {
+		skipDeletes = true
+	}
 
 	if !node.IsPersisted() {
 		return node.MustMNode().resolveInMemoryColumnDatas(
@@ -232,6 +235,9 @@ func (obj *aobject) resolveColumnData(
 	node := obj.PinNode()
 	defer node.Unref()
 
+	if obj.meta.IsTombstone {
+		skipDeletes = true
+	}
 	if !node.IsPersisted() {
 		return node.MustMNode().resolveInMemoryColumnData(
 			txn, readSchema, col, skipDeletes, mp,

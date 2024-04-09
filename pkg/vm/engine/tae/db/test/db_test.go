@@ -362,7 +362,7 @@ func TestTableHandle(t *testing.T) {
 	t.Log(tableMeta.String())
 	table := tableMeta.GetTableData()
 
-	handle := table.GetHandle()
+	handle := table.GetHandle(false)
 	appender, err := handle.GetAppender()
 	assert.Nil(t, appender)
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
@@ -4233,9 +4233,7 @@ func TestBlockRead(t *testing.T) {
 	tae.CompactBlocks(false)
 
 	objStats := blkEntry.GetLatestCommittedNode().BaseNode
-	deltaloc := rel.GetMeta().(*catalog.TableEntry).TryGetTombstone(blkEntry.ID).GetLatestDeltaloc(0)
 	assert.False(t, objStats.IsEmpty())
-	assert.NotEmpty(t, deltaloc)
 
 	bid, sid := blkEntry.ID, blkEntry.ID
 
@@ -4247,7 +4245,6 @@ func TestBlockRead(t *testing.T) {
 	metaloc := objStats.ObjectLocation()
 	metaloc.SetRows(schema.BlockMaxRows)
 	info.SetMetaLocation(metaloc)
-	info.SetDeltaLocation(deltaloc)
 
 	columns := make([]string, 0)
 	colIdxs := make([]uint16, 0)
@@ -4352,10 +4349,8 @@ func TestCompactDeltaBlk(t *testing.T) {
 		err = task.OnExec(context.Background())
 		assert.NoError(t, err)
 		assert.False(t, meta.GetLatestNodeLocked().BaseNode.IsEmpty())
-		assert.False(t, rel.GetMeta().(*catalog.TableEntry).TryGetTombstone(meta.ID).GetLatestDeltaloc(0).IsEmpty())
 		created := task.GetCreatedObjects().GetMeta().(*catalog.ObjectEntry)
 		assert.False(t, created.GetLatestNodeLocked().BaseNode.IsEmpty())
-		assert.Nil(t, rel.GetMeta().(*catalog.TableEntry).TryGetTombstone(created.ID))
 		err = txn.Commit(context.Background())
 		assert.Nil(t, err)
 		err = meta.GetTable().RemoveEntry(meta)
@@ -4389,10 +4384,8 @@ func TestCompactDeltaBlk(t *testing.T) {
 		assert.NoError(t, err)
 		t.Log(tae.Catalog.SimplePPString(3))
 		assert.True(t, !meta.GetLatestCommittedNode().BaseNode.IsEmpty())
-		assert.True(t, !rel.GetMeta().(*catalog.TableEntry).TryGetTombstone(meta.ID).GetLatestDeltaloc(0).IsEmpty())
 		created := task.GetCreatedObjects()[0]
 		assert.False(t, created.GetLatestNodeLocked().BaseNode.IsEmpty())
-		assert.Nil(t, rel.GetMeta().(*catalog.TableEntry).TryGetTombstone(created.ID))
 		err = txn.Commit(context.Background())
 		assert.Nil(t, err)
 	}

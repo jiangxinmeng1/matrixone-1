@@ -315,6 +315,7 @@ func (store *txnStore) RangeDelete(
 	id *common.ID, start, end uint32,
 	pkVec containers.Vector, dt handle.DeleteType,
 ) (err error) {
+	store.IncreateWriteCnt()
 	db, err := store.getOrSetDB(id.DbID)
 	if err != nil {
 		return err
@@ -325,6 +326,7 @@ func (store *txnStore) RangeDelete(
 func (store *txnStore) TryDeleteByDeltaloc(
 	id *common.ID, deltaloc objectio.Location,
 ) (ok bool, err error) {
+	store.IncreateWriteCnt()
 	db, err := store.getOrSetDB(id.DbID)
 	if err != nil {
 		return
@@ -478,7 +480,7 @@ func (store *txnStore) ObserveTxn(
 		dbName := db.entry.GetName()
 		dbid := db.entry.ID
 		for _, tbl := range db.tables {
-			tblName := tbl.GetLocalSchema().Name
+			tblName := tbl.GetLocalSchema(false).Name
 			tid := tbl.entry.ID
 			rotateTable(dbName, tblName, dbid, tid)
 			if tbl.createEntry != nil || tbl.dropEntry != nil {
@@ -503,7 +505,7 @@ func (store *txnStore) ObserveTxn(
 				for _, node := range tbl.tableSpace.nodes {
 					anode, ok := node.(*anode)
 					if ok {
-						schema := anode.table.GetLocalSchema()
+						schema := anode.table.GetLocalSchema(false)
 						bat := &containers.BatchWithVersion{
 							Version:    schema.Version,
 							NextSeqnum: uint16(schema.Extra.NextColSeqnum),

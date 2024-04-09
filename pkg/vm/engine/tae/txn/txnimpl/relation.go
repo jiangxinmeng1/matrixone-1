@@ -152,7 +152,7 @@ func (h *txnRelation) Close() error { return nil }
 func (h *txnRelation) GetMeta() any { return h.table.entry }
 
 // Schema return schema in txnTable, not the lastest schema in TableEntry
-func (h *txnRelation) Schema() any { return h.table.GetLocalSchema() }
+func (h *txnRelation) Schema() any { return h.table.GetLocalSchema(false) }
 
 func (h *txnRelation) GetCardinality(attr string) int64 { return 0 }
 
@@ -161,7 +161,7 @@ func (h *txnRelation) BatchDedup(col containers.Vector) error {
 }
 
 func (h *txnRelation) Append(ctx context.Context, data *containers.Batch) error {
-	if !h.table.GetLocalSchema().IsSameColumns(h.table.GetMeta().GetLastestSchemaLocked()) {
+	if !h.table.GetLocalSchema(false).IsSameColumns(h.table.GetMeta().GetLastestSchemaLocked()) {
 		return moerr.NewInternalErrorNoCtx("schema changed, please rollback and retry")
 	}
 	return h.Txn.GetStore().Append(ctx, h.table.entry.GetDB().ID, h.table.entry.GetID(), data)
@@ -197,11 +197,11 @@ func (h *txnRelation) SoftDeleteObject(id *types.Objectid, isTombstone bool) (er
 }
 
 func (h *txnRelation) MakeObjectItOnSnap(isTombstone bool) handle.ObjectIt {
-	return newObjectItOnSnap(h.table, false)
+	return newObjectItOnSnap(h.table, isTombstone)
 }
 
 func (h *txnRelation) MakeObjectIt(isTombstone bool) handle.ObjectIt {
-	return newObjectIt(h.table, false)
+	return newObjectIt(h.table, isTombstone)
 }
 
 func (h *txnRelation) GetByFilter(
@@ -226,7 +226,7 @@ func (h *txnRelation) UpdateByFilter(ctx context.Context, filter *handle.Filter,
 	if err != nil {
 		return
 	}
-	schema := h.table.GetLocalSchema()
+	schema := h.table.GetLocalSchema(false)
 	pkDef := schema.GetPrimaryKey()
 	pkVec := makeWorkspaceVector(pkDef.Type)
 	defer pkVec.Close()
@@ -301,7 +301,7 @@ func (h *txnRelation) DeleteByPhyAddrKey(key any) error {
 	bid, row := rid.Decode()
 	id := h.table.entry.AsCommonID()
 	id.BlockID = bid
-	schema := h.table.GetLocalSchema()
+	schema := h.table.GetLocalSchema(false)
 	pkDef := schema.GetPrimaryKey()
 	pkVec := makeWorkspaceVector(pkDef.Type)
 	defer pkVec.Close()
@@ -314,7 +314,7 @@ func (h *txnRelation) DeleteByPhyAddrKey(key any) error {
 }
 
 func (h *txnRelation) RangeDelete(id *common.ID, start, end uint32, dt handle.DeleteType) error {
-	schema := h.table.GetLocalSchema()
+	schema := h.table.GetLocalSchema(false)
 	pkDef := schema.GetPrimaryKey()
 	pkVec := h.table.store.rt.VectorPool.Small.GetVector(&pkDef.Type)
 	defer pkVec.Close()

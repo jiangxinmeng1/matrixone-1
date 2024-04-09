@@ -19,6 +19,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -30,19 +31,22 @@ import (
 // which belongs to txn's workspace and can be appended data into.
 type anode struct {
 	*baseNode
-	data    *containers.Batch
-	rows    uint32
-	appends []*appendInfo
+	data        *containers.Batch
+	rows        uint32
+	appends     []*appendInfo
+	isTombstone bool
 }
 
 // NewANode creates a InsertNode with data in memory.
 func NewANode(
 	tbl *txnTable,
 	meta *catalog.ObjectEntry,
+	isTombstone bool,
 ) *anode {
 	impl := new(anode)
 	impl.baseNode = newBaseNode(tbl, meta)
 	impl.appends = make([]*appendInfo, 0)
+	impl.isTombstone = isTombstone
 	return impl
 }
 
@@ -50,6 +54,22 @@ func (n *anode) Rows() uint32 {
 	return n.rows
 }
 
+// fill in commitTSVec and abortVec
+func (n *anode) prepareApply(startOffset int, commitTS types.TS) {
+	if !n.isTombstone {
+		return
+	}
+	length := n.data.Length() - startOffset
+	commitVec := containers.NewConstFixed[types.TS](types.T_TS.ToType(), commitTS, length)
+	abortVec := containers.NewConstFixed[bool](types.T_bool.ToType(), false, length)
+	if len(n.data.Vecs) == 5 {
+		n.data.GetVectorByName(catalog.AttrCommitTs).Extend(commitVec)
+		n.data.GetVectorByName(catalog.AttrAborted).Extend(abortVec)
+	} else {
+		n.data.AddVector(catalog.AttrCommitTs, commitVec)
+		n.data.AddVector(catalog.AttrAborted, abortVec)
+	}
+}
 func (n *anode) GetAppends() []*appendInfo {
 	return n.appends
 }
@@ -92,7 +112,7 @@ func (n *anode) PrepareAppend(data *containers.Batch, offset uint32) uint32 {
 }
 
 func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err error) {
-	schema := n.table.GetLocalSchema()
+	schema := n.table.GetLocalSchema(n.isTombstone)
 	if n.data == nil {
 		capacity := data.Length() - int(offset)
 		n.data = containers.BuildBatchWithPool(
@@ -117,6 +137,11 @@ func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err er
 		if attr == catalog.PhyAddrColumnName {
 			continue
 		}
+		if n.isTombstone {
+			if attr == catalog.AttrCommitTs || attr == catalog.AttrAborted {
+				continue
+			}
+		}
 		def := schema.ColDefs[schema.GetColIdx(attr)]
 		destVec := n.data.Vecs[def.Idx]
 		// logutil.Infof("destVec: %s, %d, %d", destVec.String(), cnt, data.Length())
@@ -128,6 +153,9 @@ func (n *anode) Append(data *containers.Batch, offset uint32) (an uint32, err er
 }
 
 func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
+	if n.isTombstone{
+		return
+	}
 	col := n.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	blkID := objectio.NewBlockidWithObjectID(&n.meta.ID, 0)
 	if err = objectio.ConstructRowidColumnTo(
@@ -138,7 +166,7 @@ func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
 		col.Close()
 		return
 	}
-	err = n.data.Vecs[n.table.GetLocalSchema().PhyAddrKey.Idx].ExtendVec(col.GetDownstreamVector())
+	err = n.data.Vecs[n.table.GetLocalSchema(n.isTombstone).PhyAddrKey.Idx].ExtendVec(col.GetDownstreamVector())
 	col.Close()
 	return
 }

@@ -167,7 +167,10 @@ func NewFlushTableTailTask(
 		if err != nil {
 			return
 		}
-		if hdl.IsAppendable() {
+		if obj.IsTombstone {
+			panic(fmt.Sprintf("logic err, obj %v is tombstone", obj.ID.String()))
+		}
+		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
 		}
 		task.aObjMetas = append(task.aObjMetas, obj)
@@ -183,11 +186,14 @@ func NewFlushTableTailTask(
 	for _, obj := range tombStones {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
-		hdl, err = rel.GetObject(&obj.ID, false)
+		hdl, err = rel.GetObject(&obj.ID, true)
 		if err != nil {
 			return
 		}
-		if hdl.IsAppendable() {
+		if !obj.IsTombstone {
+			panic(fmt.Sprintf("logic err, obj %v is not tombstone", obj.ID.String()))
+		}
+		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
 		}
 		task.aTombstoneMetas = append(task.aTombstoneMetas, obj)

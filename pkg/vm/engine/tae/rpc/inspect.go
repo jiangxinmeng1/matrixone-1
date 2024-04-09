@@ -568,7 +568,7 @@ func (c *manuallyMergeArg) FromCommand(cmd *cobra.Command) (err error) {
 		if err != nil {
 			return err
 		}
-		objects, err := c.tbl.GetObjectsByID(&uid,false)
+		objects, err := c.tbl.GetObjectsByID(&uid, false)
 		if err != nil {
 			return moerr.NewInvalidInputNoCtx("not found object %s", o)
 		}
@@ -763,7 +763,7 @@ func parseBlkTarget(address string, tbl *catalog.TableEntry) (*catalog.ObjectEnt
 	}
 	bid := objectio.NewBlockid(&uid, uint16(fn), uint16(bn))
 	objid := bid.Object()
-	oentry, err := tbl.GetObjectByID(objid,false)
+	oentry, err := tbl.GetObjectByID(objid, false)
 	if err != nil {
 		return nil, err
 	}

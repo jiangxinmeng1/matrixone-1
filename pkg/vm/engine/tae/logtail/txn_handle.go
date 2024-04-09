@@ -152,8 +152,8 @@ func (b *TxnLogtailRespBuilder) visitAppend(ibat any) {
 	sort.Sort(src)
 	mybat := containers.NewBatchWithCapacity(int(src.NextSeqnum) + 2)
 	mybat.AddVector(
-		catalog.AttrRowID,
-		src.GetVectorByName(catalog.AttrRowID).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+		catalog.PhyAddrColumnName,
+		src.GetVectorByName(catalog.PhyAddrColumnName).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
 	)
 	tsType := types.T_TS.ToType()
 	commitVec := b.rt.VectorPool.Small.GetVector(&tsType)

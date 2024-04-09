@@ -57,8 +57,8 @@ func newMemoryNode(object *baseObject, isTombstone bool) *memoryNode {
 	} else {
 		// Get the lastest schema, it will not be modified, so just keep the pointer
 		schema = object.meta.GetSchemaLocked()
-		impl.writeSchema = schema
 	}
+	impl.writeSchema = schema
 	// impl.data = containers.BuildBatchWithPool(
 	// 	schema.AllNames(), schema.AllTypes(), 0, object.rt.VectorPool.Memtable,
 	// )
@@ -611,6 +611,7 @@ func (node *memoryNode) getInMemoryValue(
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	node.object.RLock()
+	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 	rowID := objectio.NewRowid(blkID, uint32(row))
 	deleted, err := node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)

@@ -97,7 +97,7 @@ func (tbl *txnTable) RangeDelete(
 		//do PK deduplication check against txn's snapshot data.
 		if err = tbl.DedupSnapByPK(
 			ctx,
-			deleteBatch.Vecs[tbl.schema.GetSingleSortKeyIdx()], false, true); err != nil {
+			deleteBatch.Vecs[0], false, true); err != nil {
 			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
 				err = txnif.ErrTxnWWConflict
 			}
@@ -106,7 +106,7 @@ func (tbl *txnTable) RangeDelete(
 	} else if dedupType == txnif.FullSkipWorkSpaceDedup {
 		if err = tbl.DedupSnapByPK(
 			ctx,
-			deleteBatch.Vecs[tbl.schema.GetSingleSortKeyIdx()], false, true); err != nil {
+			deleteBatch.Vecs[0], false, true); err != nil {
 			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
 				err = txnif.ErrTxnWWConflict
 			}
@@ -115,7 +115,7 @@ func (tbl *txnTable) RangeDelete(
 	} else if dedupType == txnif.IncrementalDedup {
 		if err = tbl.DedupSnapByPK(
 			ctx,
-			deleteBatch.Vecs[tbl.schema.GetSingleSortKeyIdx()], true, true); err != nil {
+			deleteBatch.Vecs[0], true, true); err != nil {
 			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
 				err = txnif.ErrTxnWWConflict
 			}
@@ -126,8 +126,8 @@ func (tbl *txnTable) RangeDelete(
 		err = tbl.RangeDeleteLocalRows(start, end)
 		return
 	}
-	if tbl.tombstoneTableSpace != nil {
-		tbl.tableSpace = newTableSpace(tbl, true)
+	if tbl.tombstoneTableSpace == nil {
+		tbl.tombstoneTableSpace = newTableSpace(tbl, true)
 	}
 	err = tbl.tombstoneTableSpace.Append(deleteBatch)
 	if err != nil {
@@ -175,7 +175,7 @@ func (tbl *txnTable) createTombstoneBatch(
 	bat := catalog.NewTombstoneBatchWithPKVector(pk, tbl.store.rt.VectorPool.Small.GetAllocator())
 	for row := start; row <= end; row++ {
 		rowID := objectio.NewRowid(&id.BlockID, row)
-		bat.GetVectorByName(catalog.AttrRowID).Append(rowID, false)
+		bat.GetVectorByName(catalog.AttrRowID).Append(*rowID, false)
 	}
 	return bat
 }

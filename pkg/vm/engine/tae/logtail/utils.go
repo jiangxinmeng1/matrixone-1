@@ -3110,7 +3110,7 @@ func (collector *BaseCollector) VisitObj(entry *catalog.ObjectEntry) (err error)
 }
 
 func (collector *GlobalCollector) VisitObj(entry *catalog.ObjectEntry) error {
-	if collector.isEntryDeletedBeforeThreshold(entry.BaseEntryImpl) && !entry.InMemoryDeletesExisted() {
+	if collector.isEntryDeletedBeforeThreshold(entry.BaseEntryImpl) {
 		return nil
 	}
 	if collector.isEntryDeletedBeforeThreshold(entry.GetTable().BaseEntryImpl) {
@@ -3150,7 +3150,7 @@ func (collector *BaseCollector) VisitTombstone(entry data.Tombstone) (err error)
 
 func (collector *GlobalCollector) VisitTombstone(entry data.Tombstone) error {
 	obj := entry.GetObject().(*catalog.ObjectEntry)
-	if collector.isEntryDeletedBeforeThreshold(obj.BaseEntryImpl) && !obj.InMemoryDeletesExisted() {
+	if collector.isEntryDeletedBeforeThreshold(obj.BaseEntryImpl) {
 		return nil
 	}
 	if collector.isEntryDeletedBeforeThreshold(obj.GetTable().BaseEntryImpl) {

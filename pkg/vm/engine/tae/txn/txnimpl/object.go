@@ -228,7 +228,7 @@ func (obj *txnObject) GetTotalChanges() int {
 	return obj.entry.GetObjectData().GetTotalChanges()
 }
 func (obj *txnObject) RangeDelete(blkID uint16, start, end uint32, dt handle.DeleteType, mp *mpool.MPool) (err error) {
-	schema := obj.table.GetLocalSchema()
+	schema := obj.table.GetLocalSchema(true)
 	pkDef := schema.GetPrimaryKey()
 	pkVec := makeWorkspaceVector(pkDef.Type)
 	defer pkVec.Close()
@@ -265,7 +265,7 @@ func (obj *txnObject) UpdateStats(stats objectio.ObjectStats) error {
 }
 
 func (obj *txnObject) Prefetch(idxes []int) error {
-	schema := obj.table.GetLocalSchema()
+	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
 	seqnums := make([]uint16, 0, len(idxes))
 	for _, idx := range idxes {
 		seqnums = append(seqnums, schema.ColDefs[idx].SeqNum)
@@ -296,7 +296,7 @@ func (obj *txnObject) GetColumnDataById(
 	if obj.entry.IsLocal {
 		return obj.table.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
 	}
-	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, obj.table.GetLocalSchema(), blkID, colIdx, mp)
+	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdx, mp)
 }
 
 func (obj *txnObject) GetColumnDataByIds(
@@ -305,13 +305,13 @@ func (obj *txnObject) GetColumnDataByIds(
 	if obj.entry.IsLocal {
 		return obj.table.tableSpace.GetColumnDataByIds(obj.entry, colIdxes, mp)
 	}
-	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(), blkID, colIdxes, mp)
+	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
 }
 
 func (obj *txnObject) GetColumnDataByName(
 	ctx context.Context, blkID uint16, attr string, mp *mpool.MPool,
 ) (*containers.ColumnView, error) {
-	schema := obj.table.GetLocalSchema()
+	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
 	colIdx := schema.GetColIdx(attr)
 	if obj.entry.IsLocal {
 		return obj.table.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
@@ -322,7 +322,7 @@ func (obj *txnObject) GetColumnDataByName(
 func (obj *txnObject) GetColumnDataByNames(
 	ctx context.Context, blkID uint16, attrs []string, mp *mpool.MPool,
 ) (*containers.BlockView, error) {
-	schema := obj.table.GetLocalSchema()
+	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
 	attrIds := make([]int, len(attrs))
 	for i, attr := range attrs {
 		attrIds[i] = schema.GetColIdx(attr)

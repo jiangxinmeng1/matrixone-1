@@ -792,37 +792,39 @@ func (catalog *Catalog) onReplayCheckpointObject(
 // }
 
 // func (catalog *Catalog) onReplayDeleteBlock(
-// 	dbid, tid uint64,
-// 	objid *types.Objectid,
-// 	blkid *types.Blockid,
-// 	metaloc,
-// 	deltaloc objectio.Location,
-// 	txnNode *txnbase.TxnMVCCNode,
-// ) {
-// 	// catalog.OnReplayBlockID(blkid)
-// 	db, err := catalog.GetDatabaseByID(dbid)
-// 	if err != nil {
-// 		logutil.Info(catalog.SimplePPString(common.PPL3))
-// 		panic(err)
-// 	}
-// 	rel, err := db.GetTableEntryByID(tid)
-// 	if err != nil {
-// 		logutil.Info(catalog.SimplePPString(common.PPL3))
-// 		panic(err)
-// 	}
-// 	catalog.replayObjectByBlock(
-// 		rel,
-// 		*blkid,
-// 		ES_Appendable, // state is not used when delete
-// 		txnNode.Start,
-// 		txnNode.End,
-// 		metaloc,
-// 		false,
-// 		false,
-// 		true,
-// 		nil,
-// 		nil)
-// }
+//
+//	dbid, tid uint64,
+//	objid *types.Objectid,
+//	blkid *types.Blockid,
+//	metaloc,
+//	deltaloc objectio.Location,
+//	txnNode *txnbase.TxnMVCCNode,
+//
+//	) {
+//		// catalog.OnReplayBlockID(blkid)
+//		db, err := catalog.GetDatabaseByID(dbid)
+//		if err != nil {
+//			logutil.Info(catalog.SimplePPString(common.PPL3))
+//			panic(err)
+//		}
+//		rel, err := db.GetTableEntryByID(tid)
+//		if err != nil {
+//			logutil.Info(catalog.SimplePPString(common.PPL3))
+//			panic(err)
+//		}
+//		catalog.replayObjectByBlock(
+//			rel,
+//			*blkid,
+//			ES_Appendable, // state is not used when delete
+//			txnNode.Start,
+//			txnNode.End,
+//			metaloc,
+//			false,
+//			false,
+//			true,
+//			nil,
+//			nil)
+//	}
 func (catalog *Catalog) ReplayTableRows() {
 	rows := uint64(0)
 	tableProcessor := new(LoopProcessor)

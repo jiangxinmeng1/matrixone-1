@@ -53,7 +53,7 @@ func TestTables1(t *testing.T) {
 	dataFactory := tables.NewDataFactory(db.Runtime, db.Dir)
 	tableFactory := dataFactory.MakeTableFactory()
 	table := tableFactory(tableMeta)
-	handle := table.GetHandle()
+	handle := table.GetHandle(false)
 	_, err := handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
 	obj, _ := rel.CreateObject(false, false)

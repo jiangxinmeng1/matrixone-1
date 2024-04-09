@@ -50,13 +50,13 @@ func (es EntryState) Repr() string {
 
 var (
 	TNTombstoneSchemaAttr = []string{
-		PhyAddrColumnName,
+		AttrRowID,
 		AttrCommitTs,
 		AttrPKVal,
 		AttrAborted,
 	}
 	CNTombstoneCNSchemaAttr = []string{
-		PhyAddrColumnName,
+		AttrRowID,
 		AttrPKVal,
 	}
 )
@@ -81,7 +81,7 @@ func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
 				}
 			}
 		}
-		schema.Finalize(true)
+		schema.Finalize(false)
 		return schema
 	} else {
 		schema := NewEmptySchema("tombstone")
@@ -100,7 +100,7 @@ func GetTombstoneSchema(isPersistedByCN bool, pkType types.Type) *Schema {
 				}
 			}
 		}
-		schema.Finalize(true)
+		schema.Finalize(false)
 		return schema
 	}
 }
@@ -111,7 +111,7 @@ func NewTombstoneBatch(pkType types.Type, mp *mpool.MPool) *containers.Batch {
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	pkVec := containers.MakeVector(pkType, mp)
 	abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
-	bat.AddVector(PhyAddrColumnName, rowIDVec)
+	bat.AddVector(AttrRowID, rowIDVec)
 	bat.AddVector(AttrCommitTs, commitTSVec)
 	bat.AddVector(AttrPKVal, pkVec)
 	bat.AddVector(AttrAborted, abortVec)
@@ -123,7 +123,7 @@ func NewTombstoneBatchWithPKVector(pkVec containers.Vector, mp *mpool.MPool) *co
 	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), mp)
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	abortVec := containers.MakeVector(types.T_bool.ToType(), mp)
-	bat.AddVector(PhyAddrColumnName, rowIDVec)
+	bat.AddVector(AttrRowID, rowIDVec)
 	bat.AddVector(AttrCommitTs, commitTSVec)
 	bat.AddVector(AttrPKVal, pkVec)
 	bat.AddVector(AttrAborted, abortVec)

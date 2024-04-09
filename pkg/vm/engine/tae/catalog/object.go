@@ -107,20 +107,13 @@ func (entry *ObjectEntry) StatsString(zonemapKind common.ZonemapPrintKind) strin
 	)
 }
 
-func (entry *ObjectEntry) InMemoryDeletesExisted() bool {
-	tombstone := entry.GetTable().TryGetTombstone(entry.ID)
-	if tombstone != nil {
-		return tombstone.InMemoryDeletesExisted()
-	}
-	return false
-}
-
 func NewObjectEntry(
 	table *TableEntry,
 	id *objectio.ObjectId,
 	txn txnif.AsyncTxn,
 	state EntryState,
 	dataFactory ObjectDataFactory,
+	isTombstone bool,
 ) *ObjectEntry {
 	e := &ObjectEntry{
 		ID: *id,
@@ -128,8 +121,9 @@ func NewObjectEntry(
 			func() *ObjectMVCCNode { return &ObjectMVCCNode{*objectio.NewObjectStats()} }),
 		table: table,
 		ObjectNode: &ObjectNode{
-			state:    state,
-			SortHint: table.GetDB().catalog.NextObject(),
+			state:       state,
+			SortHint:    table.GetDB().catalog.NextObject(),
+			IsTombstone: isTombstone,
 		},
 	}
 	e.CreateWithTxn(txn, NewObjectInfoWithObjectID(id))
@@ -173,15 +167,16 @@ func NewReplayObjectEntry() *ObjectEntry {
 	return e
 }
 
-func NewStandaloneObject(table *TableEntry, ts types.TS) *ObjectEntry {
+func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *ObjectEntry {
 	e := &ObjectEntry{
 		ID: *objectio.NewObjectid(),
 		BaseEntryImpl: NewBaseEntry(
 			func() *ObjectMVCCNode { return &ObjectMVCCNode{*objectio.NewObjectStats()} }),
 		table: table,
 		ObjectNode: &ObjectNode{
-			state:   ES_Appendable,
-			IsLocal: true,
+			state:       ES_Appendable,
+			IsLocal:     true,
+			IsTombstone: isTombstone,
 		},
 	}
 	e.CreateWithTS(ts, &ObjectMVCCNode{*objectio.NewObjectStats()})
@@ -436,11 +431,15 @@ func (entry *ObjectEntry) StringWithLevel(level common.PPLevel) string {
 }
 
 func (entry *ObjectEntry) StringWithLevelLocked(level common.PPLevel) string {
-	if level <= common.PPL1 {
-		return fmt.Sprintf("[%s-%s]OBJ[%s][C@%s,D@%s]",
-			entry.state.Repr(), entry.ObjectNode.String(), entry.ID.String(), entry.GetCreatedAtLocked().ToString(), entry.GetDeleteAt().ToString())
+	nameStr := "OBJ"
+	if entry.IsTombstone {
+		nameStr = "TOMBSTONE"
 	}
-	return fmt.Sprintf("[%s-%s]OBJ[%s]%s", entry.state.Repr(), entry.ObjectNode.String(), entry.ID.String(), entry.BaseEntryImpl.StringLocked())
+	if level <= common.PPL1 {
+		return fmt.Sprintf("[%s-%s]%s[%s][C@%s,D@%s]",
+			entry.state.Repr(), entry.ObjectNode.String(), nameStr, entry.ID.String(), entry.GetCreatedAtLocked().ToString(), entry.GetDeleteAt().ToString())
+	}
+	return fmt.Sprintf("[%s-%s]%s[%s]%s", entry.state.Repr(), entry.ObjectNode.String(), nameStr, entry.ID.String(), entry.BaseEntryImpl.StringLocked())
 }
 
 func (entry *ObjectEntry) BlockCnt() int {

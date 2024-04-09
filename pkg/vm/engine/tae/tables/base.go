@@ -268,6 +268,9 @@ func (blk *baseObject) ResolvePersistedColumnDatas(
 		view.SetData(colIdxs[i], vec)
 	}
 
+	if blk.meta.IsTombstone {
+		skipDeletes = true
+	}
 	if skipDeletes {
 		return
 	}

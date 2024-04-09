@@ -33,7 +33,7 @@ type ID struct {
 	// Internal table id
 	TableID uint64
 	// Internal block id
-	BlockID types.Blockid
+	BlockID     types.Blockid
 	IsTombstone bool
 }
 

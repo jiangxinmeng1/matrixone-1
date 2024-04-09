@@ -130,7 +130,7 @@ func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.Repla
 		if err != nil {
 			panic(err)
 		}
-		blk, err := database.GetObjectEntryByID(id,id.IsTombstone)
+		blk, err := database.GetObjectEntryByID(id, id.IsTombstone)
 		if err != nil {
 			panic(err)
 		}
@@ -182,8 +182,8 @@ func (store *replayTxnStore) replayDataCmds(cmd *updates.UpdateCmd, observer wal
 	switch cmd.GetType() {
 	case updates.IOET_WALTxnCommand_AppendNode:
 		store.replayAppend(cmd, observer)
-	// case updates.IOET_WALTxnCommand_DeleteNode, updates.IOET_WALTxnCommand_PersistedDeleteNode:
-	// 	store.replayDelete(cmd, observer)
+		// case updates.IOET_WALTxnCommand_DeleteNode, updates.IOET_WALTxnCommand_PersistedDeleteNode:
+		// 	store.replayDelete(cmd, observer)
 	}
 }
 
@@ -227,7 +227,7 @@ func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, observer wal.R
 	if err != nil {
 		panic(err)
 	}
-	obj, err := database.GetObjectEntryByID(id,cmd.GetDest().IsTombstone)
+	obj, err := database.GetObjectEntryByID(id, cmd.GetDest().IsTombstone)
 	if err != nil {
 		panic(err)
 	}

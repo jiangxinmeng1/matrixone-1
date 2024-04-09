@@ -22,7 +22,9 @@ import (
 
 type TableMVCCNode struct {
 	// history schema
-	Schema *Schema
+	Schema            *Schema
+	TombstoneSchema   *Schema
+	CNTombstoneSchema *Schema
 }
 
 func NewEmptyTableMVCCNode() *TableMVCCNode {
@@ -37,6 +39,25 @@ func (e *TableMVCCNode) CloneAll() *TableMVCCNode {
 
 func (e *TableMVCCNode) CloneData() *TableMVCCNode {
 	return e.CloneAll()
+}
+func (e *TableMVCCNode) GetTombstoneSchema(persistedByCN bool) *Schema {
+	if persistedByCN {
+		if e.CNTombstoneSchema != nil {
+			return e.CNTombstoneSchema
+		} else {
+			pkType := e.Schema.GetPrimaryKey().GetType()
+			e.CNTombstoneSchema = GetTombstoneSchema(true, pkType)
+			return e.CNTombstoneSchema
+		}
+	} else {
+		if e.TombstoneSchema != nil {
+			return e.TombstoneSchema
+		} else {
+			pkType := e.Schema.GetPrimaryKey().GetType()
+			e.TombstoneSchema = GetTombstoneSchema(false, pkType)
+			return e.TombstoneSchema
+		}
+	}
 }
 
 func (e *TableMVCCNode) String() string {

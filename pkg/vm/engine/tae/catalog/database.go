@@ -647,4 +647,3 @@ func MockDBEntryWithAccInfo(accId uint64, dbId uint64) *DBEntry {
 
 	return entry
 }
-

@@ -99,12 +99,13 @@ func newDeleteNode(node txnif.DeleteNode, idx int) *deleteNode {
 }
 
 type txnTable struct {
-	store       *txnStore
-	createEntry txnif.TxnEntry
-	dropEntry   txnif.TxnEntry
-	entry       *catalog.TableEntry
-	schema      *catalog.Schema
-	logs        []wal.LogEntry
+	store           *txnStore
+	createEntry     txnif.TxnEntry
+	dropEntry       txnif.TxnEntry
+	entry           *catalog.TableEntry
+	schema          *catalog.Schema
+	tombstoneSchema *catalog.Schema
+	logs            []wal.LogEntry
 
 	tableSpace        *tableSpace
 	dedupedObjectHint uint64
@@ -121,16 +122,17 @@ type txnTable struct {
 }
 
 func newTxnTable(store *txnStore, entry *catalog.TableEntry) (*txnTable, error) {
-	schema := entry.GetVisibleSchema(store.txn)
+	schema, tombstoneSchema := entry.GetVisibleSchema(store.txn)
 	if schema == nil {
 		return nil, moerr.NewInternalErrorNoCtx("No visible schema for ts %s", store.txn.GetStartTS().ToString())
 	}
 	tbl := &txnTable{
-		store:      store,
-		entry:      entry,
-		schema:     schema,
-		logs:       make([]wal.LogEntry, 0),
-		txnEntries: newTxnEntries(),
+		store:           store,
+		entry:           entry,
+		schema:          schema,
+		tombstoneSchema: tombstoneSchema,
+		logs:            make([]wal.LogEntry, 0),
+		txnEntries:      newTxnEntries(),
 	}
 	return tbl, nil
 }
@@ -238,7 +240,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	// transfer in memory deletes
 	deletes := tbl.tombstoneTableSpace.nodes[0].(*anode).data
 	for i := 0; i < deletes.Length(); i++ {
-		rowID := deletes.GetVectorByName(catalog.PhyAddrColumnName).Get(i).(types.Rowid)
+		rowID := deletes.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 		id.SetObjectID(rowID.BorrowObjectID())
 		blkID, rowOffset := rowID.Decode()
 		_, blkOffset := blkID.Offsets()
@@ -414,6 +416,11 @@ func (tbl *txnTable) CollectCmd(cmdMgr *commandManager) (err error) {
 			return
 		}
 	}
+	if tbl.tombstoneTableSpace != nil {
+		if err = tbl.tombstoneTableSpace.CollectCmd(cmdMgr); err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -535,7 +542,10 @@ func (tbl *txnTable) IsDeleted() bool {
 
 // GetLocalSchema returns the schema remains in the txn table, rather than the
 // latest schema in TableEntry
-func (tbl *txnTable) GetLocalSchema() *catalog.Schema {
+func (tbl *txnTable) GetLocalSchema(isTombstone bool) *catalog.Schema {
+	if isTombstone {
+		return tbl.tombstoneSchema
+	}
 	return tbl.schema
 }
 
@@ -554,6 +564,12 @@ func (tbl *txnTable) Close() error {
 			return err
 		}
 		tbl.tableSpace = nil
+	}
+	if tbl.tombstoneTableSpace != nil {
+		if err = tbl.tombstoneTableSpace.Close(); err != nil {
+			return err
+		}
+		tbl.tombstoneTableSpace = nil
 	}
 	tbl.logs = nil
 	tbl.txnEntries = nil
@@ -770,7 +786,7 @@ func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, co
 	}
 	block := meta.GetObjectData()
 	_, blkIdx := id.BlockID.Offsets()
-	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(), blkIdx, int(row), int(col), common.WorkspaceAllocator)
+	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(false), blkIdx, int(row), int(col), common.WorkspaceAllocator)
 }
 func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
 	meta, err := tbl.entry.GetObjectByID(id.ObjectID(), isTombstone)
@@ -837,12 +853,21 @@ func (tbl *txnTable) NeedRollback() bool {
 
 // PrePrepareDedup do deduplication check for 1PC Commit or 2PC Prepare
 func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err error) {
-	if tbl.tableSpace == nil || !tbl.schema.HasPK() {
+	var tableSpace *tableSpace
+	var schema *catalog.Schema
+	if isTombstone {
+		tableSpace = tbl.tombstoneTableSpace
+		schema = tbl.tombstoneSchema
+	} else {
+		tableSpace = tbl.tableSpace
+		schema = tbl.schema
+	}
+	if tableSpace == nil || schema.HasPK() {
 		return
 	}
 	var zm index.ZM
-	pkColPos := tbl.schema.GetSingleSortKeyIdx()
-	for _, node := range tbl.tableSpace.nodes {
+	pkColPos := schema.GetSingleSortKeyIdx()
+	for _, node := range tableSpace.nodes {
 		if node.IsPersisted() {
 			err = tbl.DoPrecommitDedupByNode(ctx, node, isTombstone)
 			if err != nil {
@@ -1299,12 +1324,18 @@ func (tbl *txnTable) ApplyAppend() (err error) {
 	if tbl.tableSpace != nil {
 		err = tbl.tableSpace.ApplyAppend()
 	}
+	if tbl.tombstoneTableSpace != nil {
+		err = tbl.tombstoneTableSpace.ApplyAppend()
+	}
 	return
 }
 
 func (tbl *txnTable) PrePrepare() (err error) {
 	if tbl.tableSpace != nil {
 		err = tbl.tableSpace.PrepareApply()
+	}
+	if tbl.tombstoneTableSpace != nil {
+		err = tbl.tombstoneTableSpace.PrepareApply()
 	}
 	return
 }
@@ -1377,5 +1408,8 @@ func (tbl *txnTable) ApplyRollback() (err error) {
 func (tbl *txnTable) CleanUp() {
 	if tbl.tableSpace != nil {
 		tbl.tableSpace.CloseAppends()
+	}
+	if tbl.tombstoneTableSpace != nil {
+		tbl.tombstoneTableSpace.CloseAppends()
 	}
 }

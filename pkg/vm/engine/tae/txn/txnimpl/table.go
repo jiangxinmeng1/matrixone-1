@@ -873,19 +873,35 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 	return
 }
 
-func (tbl *txnTable) updateDedupedObjectHintAndBlockID(hint uint64, id *types.Blockid) {
-	if tbl.dedupedObjectHint == 0 {
-		tbl.dedupedObjectHint = hint
-		tbl.dedupedBlockID = id
-		return
-	}
-	if tbl.dedupedObjectHint > hint {
-		tbl.dedupedObjectHint = hint
-		tbl.dedupedObjectHint = hint
-		return
-	}
-	if tbl.dedupedObjectHint == hint && tbl.dedupedBlockID.Compare(*id) > 0 {
-		tbl.dedupedBlockID = id
+func (tbl *txnTable) updateDedupedObjectHintAndBlockID(hint uint64, id *types.Blockid, isTombstone bool) {
+	if isTombstone {
+		if tbl.tombstoneDedupedObjectHint == 0 {
+			tbl.tombstoneDedupedObjectHint = hint
+			tbl.tombstoneDedupedBlockID = id
+			return
+		}
+		if tbl.tombstoneDedupedObjectHint > hint {
+			tbl.tombstoneDedupedObjectHint = hint
+			tbl.tombstoneDedupedObjectHint = hint
+			return
+		}
+		if tbl.tombstoneDedupedObjectHint == hint && tbl.tombstoneDedupedBlockID.Compare(*id) > 0 {
+			tbl.tombstoneDedupedBlockID = id
+		}
+	} else {
+		if tbl.dedupedObjectHint == 0 {
+			tbl.dedupedObjectHint = hint
+			tbl.dedupedBlockID = id
+			return
+		}
+		if tbl.dedupedObjectHint > hint {
+			tbl.dedupedObjectHint = hint
+			tbl.dedupedObjectHint = hint
+			return
+		}
+		if tbl.dedupedObjectHint == hint && tbl.dedupedBlockID.Compare(*id) > 0 {
+			tbl.dedupedBlockID = id
+		}
 	}
 }
 
@@ -1001,7 +1017,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		}
 		it.Next()
 	}
-	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID)
+	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID, isTombstone)
 	return
 }
 
@@ -1081,7 +1097,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 		if v, ok := loaded[i]; ok {
 			v.Close()
 		}
-		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID)
+		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID, isTombstone)
 	}
 	return
 }
@@ -1096,7 +1112,11 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM,
 		objIt := tbl.entry.MakeObjectIt(false, isTombstone)
 		for objIt.Valid() {
 			obj := objIt.Get().GetPayload()
-			if obj.SortHint < tbl.dedupedObjectHint {
+			dedupedHint := tbl.dedupedObjectHint
+			if isTombstone {
+				dedupedHint = tbl.tombstoneDedupedObjectHint
+			}
+			if obj.SortHint < dedupedHint {
 				break
 			}
 			{
@@ -1145,7 +1165,11 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 	//loaded := false
 	for objIt.Valid() {
 		obj := objIt.Get().GetPayload()
-		if obj.SortHint < tbl.dedupedObjectHint {
+		dedupedHint := tbl.dedupedObjectHint
+		if isTombstone {
+			dedupedHint = tbl.tombstoneDedupedObjectHint
+		}
+		if obj.SortHint < dedupedHint {
 			break
 		}
 		{

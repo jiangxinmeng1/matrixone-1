@@ -93,6 +93,9 @@ func NewEmptyAppendNode() *AppendNode {
 		id:          &common.ID{},
 	}
 }
+func (node *AppendNode) IsTombstone() bool {
+	return node.mvcc.meta.IsTombstone
+}
 func (node *AppendNode) String() string {
 	return node.GeneralDesc()
 }

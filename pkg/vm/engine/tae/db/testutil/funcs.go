@@ -171,6 +171,21 @@ func GetAllBlockMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.O
 	}
 	return
 }
+func GetAllAppendableMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.ObjectEntry) {
+	it := rel.MakeObjectIt(isTombstone)
+	for ; it.Valid(); it.Next() {
+		blk := it.GetObject()
+		meta := blk.GetMeta().(*catalog.ObjectEntry)
+		if !meta.IsAppendable() {
+			continue
+		}
+		if meta.HasDropCommitted() {
+			continue
+		}
+		metas = append(metas, meta)
+	}
+	return
+}
 
 func CheckAllColRowsByScan(t *testing.T, rel handle.Relation, expectRows int, applyDelete bool) {
 	schema := rel.Schema(false).(*catalog.Schema)
@@ -263,25 +278,8 @@ func AppendClosure(t *testing.T, data *containers.Batch, name string, e *db.DB, 
 func CompactBlocks(t *testing.T, tenantID uint32, e *db.DB, dbName string, schema *catalog.Schema, skipConflict bool) {
 	txn, rel := GetRelation(t, tenantID, e, dbName, schema.Name)
 
-	var metas, tombstones []*catalog.ObjectEntry
-	it := rel.MakeObjectIt(false)
-	for it.Valid() {
-		blk := it.GetObject()
-		meta := blk.GetMeta().(*catalog.ObjectEntry)
-		metas = append(metas, meta)
-		it.Next()
-	}
-	it = rel.MakeObjectIt(true)
-	for it.Valid() {
-		blk := it.GetObject()
-		meta := blk.GetMeta().(*catalog.ObjectEntry)
-		tombstones = append(tombstones, meta)
-		it.Next()
-	}
-	_ = txn.Commit(context.Background())
-	if len(metas) == 0 && len(tombstones) == 0 {
-		return
-	}
+	metas := GetAllAppendableMetas(rel, false)
+	tombstones := GetAllAppendableMetas(rel, true)
 	txn, _ = GetRelation(t, tenantID, e, dbName, schema.Name)
 	task, err := jobs.NewFlushTableTailTask(nil, txn, metas, tombstones, e.Runtime, txn.GetStartTS())
 	if skipConflict && err != nil {
@@ -337,6 +335,10 @@ func mergeBlocks(t *testing.T, tenantID uint32, e *db.DB, dbName string, schema 
 			}
 		}
 		metas = append(metas, objHandle.GetMeta().(*catalog.ObjectEntry))
+	}
+	if len(metas) == 0 {
+		t.Logf("no objects to merge, type %v", isTombstone)
+		return
 	}
 	task, err := jobs.NewMergeObjectsTask(nil, txn, metas, e.Runtime, isTombstone)
 	if skipConflict && err != nil {

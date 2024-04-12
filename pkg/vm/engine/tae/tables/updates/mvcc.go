@@ -165,6 +165,24 @@ func (n *AppendMVCCHandle) GetCommitTSVec(maxrow uint32, mp *mpool.MPool) contai
 	return commitTSVec
 }
 
+func (n *AppendMVCCHandle) GetCommitTSVecInRange(start, end types.TS, mp *mpool.MPool) containers.Vector {
+	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
+	n.appends.ForEach(
+		func(node *AppendNode) bool {
+			in, before := node.PreparedIn(start, end)
+			if in {
+				for i := 0; i < int(node.maxRow-node.startRow); i++ {
+					commitTSVec.Append(node.GetCommitTS(), false)
+				}
+			} else {
+				return before
+			}
+			return true
+		},
+		true)
+	return commitTSVec
+}
+
 // it is used to get the visible max row for a txn
 // maxrow: is the max row that the txn can see
 // visible: is true if the txn can see any row

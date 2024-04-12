@@ -996,8 +996,8 @@ func TestFlushTableErrorHandle2(t *testing.T) {
 	defer bat2.Close()
 	flushTable := func(worker *ops.OpWorker) {
 		txn, rel := testutil.GetDefaultRelation(t, tae.DB, schema.Name)
-		blkMetas := testutil.GetAllBlockMetas(rel, false)
-		tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
+		blkMetas := testutil.GetAllAppendableMetas(rel, false)
+		tombstoneMetas := testutil.GetAllAppendableMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.Runtime, types.MaxTs())
 		require.NoError(t, err)
 		worker.SendOp(task)
@@ -2538,32 +2538,22 @@ func TestMergeblocks2(t *testing.T) {
 
 	// flush to nblk
 	{
-		txn, rel := tae.GetRelation()
-		blkMetas := testutil.GetAllBlockMetas(rel, false)
-		tombstoneMetas := testutil.GetAllBlockMetas(rel, false)
-		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime, types.MaxTs())
-		require.NoError(t, err)
-		require.NoError(t, task.OnExec(context.Background()))
-		require.NoError(t, txn.Commit(context.Background()))
+		tae.CompactBlocks(false)
 	}
 
 	{
 		v := testutil.GetSingleSortKeyValue(bat, schema, 1)
 		filter := handle.NewEQFilter(v)
 		txn2, rel := tae.GetRelation()
-		t.Log("********before delete******************")
 		testutil.CheckAllColRowsByScan(t, rel, 6, true)
 		_ = rel.DeleteByFilter(context.Background(), filter)
 		assert.Nil(t, txn2.Commit(context.Background()))
 	}
 
 	_, rel = tae.GetRelation()
-	t.Log("**********************")
 	testutil.CheckAllColRowsByScan(t, rel, 5, true)
 
 	{
-		t.Log("************merge************")
-
 		txn, rel = tae.GetRelation()
 
 		objIt := rel.MakeObjectIt(false)
@@ -2581,7 +2571,6 @@ func TestMergeblocks2(t *testing.T) {
 			v := testutil.GetSingleSortKeyValue(bat, schema, 2)
 			filter := handle.NewEQFilter(v)
 			txn2, rel := tae.GetRelation()
-			t.Log("********before delete******************")
 			testutil.CheckAllColRowsByScan(t, rel, 5, true)
 			_ = rel.DeleteByFilter(context.Background(), filter)
 			assert.Nil(t, txn2.Commit(context.Background()))
@@ -2590,7 +2579,6 @@ func TestMergeblocks2(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	t.Log("********************")
 	_, rel = tae.GetRelation()
 	testutil.CheckAllColRowsByScan(t, rel, 4, true)
 
@@ -2625,13 +2613,7 @@ func TestMergeEmptyBlocks(t *testing.T) {
 
 	// flush to nblk
 	{
-		txn, rel := tae.GetRelation()
-		blkMetas := testutil.GetAllBlockMetas(rel, false)
-		tombstoneMetas := testutil.GetAllBlockMetas(rel, false)
-		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.DB.Runtime, types.MaxTs())
-		require.NoError(t, err)
-		require.NoError(t, task.OnExec(context.Background()))
-		require.NoError(t, txn.Commit(context.Background()))
+		tae.CompactBlocks(false)
 	}
 
 	assert.NoError(t, tae.DeleteAll(true))
@@ -2643,8 +2625,6 @@ func TestMergeEmptyBlocks(t *testing.T) {
 	}
 
 	{
-		t.Log("************merge************")
-
 		txn, rel := tae.GetRelation()
 
 		objIt := rel.MakeObjectIt(false)
@@ -4369,15 +4349,18 @@ func TestCompactDeltaBlk(t *testing.T) {
 		it := rel.MakeObjectIt(false)
 		blk := it.GetObject()
 		meta := blk.GetMeta().(*catalog.ObjectEntry)
+		it = rel.MakeObjectIt(true)
+		blk = it.GetObject()
+		tombstone := blk.GetMeta().(*catalog.ObjectEntry)
 		assert.False(t, meta.IsAppendable())
-		task2, err := jobs.NewFlushTableTailTask(nil, txn, []*catalog.ObjectEntry{meta}, nil, tae.DB.Runtime, txn.GetStartTS())
+		task2, err := jobs.NewFlushTableTailTask(nil, txn, nil, []*catalog.ObjectEntry{tombstone}, tae.DB.Runtime, txn.GetStartTS())
 		assert.NoError(t, err)
 		err = task2.OnExec(context.Background())
 		assert.NoError(t, err)
 		assert.Nil(t, txn.Commit(context.Background()))
 		t.Log(tae.Catalog.SimplePPString(3))
 
-		txn, rel = tae.GetRelation()
+		txn, _ = tae.GetRelation()
 		task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{meta}, tae.DB.Runtime, false)
 		assert.NoError(t, err)
 		err = task.OnExec(context.Background())
@@ -7570,11 +7553,11 @@ func TestReplayDeletes(t *testing.T) {
 	tae.DoAppend(bats[2])
 	//compact nablk and its next blk
 	txn2, rel := tae.GetRelation()
-	blkIt = rel.MakeObjectIt(false)
+	blkIt = rel.MakeObjectIt(true)
 	blkEntry := blkIt.GetObject().GetMeta().(*catalog.ObjectEntry)
 	txn, err := tae.StartTxn(nil)
 	assert.NoError(t, err)
-	task, err := jobs.NewFlushTableTailTask(nil, txn, []*catalog.ObjectEntry{blkEntry}, nil, tae.Runtime, types.MaxTs())
+	task, err := jobs.NewFlushTableTailTask(nil, txn, nil, []*catalog.ObjectEntry{blkEntry}, tae.Runtime, types.MaxTs())
 	assert.NoError(t, err)
 	err = task.OnExec(context.Background())
 	assert.NoError(t, err)

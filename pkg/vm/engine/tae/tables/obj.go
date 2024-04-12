@@ -96,6 +96,9 @@ func (obj *object) GetColumnDataByIds(
 func (obj *object) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
 	panic("not support")
 }
+func (obj *object) GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error) {
+	panic("not support")
+}
 
 // GetColumnDataById Get the snapshot at txn's start timestamp of column data.
 // Notice that for non-appendable object, if it is visible to txn,

@@ -32,14 +32,15 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 	if entry.IsAppendable() {
 		return entry.foreachATombstoneInRange(ctx, start, end, mp, op)
 	}
-	var createTS types.TS
-	if !entry.IsAppendable() {
-		entry.RLock()
-		createTS := entry.GetCreatedAtLocked()
-		entry.RUnlock()
-		if createTS.Less(&start) || createTS.Greater(&end) {
-			return nil
-		}
+	entry.RLock()
+	createTS := entry.GetCreatedAtLocked()
+	droppedTS := entry.GetDeleteAt()
+	entry.RUnlock()
+	if createTS.Less(&start) || createTS.Greater(&end) {
+		return nil
+	}
+	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
+		return nil
 	}
 	bat, err := entry.GetObjectData().GetAllColumns(ctx, entry.GetTable().GetLastestSchema(true), mp)
 	if err != nil {
@@ -91,13 +92,19 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	if entry.PersistedByCN {
 		panic("logic err")
 	}
+	entry.RLock()
+	droppedTS := entry.GetDeleteAt()
+	entry.RUnlock()
+	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
+		return nil
+	}
 	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, mp)
 	if err != nil {
 		return err
 	}
 	rowIDVec := bat.GetVectorByName(AttrRowID).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
-	commitTSVec, err := entry.GetObjectData().GetCommitTSVector(uint32(bat.Length()), mp)
+	commitTSVec, err := entry.GetObjectData().GetCommitTSVectorInRange(start, end, mp)
 	if err != nil {
 		return err
 	}
@@ -137,6 +144,9 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 	bat, err = entry.GetObjectData().GetColumnDataByIds(ctx, txn, schema, blkOffset, idx, mp)
 	if err != nil {
 		return err
+	}
+	if bat == nil || bat.Columns[0].Length() == 0 {
+		return nil
 	}
 	rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
@@ -232,18 +242,19 @@ func (entry *ObjectEntry) tryGetTombstoneVisible(
 	txn txnif.TxnReader,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	blkID := rowID.BorrowBlockID()
-	_, blkOffset := blkID.Offsets()
-	entry.foreachTombstoneVisible(ctx, txn, blkOffset, mp,
-		func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
-			if row != rowID {
-				return true, nil
-			}
-			ok = true
-			commitTS = ts
-			aborted = abort
-			pk = pkVal
-			return false, nil
-		})
+	blkCount := entry.BlockCnt()
+	for i := 0; i < blkCount; i++ {
+		entry.foreachTombstoneVisible(ctx, txn, uint16(i), mp,
+			func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
+				if row != rowID {
+					return true, nil
+				}
+				ok = true
+				commitTS = ts
+				aborted = abort
+				pk = pkVal
+				return false, nil
+			})
+	}
 	return
 }

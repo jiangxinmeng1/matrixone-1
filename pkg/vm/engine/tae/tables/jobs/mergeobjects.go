@@ -171,13 +171,13 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 			}
 			// if the object is dropped, skip the tombstone row
 			if task.isTombstone {
-				view := views[minBlockOffset+i]
+				view := views[minBlockOffset+j]
 				tbl := task.rel.GetMeta().(*catalog.TableEntry)
 				rowidVec := view.Columns[0].GetData()
 				rowidVec.Foreach(func(v any, isNull bool, row int) error {
 					rowID := v.(types.Rowid)
 					objectID := rowID.BorrowObjectID()
-					obj, err := tbl.GetObjectByID(objectID, true)
+					obj, err := tbl.GetObjectByID(objectID, false)
 					if err != nil {
 						panic(err)
 					}

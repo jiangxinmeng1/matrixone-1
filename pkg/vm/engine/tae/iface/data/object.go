@@ -103,6 +103,7 @@ type Object interface {
 	// only check with the created ts
 	CoarseCheckAllRowsCommittedBefore(ts types.TS) bool
 	GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error)
+	GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error)
 	BatchDedup(ctx context.Context,
 		txn txnif.AsyncTxn,
 		pks containers.Vector,

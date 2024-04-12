@@ -175,7 +175,7 @@ func (entry *mergeObjectsEntry) transferBlockDeletes(
 	tblEntry.Stats.Lock()
 	tblEntry.DeletedDirties = append(tblEntry.DeletedDirties, dropped)
 	tblEntry.Stats.Unlock()
-	rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.PhyAddrColumnName).GetDownstreamVector())
+	rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.AttrRowID).GetDownstreamVector())
 	ts := vector.MustFixedCol[types.TS](bat.GetVectorByName(catalog.AttrCommitTs).GetDownstreamVector())
 
 	count := len(rowid)
@@ -213,7 +213,7 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 	if len(entry.createdBlkCnt) == 0 {
 		return
 	}
-	created, err := entry.relation.GetObject(&entry.createdObjs[0].ID, false)
+	created, err := entry.relation.GetObject(&entry.createdObjs[0].ID, entry.isTombstone)
 	if err != nil {
 		return
 	}

@@ -351,7 +351,11 @@ func (ttree *TableTree) IsEmpty() bool {
 	return len(ttree.Objs) == 0 && len(ttree.Tombstones) == 0
 }
 
-func (ttree *TableTree) Shrink(objID types.Objectid) (empty bool) {
+func (ttree *TableTree) Shrink(objID types.Objectid, isTombstone bool) (empty bool) {
+	if isTombstone {
+		delete(ttree.Tombstones, objID)
+		empty = ttree.IsEmpty()
+	}
 	delete(ttree.Objs, objID)
 	empty = ttree.IsEmpty()
 	return

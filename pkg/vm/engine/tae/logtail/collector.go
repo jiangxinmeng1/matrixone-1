@@ -425,7 +425,7 @@ func (d *dirtyCollector) tryCompactTree(
 		for id, dirtyObj := range dirtyTable.Objs {
 			if obj, err = tbl.GetObjectByID(dirtyObj.ID, false); err != nil {
 				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
-					dirtyTable.Shrink(id)
+					dirtyTable.Shrink(id, false)
 					err = nil
 					continue
 				}
@@ -438,7 +438,7 @@ func (d *dirtyCollector) tryCompactTree(
 				continue
 			}
 			if calibration == 0 {
-				dirtyTable.Shrink(id)
+				dirtyTable.Shrink(id, false)
 				continue
 			}
 			if err = interceptor.OnObject(obj); err != nil {
@@ -448,7 +448,7 @@ func (d *dirtyCollector) tryCompactTree(
 		for id, dirtyObj := range dirtyTable.Tombstones {
 			if obj, err = tbl.GetObjectByID(dirtyObj.ID, true); err != nil {
 				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
-					dirtyTable.Shrink(id)
+					dirtyTable.Shrink(id, true)
 					err = nil
 					continue
 				}
@@ -461,7 +461,7 @@ func (d *dirtyCollector) tryCompactTree(
 				continue
 			}
 			if calibration == 0 {
-				dirtyTable.Shrink(id)
+				dirtyTable.Shrink(id, true)
 				continue
 			}
 			if err = interceptor.OnObject(obj); err != nil {

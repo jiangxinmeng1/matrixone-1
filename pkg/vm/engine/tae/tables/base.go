@@ -79,6 +79,12 @@ func newBaseObject(
 }
 
 func (blk *baseObject) OnApplyAppend(n txnif.AppendNode) (err error) {
+	if n.IsTombstone() {
+		blk.meta.GetTable().RemoveRows(
+			uint64(n.GetMaxRow() - n.GetStartRow()),
+		)
+		return
+	}
 	blk.meta.GetTable().AddRows(
 		uint64(n.GetMaxRow() - n.GetStartRow()),
 	)

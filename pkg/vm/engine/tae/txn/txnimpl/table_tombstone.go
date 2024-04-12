@@ -141,7 +141,7 @@ func (tbl *txnTable) RangeDelete(
 	obj, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		id.TableID, id.ObjectID(),
-		true)
+		false)
 	if err != nil {
 		return
 	}
@@ -197,7 +197,7 @@ func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.F
 	}
 	objectio.SetObjectStatsObjectName(&stats, loc.Name())
 	objectio.SetObjectStatsExtent(&stats, loc.Extent())
-	objectDataMeta := objMeta.MustDataMeta()
+	objectDataMeta := objMeta.MustTombstoneMeta()
 	objectio.SetObjectStatsRowCnt(&stats, objectDataMeta.BlockHeader().Rows())
 	objectio.SetObjectStatsBlkCnt(&stats, objectDataMeta.BlockCount())
 	objectio.SetObjectStatsSize(&stats, loc.Extent().End()+objectio.FooterSize)

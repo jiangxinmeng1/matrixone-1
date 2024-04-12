@@ -238,6 +238,9 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
+	if len(tbl.tombstoneTableSpace.nodes)==0{
+		return
+	}
 	deletes := tbl.tombstoneTableSpace.nodes[0].(*anode).data
 	for i := 0; i < deletes.Length(); i++ {
 		rowID := deletes.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
@@ -666,16 +669,28 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 				//Extend lifetime of vectors is within the function.
 				//No NeedCopy. closeFunc is required after use.
 				//VectorPool is nil.
-				vectors, closeFunc, err = blockio.LoadColumns2(
-					ctx,
-					[]uint16{uint16(schema.GetSingleSortKeyIdx())},
-					nil,
-					tbl.store.rt.Fs.Service,
-					loc,
-					fileservice.Policy(0),
-					false,
-					nil,
-				)
+				if isTombstone {
+					vectors, closeFunc, err = blockio.LoadTombstoneColumns2(
+						ctx,
+						[]uint16{uint16(schema.GetSingleSortKeyIdx())},
+						nil,
+						tbl.store.rt.Fs.Service,
+						loc,
+						false,
+						nil,
+					)
+				} else {
+					vectors, closeFunc, err = blockio.LoadColumns2(
+						ctx,
+						[]uint16{uint16(schema.GetSingleSortKeyIdx())},
+						nil,
+						tbl.store.rt.Fs.Service,
+						loc,
+						fileservice.Policy(0),
+						false,
+						nil,
+					)
+				}
 				if err != nil {
 					return err
 				}
@@ -1246,12 +1261,18 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 	}
 	return
 }
-
+func (tbl *txnTable) getSchema(isTombstone bool) *catalog.Schema {
+	if isTombstone {
+		return tbl.tombstoneSchema
+	} else {
+		return tbl.schema
+	}
+}
 func (tbl *txnTable) DedupWorkSpace(key containers.Vector, isTombstone bool) (err error) {
 	index := NewSimpleTableIndex()
 	//Check whether primary key is duplicated.
 	if err = index.BatchInsert(
-		tbl.schema.GetSingleSortKey().Name,
+		tbl.getSchema(isTombstone).GetSingleSortKey().Name,
 		key,
 		0,
 		key.Length(),

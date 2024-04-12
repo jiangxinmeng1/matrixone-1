@@ -226,6 +226,7 @@ type AppendNode interface {
 	TxnEntry
 	GetStartRow() uint32
 	GetMaxRow() uint32
+	IsTombstone()bool
 }
 
 type DeleteNode interface {

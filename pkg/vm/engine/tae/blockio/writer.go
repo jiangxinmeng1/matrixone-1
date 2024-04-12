@@ -104,7 +104,8 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 		if i == 0 {
 			w.objMetaBuilder.AddRowCnt(vec.Length())
 		}
-		if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
+		// in tombstone batch pk is rowid
+		if (vec.GetType().Oid == types.T_Rowid && uint16(i) != w.pk) || vec.GetType().Oid == types.T_TS {
 			continue
 		}
 		if w.isSetPK && w.pk == uint16(i) {

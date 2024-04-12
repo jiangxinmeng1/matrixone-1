@@ -506,6 +506,10 @@ func (node *memoryNode) getCommitTSVec(maxRow uint32, mp *mpool.MPool) (containe
 	commitVec := node.object.appendMVCC.GetCommitTSVec(maxRow, mp)
 	return commitVec, nil
 }
+func (node *memoryNode) getCommitTSVecInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error) {
+	commitVec := node.object.appendMVCC.GetCommitTSVecInRange(start, end, mp)
+	return commitVec, nil
+}
 
 // Note: With PinNode Context
 func (node *memoryNode) resolveInMemoryColumnDatas(

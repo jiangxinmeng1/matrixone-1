@@ -197,6 +197,12 @@ func (node *persistedNode) GetRowByFilter(
 		if err = node.object.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp); err != nil {
 			return
 		}
+		id := node.object.meta.AsCommonID()
+		id.SetBlockOffset(blkID)
+		err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+		if err != nil {
+			return
+		}
 
 		exist := false
 		var deleted bool

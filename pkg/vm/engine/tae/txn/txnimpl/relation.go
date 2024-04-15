@@ -355,3 +355,7 @@ func (h *txnRelation) GetDB() (handle.Database, error) {
 func (h *txnRelation) AlterTable(ctx context.Context, req *apipb.AlterTableReq) (err error) {
 	return h.table.AlterTable(ctx, req)
 }
+
+func (h *txnRelation) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
+	return h.table.FillInWorkspaceDeletes(blkID,view)
+}

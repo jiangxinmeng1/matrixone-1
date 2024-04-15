@@ -288,7 +288,11 @@ func (blk *baseObject) ResolvePersistedColumnDatas(
 	}()
 
 	fullBlockID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	blk.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp)
+	err = blk.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp)
+	if err != nil {
+		return nil, err
+	}
+	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
 	return
 }
 
@@ -319,7 +323,13 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	}()
 	// TODO workspace
 	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	if err != nil {
+		return nil, err
+	}
+	id := blk.meta.AsCommonID()
+	id.SetBlockOffset(blkID)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
 	return
 }
 
@@ -419,7 +429,13 @@ func (blk *baseObject) getPersistedValue(
 ) (v any, isNull bool, err error) {
 	view := containers.NewColumnView(col)
 	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	if err != nil {
+		return
+	}
+	id := blk.meta.AsCommonID()
+	id.SetBlockOffset(blkID)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
 	if view.DeleteMask.Contains(uint64(row)) {
 		err = moerr.NewNotFoundNoCtx()
 		return

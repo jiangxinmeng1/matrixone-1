@@ -20,10 +20,12 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -216,4 +218,67 @@ func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.F
 		objectio.SetObjectStatsSortKeyZoneMap(&stats, objectDataMeta.MustGetColumn(col.SeqNum).ZoneMap())
 	}
 	return stats
+}
+
+func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
+	if tbl.tombstoneTableSpace == nil {
+		return nil
+	}
+	if len(tbl.tombstoneTableSpace.nodes) != 0 {
+		node := tbl.tombstoneTableSpace.nodes[0].(*anode)
+		for i := 0; i < node.data.Length(); i++ {
+			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+			if *rowID.BorrowBlockID() == blkID {
+				_, row := rowID.Decode()
+				if view.DeleteMask == nil {
+					view.DeleteMask = &nulls.Nulls{}
+				}
+				view.DeleteMask.Add(uint64(row))
+			}
+		}
+	}
+	for _, stats := range tbl.tombstoneTableSpace.stats {
+		metaLocs := make([]objectio.Location, 0)
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneSchema.BlockMaxRows
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			metaLocs = append(metaLocs, metaloc)
+		}
+		for _, loc := range metaLocs {
+			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				loc,
+				false,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			for i := 0; i < vectors[0].Length(); i++ {
+				rowID := vectors[0].Get(i).(types.Rowid)
+				if *rowID.BorrowBlockID() == blkID {
+					_, row := rowID.Decode()
+					if view.DeleteMask == nil {
+						view.DeleteMask = &nulls.Nulls{}
+					}
+					view.DeleteMask.Add(uint64(row))
+				}
+			}
+			closeFunc()
+		}
+	}
+	return nil
 }

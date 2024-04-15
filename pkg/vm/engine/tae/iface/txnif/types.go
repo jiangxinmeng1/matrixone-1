@@ -314,6 +314,7 @@ type TxnStore interface {
 		visitDelete func(ctx context.Context, deletes DeleteNode))
 	GetTransactionType() TxnType
 	UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error
+	FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error
 }
 
 type TxnType int8

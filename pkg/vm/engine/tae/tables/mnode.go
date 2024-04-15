@@ -544,6 +544,11 @@ func (node *memoryNode) resolveInMemoryColumnDatas(
 	if err != nil {
 		return
 	}
+	id := node.object.meta.AsCommonID()
+	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+	if err != nil {
+		return
+	}
 	if !deSels.IsEmpty() {
 		if view.DeleteMask != nil {
 			view.DeleteMask.Or(deSels)
@@ -607,6 +612,11 @@ func (node *memoryNode) resolveInMemoryColumnDataLocked(
 
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 	err = node.object.meta.GetTable().FillDeletes(txn.GetContext(), *blkID, txn, view.BaseView, mp)
+	if err != nil {
+		return
+	}
+	id := node.object.meta.AsCommonID()
+	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
 	if err != nil {
 		return
 	}

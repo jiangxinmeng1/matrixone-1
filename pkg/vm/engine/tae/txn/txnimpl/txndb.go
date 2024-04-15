@@ -570,3 +570,11 @@ func (db *txnDB) CleanUp() {
 		tbl.CleanUp()
 	}
 }
+
+func (db *txnDB) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error{
+	table, err := db.getOrSetTable(id.TableID)
+	if err != nil {
+		return err
+	}
+	return table.FillInWorkspaceDeletes(id.BlockID,view)
+}

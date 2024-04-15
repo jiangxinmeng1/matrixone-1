@@ -828,3 +828,10 @@ func (store *txnStore) CleanUp() {
 		db.CleanUp()
 	}
 }
+func (store *txnStore) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error {
+	db, err := store.getOrSetDB(id.DbID)
+	if err != nil {
+		return err
+	}
+	return db.FillInWorkspaceDeletes(id, view)
+}

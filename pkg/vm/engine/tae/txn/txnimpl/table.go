@@ -238,7 +238,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
-	if len(tbl.tombstoneTableSpace.nodes)==0{
+	if len(tbl.tombstoneTableSpace.nodes) == 0 {
 		return
 	}
 	deletes := tbl.tombstoneTableSpace.nodes[0].(*anode).data
@@ -962,6 +962,7 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 	currLocation objectio.Location,
 	prevBF objectio.BloomFilter,
 	prevObjName *objectio.ObjectNameShort,
+	isTombstone bool,
 ) (currBf objectio.BloomFilter, err error) {
 	if len(currLocation) == 0 {
 		return
@@ -974,6 +975,7 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 		ctx,
 		currLocation,
 		false,
+		isTombstone,
 		tbl.store.rt.Fs.Service,
 	)
 	return
@@ -1035,6 +1037,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 				stats.ObjectLocation(),
 				bf,
 				&name,
+				obj.IsTombstone,
 			); err != nil {
 				return
 			}

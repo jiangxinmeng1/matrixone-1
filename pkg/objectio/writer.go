@@ -210,7 +210,11 @@ func (w *objectWriterV1) UpdateBlockZM(tye DataMetaType, blkIdx int, seqnum uint
 	w.blocks[tye][blkIdx].meta.ColumnMeta(seqnum).SetZoneMap(zm)
 }
 
-func (w *objectWriterV1) WriteBF(blkIdx int, seqnum uint16, buf []byte) (err error) {
+func (w *objectWriterV1) WriteBF(blkIdx int, seqnum uint16, buf []byte, isTombstone bool) (err error) {
+	if isTombstone {
+		w.blocks[SchemaTombstone][blkIdx].bloomFilter = buf
+		return
+	}
 	w.blocks[SchemaData][blkIdx].bloomFilter = buf
 	return
 }
@@ -561,7 +565,10 @@ func (w *objectWriterV1) Sync(ctx context.Context, items ...WriteOptions) error 
 	return err
 }
 
-func (w *objectWriterV1) GetDataStats() ObjectStats {
+func (w *objectWriterV1) GetDataStats(isTombstone bool) ObjectStats {
+	if isTombstone {
+		return w.objStats[SchemaTombstone]
+	}
 	return w.objStats[SchemaData]
 }
 

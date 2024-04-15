@@ -261,7 +261,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	if schema.HasSortKey() {
 		sortkeyPos = schema.GetSingleSortKeyIdx()
 	}
-	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, int(schema.BlockMaxRows), task); err != nil {
+	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, int(schema.BlockMaxRows), task, task.isTombstone); err != nil {
 		return err
 	}
 

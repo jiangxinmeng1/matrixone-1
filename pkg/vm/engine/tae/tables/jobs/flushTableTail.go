@@ -669,10 +669,19 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	} else if schema.HasSortKey() {
 		writer.SetSortKey(uint16(schema.GetSingleSortKeyIdx()))
 	}
-	for _, bat := range writtenBatches {
-		_, err = writer.WriteBatch(containers.ToCNBatch(bat))
-		if err != nil {
-			return err
+	if isTombstone {
+		for _, bat := range writtenBatches {
+			_, err = writer.WriteTombstoneBatch(containers.ToCNBatch(bat))
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, bat := range writtenBatches {
+			_, err = writer.WriteBatch(containers.ToCNBatch(bat))
+			if err != nil {
+				return err
+			}
 		}
 	}
 	_, _, err = writer.Sync(ctx)
@@ -686,7 +695,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 
 	// update new status for created blocks
-	err = toObjectHandle.UpdateStats(writer.Stats())
+	err = toObjectHandle.UpdateStats(writer.Stats(isTombstone))
 	if err != nil {
 		return
 	}

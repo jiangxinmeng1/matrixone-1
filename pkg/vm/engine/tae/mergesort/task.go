@@ -96,6 +96,7 @@ func DoMergeAndWrite(
 	sortkeyPos int,
 	blkMaxRow int,
 	mergehost MergeTaskHost,
+	isTombstone bool,
 ) (err error) {
 	now := time.Now()
 	/*out args, keep the transfer infomation*/
@@ -269,7 +270,11 @@ func DoMergeAndWrite(
 	newWriterFunc := mergehost.PrepareNewWriterFunc()
 	writer := newWriterFunc()
 	for _, bat := range writtenBatches {
-		_, err = writer.WriteBatch(bat)
+		if isTombstone {
+			_, err = writer.WriteTombstoneBatch(bat)
+		} else {
+			_, err = writer.WriteBatch(bat)
+		}
 		if err != nil {
 			return err
 		}

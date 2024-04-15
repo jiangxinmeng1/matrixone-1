@@ -104,8 +104,7 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 		if i == 0 {
 			w.objMetaBuilder.AddRowCnt(vec.Length())
 		}
-		// in tombstone batch pk is rowid
-		if (vec.GetType().Oid == types.T_Rowid && uint16(i) != w.pk) || vec.GetType().Oid == types.T_TS {
+		if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
 			continue
 		}
 		if w.isSetPK && w.pk == uint16(i) {
@@ -139,7 +138,7 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 			return nil, err
 		}
 
-		if err = w.writer.WriteBF(int(block.GetID()), seqnums[i], buf); err != nil {
+		if err = w.writer.WriteBF(int(block.GetID()), seqnums[i], buf, false); err != nil {
 			return nil, err
 		}
 	}
@@ -161,6 +160,17 @@ func (w *BlockWriter) WriteTombstoneBatch(batch *batch.Batch) (objectio.BlockObj
 		index.SetZMSum(zm, columnData.GetDownstreamVector())
 		// Update column meta zonemap
 		w.writer.UpdateBlockZM(objectio.SchemaTombstone, 0, uint16(i), zm)
+		bf, err := index.NewBinaryFuseFilter(columnData)
+		if err != nil {
+			return nil, err
+		}
+		buf, err := bf.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		if err = w.writer.WriteBF(int(block.GetID()), uint16(i), buf, true); err != nil {
+			return nil, err
+		}
 	}
 	return block, nil
 }
@@ -192,8 +202,8 @@ func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objecti
 		common.OperandField(w.writer.GetMaxSeqnum()))
 	return blocks, blocks[0].BlockHeader().MetaLocation(), err
 }
-func (w *BlockWriter) Stats() objectio.ObjectStats {
-	return w.writer.GetDataStats()
+func (w *BlockWriter) Stats(isTombstone bool) objectio.ObjectStats {
+	return w.writer.GetDataStats(isTombstone)
 }
 func (w *BlockWriter) GetName() objectio.ObjectName {
 	return w.name

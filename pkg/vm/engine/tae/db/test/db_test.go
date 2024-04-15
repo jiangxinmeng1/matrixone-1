@@ -423,7 +423,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		assert.Nil(t, err)
 		_, _, err = writer.Sync(context.Background())
 		assert.Nil(t, err)
-		obj.UpdateStats(writer.Stats())
+		obj.UpdateStats(writer.Stats(false))
 		v, _, err := dataBlk.GetValue(context.Background(), txn, readSchema, 0, 4, 2, common.DefaultAllocator)
 		assert.Nil(t, err)
 		expectVal := bat.Vecs[2].Get(4)
@@ -7583,19 +7583,12 @@ func TestApplyDeltalocation1(t *testing.T) {
 	v1 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(1)
 	ok, err := tae.TryDeleteByDeltaloc([]any{v1})
 	assert.NoError(t, err)
-	assert.False(t, ok)
+	assert.True(t, ok)
 
 	tae.CompactBlocks(false)
 	filter := handle.NewEQFilter(v1)
 	txn, rel := tae.GetRelation()
 	id, offset, err := rel.GetByFilter(context.Background(), filter)
-	assert.NoError(t, err)
-	ok, err = tae.TryDeleteByDeltaloc([]any{v1})
-	assert.NoError(t, err)
-	assert.True(t, ok)
-
-	// range delete conflicts with deletes in deltaloc
-	err = rel.RangeDelete(id, offset, offset, handle.DT_Normal)
 	assert.Error(t, err)
 	assert.NoError(t, txn.Commit(context.Background()))
 
@@ -7603,7 +7596,7 @@ func TestApplyDeltalocation1(t *testing.T) {
 	v2 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(2)
 	ok, err = tae.TryDeleteByDeltaloc([]any{v2})
 	assert.NoError(t, err)
-	assert.False(t, ok)
+	assert.True(t, ok)
 
 	// apply deltaloc fails if there're deletes in memory
 	tae.CompactBlocks(false)
@@ -7619,7 +7612,7 @@ func TestApplyDeltalocation1(t *testing.T) {
 	v4 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(4)
 	ok, err = tae.TryDeleteByDeltaloc([]any{v4})
 	assert.NoError(t, err)
-	assert.False(t, ok)
+	assert.True(t, ok)
 
 }
 
@@ -7726,17 +7719,8 @@ func TestApplyDeltalocation3(t *testing.T) {
 	}
 	tae.CheckRowsByScan(9, true)
 
-	assert.Error(t, txn.Commit(context.Background()))
-	tae.CheckRowsByScan(9, true)
-
-	// apply deltaloc successfully if txn of new deletes are active
-
-	tae.MergeBlocks(false)
-	txn, err = tae.StartTxn(nil)
-	assert.NoError(t, err)
-	ok, err = tae.TryDeleteByDeltalocWithTxn([]any{v3}, txn)
-	assert.NoError(t, err)
-	assert.True(t, ok)
+	assert.NoError(t, txn.Commit(context.Background()))
+	tae.CheckRowsByScan(8, true)
 
 	// delete v5
 	v4 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(4)

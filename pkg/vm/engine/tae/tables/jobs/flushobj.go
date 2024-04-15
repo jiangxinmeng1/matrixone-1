@@ -101,15 +101,13 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 			return nil
 		}
 	}
-	_, err = writer.WriteBatch(cnBatch)
+	if task.meta.IsTombstone {
+		_, err = writer.WriteTombstoneBatch(cnBatch)
+	} else {
+		_, err = writer.WriteBatch(cnBatch)
+	}
 	if err != nil {
 		return err
-	}
-	if task.delta != nil {
-		_, err := writer.WriteTombstoneBatch(containers.ToCNBatch(task.delta))
-		if err != nil {
-			return err
-		}
 	}
 	task.blocks, _, err = writer.Sync(ctx)
 	if err != nil {
@@ -120,6 +118,6 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	perfcounter.Update(ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Block.Flush.Add(1)
 	})
-	task.stat = writer.Stats()
+	task.stat = writer.Stats(task.meta.IsTombstone)
 	return err
 }

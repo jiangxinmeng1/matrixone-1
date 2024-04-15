@@ -65,6 +65,7 @@ func LoadPersistedColumnDatas(
 	id *common.ID,
 	colIdxs []int,
 	location objectio.Location,
+	isTombstone bool,
 	mp *mpool.MPool,
 ) ([]containers.Vector, error) {
 	cols := make([]uint16, 0)
@@ -88,16 +89,28 @@ func LoadPersistedColumnDatas(
 	if len(cols) == 0 {
 		return vectors, nil
 	}
+	var vecs []containers.Vector
+	var err error
 	//Extend lifetime of vectors is without the function.
 	//need to copy. closeFunc will be nil.
-	vecs, _, err := blockio.LoadColumns2(
-		ctx, cols,
-		typs,
-		rt.Fs.Service,
-		location,
-		fileservice.Policy(0),
-		true,
-		rt.VectorPool.Transient)
+	if isTombstone {
+		vecs, _, err = blockio.LoadTombstoneColumns2(
+			ctx, cols,
+			typs,
+			rt.Fs.Service,
+			location,
+			true,
+			rt.VectorPool.Transient)
+	} else {
+		vecs, _, err = blockio.LoadColumns2(
+			ctx, cols,
+			typs,
+			rt.Fs.Service,
+			location,
+			fileservice.Policy(0),
+			true,
+			rt.VectorPool.Transient)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +188,7 @@ func MakeImmuIndex(
 		return
 	}
 	idx = indexwrapper.NewImmutIndex(
-		stats.SortKeyZoneMap(), bf, stats.ObjectLocation(),
+		stats.SortKeyZoneMap(), bf, meta.IsTombstone, stats.ObjectLocation(),
 	)
 	return
 }

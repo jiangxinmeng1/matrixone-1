@@ -473,7 +473,7 @@ func (ttree *TableTree) ReadFromWithVersion(r io.Reader, ver uint16) (n int64, e
 		if tmpn, err = obj.ReadFromV3(r); err != nil {
 			return
 		}
-		ttree.Objs[*obj.ID] = obj
+		ttree.Tombstones[*obj.ID] = obj
 		n += tmpn
 	}
 	return

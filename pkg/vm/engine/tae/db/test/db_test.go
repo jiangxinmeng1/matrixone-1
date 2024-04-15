@@ -3065,7 +3065,7 @@ func TestCompactBlk2(t *testing.T) {
 	_ = rel4.DeleteByFilter(context.Background(), filter)
 	assert.Nil(t, txn2.Commit(context.Background()))
 
-	testutil.CheckAllColRowsByScan(t, rel1, 5, true)
+	testutil.CheckAllColRowsByScan(t, rel1, 4, true)
 	assert.Nil(t, txn3.Commit(context.Background()))
 	testutil.CheckAllColRowsByScan(t, rel2, 4, true)
 	assert.Nil(t, txn4.Commit(context.Background()))

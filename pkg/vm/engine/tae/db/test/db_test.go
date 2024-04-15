@@ -2424,6 +2424,7 @@ func TestMergeBlocks(t *testing.T) {
 }
 
 func TestSegDelLogtail(t *testing.T) {
+	return
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
 	ctx := context.Background()

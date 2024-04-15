@@ -177,11 +177,11 @@ func (obj *aobject) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (container
 		return vec, err
 	}
 }
-func (obj *aobject) GetCommitTSVectorInRange(start,end types.TS, mp *mpool.MPool) (containers.Vector, error) {
+func (obj *aobject) GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error) {
 	node := obj.PinNode()
 	defer node.Unref()
 	if !node.IsPersisted() {
-		return node.MustMNode().getCommitTSVecInRange(start,end, mp)
+		return node.MustMNode().getCommitTSVecInRange(start, end, mp)
 	} else {
 		vec, err := obj.LoadPersistedCommitTS(0)
 		return vec, err

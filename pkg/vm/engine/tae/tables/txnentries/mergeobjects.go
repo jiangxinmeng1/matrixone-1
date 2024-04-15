@@ -162,7 +162,7 @@ func (entry *mergeObjectsEntry) transferBlockDeletes(
 	bat, _, err := dataBlock.CollectDeleteInRange(
 		entry.txn.GetContext(),
 		startTS.Next(),
-		entry.txn.GetPrepareTS().Prev(),// If use prepare TS, it'll wait for merge txn and lead to deadlock
+		entry.txn.GetPrepareTS().Prev(), // If use prepare TS, it'll wait for merge txn and lead to deadlock
 		common.MergeAllocator,
 	)
 	if err != nil {

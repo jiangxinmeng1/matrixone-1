@@ -163,7 +163,12 @@ func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) erro
 		space.tableHandle = tableData.GetHandle(space.isTombstone)
 	}
 	appended := startOffset
-	vec := space.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
+	var vec containers.Vector
+	if startOffset == 0 {
+		vec = space.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
+	} else {
+		vec = node.data.Vecs[space.table.GetLocalSchema(space.isTombstone).PhyAddrKey.Idx]
+	}
 	for appended < node.Rows() {
 		appender, err := space.tableHandle.GetAppender()
 		if moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound) {
@@ -240,8 +245,10 @@ func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) erro
 			break
 		}
 	}
-	node.data.Vecs[space.table.GetLocalSchema(space.isTombstone).PhyAddrKey.Idx].Close()
-	node.data.Vecs[space.table.GetLocalSchema(space.isTombstone).PhyAddrKey.Idx] = vec
+	if startOffset == 0 {
+		node.data.Vecs[space.table.GetLocalSchema(space.isTombstone).PhyAddrKey.Idx].Close()
+		node.data.Vecs[space.table.GetLocalSchema(space.isTombstone).PhyAddrKey.Idx] = vec
+	}
 	return nil
 }
 

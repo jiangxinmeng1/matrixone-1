@@ -152,12 +152,12 @@ func (entry *TableEntry) FillDeletes(
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
 		tombstone := node.GetPayload()
-		entry.RLock()
-		visible, err := tombstone.IsVisible(txn, entry.RWMutex)
+		tombstone.RLock()
+		visible, err := tombstone.IsVisible(txn, tombstone.RWMutex)
 		if err != nil {
 			return err
 		}
-		entry.RUnlock()
+		tombstone.RUnlock()
 		if !visible {
 			continue
 		}

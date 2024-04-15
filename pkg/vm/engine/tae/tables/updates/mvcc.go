@@ -150,6 +150,8 @@ func (n *AppendMVCCHandle) CollectAppendLocked(
 }
 
 func (n *AppendMVCCHandle) GetCommitTSVec(maxrow uint32, mp *mpool.MPool) containers.Vector {
+	n.meta.RLock()
+	defer n.meta.RUnlock()
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	n.appends.ForEach(
 		func(node *AppendNode) bool {
@@ -166,6 +168,8 @@ func (n *AppendMVCCHandle) GetCommitTSVec(maxrow uint32, mp *mpool.MPool) contai
 }
 
 func (n *AppendMVCCHandle) GetCommitTSVecInRange(start, end types.TS, mp *mpool.MPool) containers.Vector {
+	n.meta.RLock()
+	defer n.meta.RUnlock()
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	n.appends.ForEach(
 		func(node *AppendNode) bool {

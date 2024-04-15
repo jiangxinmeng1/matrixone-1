@@ -569,10 +569,10 @@ func (entry *ObjectEntry) GetTerminationTS() (ts types.TS, terminated bool) {
 }
 
 func (entry *ObjectEntry) GetSchema() *Schema {
-	return entry.table.GetLastestSchema(false)
+	return entry.table.GetLastestSchema(entry.IsTombstone)
 }
 func (entry *ObjectEntry) GetSchemaLocked() *Schema {
-	return entry.table.GetLastestSchemaLocked(false)
+	return entry.table.GetLastestSchemaLocked(entry.IsTombstone)
 }
 
 // PrepareCompact is performance insensitive

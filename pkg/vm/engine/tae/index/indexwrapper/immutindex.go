@@ -27,9 +27,9 @@ import (
 )
 
 type ImmutIndex struct {
-	zm       index.ZM
-	bf       objectio.BloomFilter
-	location objectio.Location
+	zm          index.ZM
+	bf          objectio.BloomFilter
+	location    objectio.Location
 	isTombstone bool
 }
 
@@ -40,9 +40,9 @@ func NewImmutIndex(
 	location objectio.Location,
 ) ImmutIndex {
 	return ImmutIndex{
-		zm:       zm,
-		bf:       bf,
-		location: location,
+		zm:          zm,
+		bf:          bf,
+		location:    location,
 		isTombstone: isTombstone,
 	}
 }

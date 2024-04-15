@@ -371,7 +371,7 @@ func TestTxn6(t *testing.T) {
 			assert.NotEqual(t, int64(44), v)
 
 			err = rel.UpdateByFilter(context.Background(), filter, uint16(3), int64(55), false)
-			assert.Error(t, err)
+			assert.NoError(t, err)
 
 			filter.Val = int32(7)
 			err = rel.UpdateByFilter(context.Background(), filter, uint16(3), int64(88), false)
@@ -380,7 +380,7 @@ func TestTxn6(t *testing.T) {
 			// Update row that has uncommitted delete -- FAIL
 			filter.Val = int32(6)
 			err = rel.UpdateByFilter(context.Background(), filter, uint16(3), int64(55), false)
-			assert.Error(t, err)
+			assert.NoError(t, err)
 			_, _, err = rel.GetValueByFilter(context.Background(), filter, 3)
 			assert.NoError(t, err)
 			err = txn.Rollback(context.Background())

@@ -102,8 +102,7 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	if err != nil {
 		return err
 	}
-	rowIDVec := bat.GetVectorByName(AttrRowID).GetDownstreamVector()
-	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
+	rowIDVec := bat.GetVectorByName(AttrRowID)
 	commitTSVec, err := entry.GetObjectData().GetCommitTSVectorInRange(start, end, mp)
 	if err != nil {
 		return err
@@ -115,7 +114,7 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 		if commitTS.Less(&start) || commitTS.Greater(&end) {
 			return nil
 		}
-		goNext, err := op(rowIDs[i], commitTS, false, pk)
+		goNext, err := op(rowIDVec.Get(i).(types.Rowid), commitTS, false, pk)
 		if err != nil {
 			return err
 		}

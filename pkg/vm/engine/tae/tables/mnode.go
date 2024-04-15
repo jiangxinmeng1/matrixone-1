@@ -573,6 +573,17 @@ func (node *memoryNode) resolveInMemoryColumnData(
 ) (view *containers.ColumnView, err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
+	return node.resolveInMemoryColumnDataLocked(txn, readSchema, col, skipDeletes, mp)
+}
+
+// Note: With PinNode Context
+func (node *memoryNode) resolveInMemoryColumnDataLocked(
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	col int,
+	skipDeletes bool,
+	mp *mpool.MPool,
+) (view *containers.ColumnView, err error) {
 	maxRow, visible, deSels, err := node.object.appendMVCC.GetVisibleRowLocked(context.TODO(), txn)
 	if !visible || err != nil {
 		return
@@ -629,7 +640,7 @@ func (node *memoryNode) getInMemoryValue(
 		err = moerr.NewNotFoundNoCtx()
 		return
 	}
-	view, err := node.resolveInMemoryColumnData(txn, readSchema, col, true, mp)
+	view, err := node.resolveInMemoryColumnDataLocked(txn, readSchema, col, true, mp)
 	if err != nil {
 		return
 	}

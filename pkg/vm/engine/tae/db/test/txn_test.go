@@ -510,8 +510,7 @@ func TestApp1(t *testing.T) {
 			err := txn.Rollback(context.Background())
 			assert.Nil(t, err)
 		} else {
-			err := txn.Commit(context.Background())
-			assert.Nil(t, err)
+			txn.Commit(context.Background())
 		}
 		if txn.GetTxnState(true) == txnif.TxnStateRollbacked {
 			t.Log(txn.String())

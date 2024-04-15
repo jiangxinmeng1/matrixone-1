@@ -227,6 +227,11 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 				return err
 			}
 		}
+		rowID := vectors[0].Get(0).(types.Rowid)
+		blkID2, _ := rowID.Decode()
+		readObjID := tbl.entry.AsCommonID()
+		readObjID.BlockID = blkID2
+		tbl.store.warChecker.Delete(readObjID)
 		closeFunc()
 		if offset == len(tbl.tombstoneTableSpace.stats)-1 {
 			tbl.tombstoneTableSpace.stats = tbl.tombstoneTableSpace.stats[:offset]
@@ -263,7 +268,8 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 		if !moerr.IsMoErrCode(err, moerr.ErrTxnRWConflict) {
 			return
 		}
-		transferd.Add(uint64(rowOffset))
+		transferd.Add(uint64(i))
+		tbl.store.warChecker.Delete(id)
 		pk := deletes.GetVectorByName(catalog.AttrPKVal).Get(i)
 
 		// try to transfer the delete node
@@ -770,7 +776,15 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		if err == nil {
 			id = h.Fingerprint()
 			id.SetBlockOffset(blkID)
-			break
+			deleted, err := tbl.IsDeletedInWorkSpace(id.BlockID, offset)
+			if err != nil {
+				return nil, 0, err
+			}
+			if !deleted {
+				break
+			}
+			id = nil
+			offset = 0
 		}
 		blockIt.Next()
 	}

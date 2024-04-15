@@ -37,6 +37,7 @@ func LoadPersistedColumnData(
 	id *common.ID,
 	def *catalog.ColDef,
 	location objectio.Location,
+	isTombstone bool,
 	mp *mpool.MPool,
 ) (vec containers.Vector, err error) {
 	if def.IsPhyAddr() {
@@ -44,6 +45,19 @@ func LoadPersistedColumnData(
 	}
 	//Extend lifetime of vectors is without the function.
 	//need to copy. closeFunc will be nil.
+	if isTombstone {
+		vectors, _, err := blockio.LoadTombstoneColumns2(
+			ctx, []uint16{uint16(def.SeqNum)},
+			[]types.Type{def.Type},
+			rt.Fs.Service,
+			location,
+			true,
+			rt.VectorPool.Transient)
+		if err != nil {
+			return nil, err
+		}
+		return vectors[0], nil
+	}
 	vectors, _, err := blockio.LoadColumns2(
 		ctx, []uint16{uint16(def.SeqNum)},
 		[]types.Type{def.Type},

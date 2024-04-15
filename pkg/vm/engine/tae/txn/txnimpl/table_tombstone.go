@@ -91,7 +91,7 @@ func (tbl *txnTable) RangeDelete(
 		//do PK deduplication check against txn's work space.
 		if err = tbl.DedupWorkSpace(
 			deleteBatch.GetVectorByName(catalog.AttrRowID), true); err != nil {
-			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
+			if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 				err = txnif.ErrTxnWWConflict
 			}
 			return
@@ -100,7 +100,7 @@ func (tbl *txnTable) RangeDelete(
 		if err = tbl.DedupSnapByPK(
 			ctx,
 			deleteBatch.Vecs[0], false, true); err != nil {
-			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
+			if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 				err = txnif.ErrTxnWWConflict
 			}
 			return
@@ -109,7 +109,7 @@ func (tbl *txnTable) RangeDelete(
 		if err = tbl.DedupSnapByPK(
 			ctx,
 			deleteBatch.Vecs[0], false, true); err != nil {
-			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
+			if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 				err = txnif.ErrTxnWWConflict
 			}
 			return
@@ -118,7 +118,7 @@ func (tbl *txnTable) RangeDelete(
 		if err = tbl.DedupSnapByPK(
 			ctx,
 			deleteBatch.Vecs[0], true, true); err != nil {
-			if moerr.IsMoErrCode(err, moerr.ErrDuplicate) {
+			if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 				err = txnif.ErrTxnWWConflict
 			}
 			return
@@ -281,4 +281,62 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *container
 		}
 	}
 	return nil
+}
+
+func (tbl *txnTable) IsDeletedInWorkSpace(blkID objectio.Blockid, row uint32) (bool, error) {
+	if tbl.tombstoneTableSpace == nil {
+		return false, nil
+	}
+	if len(tbl.tombstoneTableSpace.nodes) != 0 {
+		node := tbl.tombstoneTableSpace.nodes[0].(*anode)
+		for i := 0; i < node.data.Length(); i++ {
+			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+			blk, rowOffset := rowID.Decode()
+			if blk == blkID && row == rowOffset {
+				return true, nil
+			}
+		}
+	}
+
+	for _, stats := range tbl.tombstoneTableSpace.stats {
+		metaLocs := make([]objectio.Location, 0)
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneSchema.BlockMaxRows
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			metaLocs = append(metaLocs, metaloc)
+		}
+		for _, loc := range metaLocs {
+			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				loc,
+				false,
+				nil,
+			)
+			if err != nil {
+				return false, err
+			}
+			defer closeFunc()
+			for i := 0; i < vectors[0].Length(); i++ {
+				rowID := vectors[0].Get(i).(types.Rowid)
+				blk, rowOffset := rowID.Decode()
+				if blk == blkID && row == rowOffset {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }

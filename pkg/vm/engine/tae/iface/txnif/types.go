@@ -226,7 +226,7 @@ type AppendNode interface {
 	TxnEntry
 	GetStartRow() uint32
 	GetMaxRow() uint32
-	IsTombstone()bool
+	IsTombstone() bool
 }
 
 type DeleteNode interface {
@@ -315,6 +315,7 @@ type TxnStore interface {
 	GetTransactionType() TxnType
 	UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error
 	FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error
+	IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error)
 }
 
 type TxnType int8

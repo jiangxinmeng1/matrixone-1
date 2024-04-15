@@ -438,7 +438,7 @@ func (node *memoryNode) checkConflictAndDupClosure(
 			*dupRow = row
 			return moerr.GetOkExpectedDup()
 		}
-		return nil
+		return err
 	}
 }
 

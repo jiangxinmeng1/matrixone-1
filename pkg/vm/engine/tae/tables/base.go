@@ -229,6 +229,7 @@ func (blk *baseObject) LoadPersistedColumnData(
 		id,
 		def,
 		location,
+		blk.meta.IsTombstone,
 		mp,
 	)
 }

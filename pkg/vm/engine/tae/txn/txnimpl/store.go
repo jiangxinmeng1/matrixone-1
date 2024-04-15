@@ -835,3 +835,11 @@ func (store *txnStore) FillInWorkspaceDeletes(id *common.ID, view *containers.Ba
 	}
 	return db.FillInWorkspaceDeletes(id, view)
 }
+
+func (store *txnStore) IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error) {
+	db, err := store.getOrSetDB(id.DbID)
+	if err != nil {
+		return false, err
+	}
+	return db.IsDeletedInWorkSpace(id, row)
+}

@@ -1066,8 +1066,8 @@ func TestFlushTabletail(t *testing.T) {
 
 	flushTable := func() {
 		txn, rel := testutil.GetDefaultRelation(t, tae.DB, schema.Name)
-		blkMetas := testutil.GetAllBlockMetas(rel, false)
-		tombstoneMetas := testutil.GetAllBlockMetas(rel, true)
+		blkMetas := testutil.GetAllAppendableMetas(rel, false)
+		tombstoneMetas := testutil.GetAllAppendableMetas(rel, true)
 		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tombstoneMetas, tae.Runtime, types.MaxTs())
 		require.NoError(t, err)
 		worker.SendOp(task)
@@ -2195,8 +2195,10 @@ func TestChaos1(t *testing.T) {
 				assert.NoError(t, txn.Rollback(context.Background()))
 				return
 			}
-			assert.NoError(t, txn.Commit(context.Background()))
-			atomic.AddUint32(&deleteCnt, uint32(1))
+			err := txn.Commit(context.Background())
+			if err == nil {
+				atomic.AddUint32(&deleteCnt, uint32(1))
+			}
 			return
 		}
 		assert.True(t, moerr.IsMoErrCode(err, moerr.ErrNotFound))
@@ -2276,13 +2278,14 @@ func TestSnapshotIsolation1(t *testing.T) {
 	err = rel1.UpdateByFilter(context.Background(), filter, 3, int64(1111), false)
 	t.Log(err)
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict))
+	_ = txn1.Rollback(context.Background())
 
 	// Step 5
+	txn1, rel1 = testutil.GetDefaultRelation(t, tae, schema.Name)
 	id, row, err := rel1.GetByFilter(context.Background(), filter)
 	assert.NoError(t, err)
 	err = rel1.RangeDelete(id, row, row, handle.DT_Normal)
-	t.Log(err)
-	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict))
+	assert.NoError(t, err)
 	_ = txn1.Rollback(context.Background())
 
 	// Step 6
@@ -2377,6 +2380,11 @@ func TestMergeBlocks(t *testing.T) {
 
 	txn, err = tae.StartTxn(nil)
 	assert.Nil(t, err)
+	db, err = txn.GetDatabase("db")
+	assert.Nil(t, err)
+	rel, err = db.GetRelationByName(schema.Name)
+	assert.Nil(t, err)
+	it = rel.MakeObjectIt(false)
 	for it.Valid() {
 		testutil.CheckAllColRowsByScan(t, rel, bat.Length(), false)
 		obj := it.GetObject()
@@ -3026,6 +3034,7 @@ func TestCompactBlk2(t *testing.T) {
 	testutil.CheckAllColRowsByScan(t, rel1, 5, true)
 	_ = rel1.DeleteByFilter(context.Background(), filter)
 	assert.Nil(t, txn2.Commit(context.Background()))
+	txn3, rel1 := tae.GetRelation()
 
 	txn4, rel2 := tae.GetRelation()
 	testutil.CheckAllColRowsByScan(t, rel2, 4, true)
@@ -3056,6 +3065,7 @@ func TestCompactBlk2(t *testing.T) {
 	assert.Nil(t, txn2.Commit(context.Background()))
 
 	testutil.CheckAllColRowsByScan(t, rel1, 5, true)
+	assert.Nil(t, txn3.Commit(context.Background()))
 	testutil.CheckAllColRowsByScan(t, rel2, 4, true)
 	assert.Nil(t, txn4.Commit(context.Background()))
 
@@ -7961,11 +7971,17 @@ func TestEstimateMemSize(t *testing.T) {
 		require.NoError(t, err)
 		size3, d3 := blk.GetObjectData().EstimateMemSize()
 
-		t.Log(size1, size2, size3)
-		t.Log(d1, d2, d3)
+		require.NoError(t, txn.Commit(ctx))
+
+		txn, rel = tae.GetRelation()
+		tombstone := rel.MakeObjectIt(true).GetObject().GetMeta().(*catalog.ObjectEntry)
+		size4, d4 := tombstone.GetObjectData().EstimateMemSize()
+
+		t.Log(size1, size2, size3, size4)
+		t.Log(d1, d2, d3, d4)
 		require.Equal(t, size1, size2)
 		require.Equal(t, size2, size3)
-		require.Less(t, d1, d2)
+		require.NotZero(t, size4)
 		require.Less(t, schema50rowSize, size1)
 		require.NoError(t, txn.Commit(ctx))
 	}

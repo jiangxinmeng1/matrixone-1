@@ -571,10 +571,18 @@ func (db *txnDB) CleanUp() {
 	}
 }
 
-func (db *txnDB) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error{
+func (db *txnDB) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error {
 	table, err := db.getOrSetTable(id.TableID)
 	if err != nil {
 		return err
 	}
-	return table.FillInWorkspaceDeletes(id.BlockID,view)
+	return table.FillInWorkspaceDeletes(id.BlockID, view)
+}
+
+func (db *txnDB) IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error) {
+	table, err := db.getOrSetTable(id.TableID)
+	if err != nil {
+		return false, err
+	}
+	return table.IsDeletedInWorkSpace(id.BlockID, row)
 }

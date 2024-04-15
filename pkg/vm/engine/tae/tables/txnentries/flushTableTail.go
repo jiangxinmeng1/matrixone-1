@@ -133,7 +133,7 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 		bat, _, err := dataBlock.CollectDeleteInRange(
 			entry.txn.GetContext(),
 			startTS.Next(),
-			entry.txn.GetPrepareTS(),
+			entry.txn.GetPrepareTS().Prev(),// if use prepareTS, it'll wait for flush txn and lead to deadlock
 			common.MergeAllocator,
 		)
 		if err != nil {

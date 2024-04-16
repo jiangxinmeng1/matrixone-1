@@ -363,11 +363,12 @@ func (obj *aobject) BatchDedup(
 func (obj *aobject) CollectAppendInRange(
 	start, end types.TS,
 	withAborted bool,
+	notWait bool,
 	mp *mpool.MPool,
 ) (*containers.BatchWithVersion, error) {
 	node := obj.PinNode()
 	defer node.Unref()
-	return node.CollectAppendInRange(start, end, withAborted, mp)
+	return node.CollectAppendInRange(start, end, withAborted, notWait,mp)
 }
 
 func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {

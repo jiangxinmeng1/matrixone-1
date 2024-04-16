@@ -103,21 +103,22 @@ func (n *AppendMVCCHandle) GetAppendNodeByRow(row uint32) (an *AppendNode) {
 // commitTSVec: is the commit ts vector
 // abortVec: is the abort vector
 // aborts: is the aborted bitmap
+// If checkCommit, it ignore all uncommitted nodes
 func (n *AppendMVCCHandle) CollectAppendLocked(
-	start, end types.TS, mp *mpool.MPool,
+	start, end types.TS, checkCommit bool, mp *mpool.MPool,
 ) (
 	minRow, maxRow uint32,
 	commitTSVec, abortVec containers.Vector,
 	aborts *nulls.Bitmap,
 ) {
-	startOffset, node := n.appends.GetNodeToReadByPrepareTS(start)
+	startOffset, node := n.appends.GetNodeToReadByPrepareTS(start, checkCommit)
 	if node != nil {
 		prepareTS := node.GetPrepare()
 		if prepareTS.Less(&start) {
 			startOffset++
 		}
 	}
-	endOffset, node := n.appends.GetNodeToReadByPrepareTS(end)
+	endOffset, node := n.appends.GetNodeToReadByPrepareTS(end, checkCommit)
 	if node == nil || startOffset > endOffset {
 		return
 	}
@@ -133,6 +134,10 @@ func (n *AppendMVCCHandle) CollectAppendLocked(
 		func(node *AppendNode) bool {
 			txn := node.GetTxn()
 			if txn != nil {
+				if checkCommit {
+					panic(fmt.Sprintf("logic err: read ts [%v,%v], node offset[%v,%v], uncommitted node %v, chain %v",
+						start.ToString(), end.ToString(), startOffset, endOffset, node.String(), n.appends.StringLocked()))
+				}
 				n.RUnlock()
 				txn.GetTxnState(true)
 				n.RLock()

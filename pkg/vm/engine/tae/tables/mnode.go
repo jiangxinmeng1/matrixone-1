@@ -477,11 +477,11 @@ func (node *memoryNode) checkConflictAandVisibility(
 }
 
 func (node *memoryNode) CollectAppendInRange(
-	start, end types.TS, withAborted bool, mp *mpool.MPool,
+	start, end types.TS, withAborted bool, checkCommit bool, mp *mpool.MPool,
 ) (batWithVer *containers.BatchWithVersion, err error) {
 	node.object.RLock()
 	minRow, maxRow, commitTSVec, abortVec, abortedMap :=
-		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
+		node.object.appendMVCC.CollectAppendLocked(start, end, checkCommit, mp)
 	batWithVer, err = node.GetDataWindowOnWriteSchema(minRow, maxRow, mp)
 	if err != nil {
 		node.object.RUnlock()

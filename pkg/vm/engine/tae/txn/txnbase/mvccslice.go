@@ -171,7 +171,8 @@ func (be *MVCCSlice[T]) forEachReverse(fn func(un T) bool) {
 // It returns the UpdateNode in the same txn as the read txn
 // or returns the latest UpdateNode with commitTS less than the timestamp.
 // todo getend or getcommitts
-func (be *MVCCSlice[T]) GetNodeToReadByPrepareTS(ts types.TS) (offset int, node T) {
+// if checkCommitted, it ignores uncommitted nodes
+func (be *MVCCSlice[T]) GetNodeToReadByPrepareTS(ts types.TS, checkCommitted bool) (offset int, node T) {
 	if len(be.MVCC) == 0 {
 		return 0, be.zero
 	}
@@ -196,10 +197,16 @@ func (be *MVCCSlice[T]) GetNodeToReadByPrepareTS(ts types.TS) (offset int, node 
 		}
 	}
 	midPrepareTS := be.MVCC[mid].GetPrepare()
-	if mid == 0 && midPrepareTS.Greater(&ts) {
+	visible := midPrepareTS.LessEq(&ts)
+	if checkCommitted {
+		if !be.MVCC[mid].IsCommitted() {
+			visible = false
+		}
+	}
+	if mid == 0 && !visible {
 		// 2. The first node is found and it was committed after ts
 		return 0, be.zero
-	} else if mid != 0 && midPrepareTS.Greater(&ts) {
+	} else if mid != 0 && !visible {
 		// 3. A node (not first) is found and it was committed after ts. Use the prev node
 		mid = mid - 1
 	}
@@ -255,12 +262,12 @@ func (be *MVCCSlice[T]) IsCommitted() bool {
 }
 
 func (be *MVCCSlice[T]) LoopInRange(start, end types.TS, fn func(T) bool) {
-	startOffset, node := be.GetNodeToReadByPrepareTS(start)
+	startOffset, node := be.GetNodeToReadByPrepareTS(start, false)
 	prepareTS := node.GetPrepare()
 	if node.IsNil() && prepareTS.Less(&start) {
 		startOffset++
 	}
-	endOffset, node := be.GetNodeToReadByPrepareTS(end)
+	endOffset, node := be.GetNodeToReadByPrepareTS(end, false)
 	if node.IsNil() {
 		return
 	}

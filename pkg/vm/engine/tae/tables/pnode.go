@@ -228,7 +228,7 @@ func (node *persistedNode) GetRowByFilter(
 }
 
 func (node *persistedNode) CollectAppendInRange(
-	start, end types.TS, withAborted bool, mp *mpool.MPool,
+	start, end types.TS, withAborted,_ bool, mp *mpool.MPool,
 ) (bat *containers.BatchWithVersion, err error) {
 	// logtail should have sent metaloc
 	return nil, nil

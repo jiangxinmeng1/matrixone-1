@@ -54,7 +54,7 @@ func (i *inspectContext) String() string   { return "" }
 func (i *inspectContext) Set(string) error { return nil }
 func (i *inspectContext) Type() string     { return "ictx" }
 
-func initCommand(ctx context.Context, inspectCtx *inspectContext) *cobra.Command {
+func initCommand(_ context.Context, inspectCtx *inspectContext) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use: "inspect",
 	}
@@ -73,7 +73,7 @@ func initCommand(ctx context.Context, inspectCtx *inspectContext) *cobra.Command
 	object := &objStatArg{}
 	rootCmd.AddCommand(object.PrepareCommand())
 
-	policy := &compactPolicyArg{}
+	policy := &mergePolicyArg{}
 	rootCmd.AddCommand(policy.PrepareCommand())
 
 	mmerge := &manuallyMergeArg{}
@@ -90,6 +90,9 @@ func initCommand(ctx context.Context, inspectCtx *inspectContext) *cobra.Command
 
 	renamecol := &RenameColArg{}
 	rootCmd.AddCommand(renamecol.PrepareCommand())
+
+	pstatus := &PolicyStatus{}
+	rootCmd.AddCommand(pstatus.PrepareCommand())
 
 	return rootCmd
 }
@@ -144,21 +147,27 @@ func (c *catalogArg) PrepareCommand() *cobra.Command {
 	return catalogCmd
 }
 
+func switchPPL(count int) common.PPLevel {
+	switch count {
+	case 0:
+		return common.PPL0
+	case 1:
+		return common.PPL1
+	case 2:
+		return common.PPL2
+	case 3:
+		return common.PPL3
+	case 4:
+		return common.PPL4
+	default:
+		return common.PPL1
+	}
+}
+
 func (c *catalogArg) FromCommand(cmd *cobra.Command) (err error) {
 	c.ctx = cmd.Flag("ictx").Value.(*inspectContext)
 	count, _ := cmd.Flags().GetCount("verbose")
-	var lv common.PPLevel
-	switch count {
-	case 0:
-		lv = common.PPL0
-	case 1:
-		lv = common.PPL1
-	case 2:
-		lv = common.PPL2
-	case 3:
-		lv = common.PPL3
-	}
-	c.verbose = lv
+	c.verbose = switchPPL(count)
 
 	address, _ := cmd.Flags().GetString("target")
 	c.tbl, err = parseTableTarget(address, c.ctx.acinfo, c.ctx.db)
@@ -233,18 +242,7 @@ func (c *objStatArg) FromCommand(cmd *cobra.Command) (err error) {
 	c.start, _ = cmd.Flags().GetInt("start")
 	c.end, _ = cmd.Flags().GetInt("end")
 	count, _ := cmd.Flags().GetCount("verbose")
-	var lv common.PPLevel
-	switch count {
-	case 0:
-		lv = common.PPL0
-	case 1:
-		lv = common.PPL1
-	case 2:
-		lv = common.PPL2
-	case 3:
-		lv = common.PPL3
-	}
-	c.verbose = lv
+	c.verbose = switchPPL(count)
 	address, _ := cmd.Flags().GetString("target")
 	c.tbl, err = parseTableTarget(address, c.ctx.acinfo, c.ctx.db)
 	if err != nil {
@@ -418,6 +416,7 @@ type infoArg struct {
 	ctx     *inspectContext
 	tbl     *catalog.TableEntry
 	obj     *catalog.ObjectEntry
+	blkn    int
 	verbose common.PPLevel
 }
 
@@ -429,25 +428,14 @@ func (c *infoArg) PrepareCommand() *cobra.Command {
 	}
 	cmd.Flags().CountP("verbose", "v", "verbose level")
 	cmd.Flags().StringP("target", "t", "*", "format: table-id")
-	cmd.Flags().StringP("obj", "b", "", "format: <objectId>_<fineN>")
+	cmd.Flags().StringP("blk", "b", "", "format: <objectId>_<fineN>_<blkn>")
 	return cmd
 }
 
 func (c *infoArg) FromCommand(cmd *cobra.Command) (err error) {
 	c.ctx = cmd.Flag("ictx").Value.(*inspectContext)
 	count, _ := cmd.Flags().GetCount("verbose")
-	var lv common.PPLevel
-	switch count {
-	case 0:
-		lv = common.PPL0
-	case 1:
-		lv = common.PPL1
-	case 2:
-		lv = common.PPL2
-	case 3:
-		lv = common.PPL3
-	}
-	c.verbose = lv
+	c.verbose = switchPPL(count)
 
 	address, _ := cmd.Flags().GetString("target")
 	c.tbl, err = parseTableTarget(address, c.ctx.acinfo, c.ctx.db)
@@ -459,7 +447,7 @@ func (c *infoArg) FromCommand(cmd *cobra.Command) (err error) {
 	}
 
 	baddress, _ := cmd.Flags().GetString("blk")
-	c.obj, err = parseBlkTarget(baddress, c.tbl)
+	c.obj, c.blkn, err = parseBlkTarget(baddress, c.tbl)
 	if err != nil {
 		return err
 	}
@@ -474,7 +462,7 @@ func (c *infoArg) String() string {
 	}
 
 	if c.obj != nil {
-		t = fmt.Sprintf("%s %s", t, c.obj.ID.String())
+		t = fmt.Sprintf("%s o-%s b-%d", t, c.obj.ID.String(), c.blkn)
 	}
 
 	return fmt.Sprintf("info: %v", t)
@@ -497,7 +485,7 @@ func (c *infoArg) Run() error {
 		dels := c.obj.GetObjectData().GetTotalChanges()
 		b.WriteString(fmt.Sprintf("prepareCompact: %v, %q\n", r, reason))
 		b.WriteString(fmt.Sprintf("left rows: %v\n", rows-dels))
-		b.WriteString(fmt.Sprintf("ppstring: %v\n", c.obj.GetObjectData().PPString(c.verbose, 0, "")))
+		b.WriteString(fmt.Sprintf("ppstring: %v\n", c.obj.GetObjectData().PPString(c.verbose, 0, "", c.blkn)))
 
 		schema := c.obj.GetSchema()
 		if schema.HasSortKey() {
@@ -610,16 +598,17 @@ func (c *manuallyMergeArg) Run() error {
 	return nil
 }
 
-type compactPolicyArg struct {
+type mergePolicyArg struct {
 	ctx              *inspectContext
 	tbl              *catalog.TableEntry
 	maxMergeObjN     int32
 	minRowsQualified int32
 	maxRowsObj       int32
+	cnMinMergeSize   int32
 	hints            []api.MergeHint
 }
 
-func (c *compactPolicyArg) PrepareCommand() *cobra.Command {
+func (c *mergePolicyArg) PrepareCommand() *cobra.Command {
 	policyCmd := &cobra.Command{
 		Use:   "policy",
 		Short: "set merge policy for table",
@@ -628,11 +617,12 @@ func (c *compactPolicyArg) PrepareCommand() *cobra.Command {
 	policyCmd.Flags().StringP("target", "t", "*", "format: db.table")
 	policyCmd.Flags().Int32P("maxMergeObjN", "r", common.DefaultMaxMergeObjN, "max number of objects merged for one run")
 	policyCmd.Flags().Int32P("minRowsQualified", "m", common.DefaultMinRowsQualified, "objects which are less than minRowsQualified will be picked up to merge")
+	policyCmd.Flags().Int32P("minCNMergeSize", "c", common.DefaultMinCNMergeSize, "Merget task whose memory occupation exceeds minCNMergeSize will be moved to CN")
 	policyCmd.Flags().Int32SliceP("mergeHints", "n", []int32{0}, "hints to merge the table")
 	return policyCmd
 }
 
-func (c *compactPolicyArg) FromCommand(cmd *cobra.Command) (err error) {
+func (c *mergePolicyArg) FromCommand(cmd *cobra.Command) (err error) {
 	c.ctx = cmd.Flag("ictx").Value.(*inspectContext)
 
 	address, _ := cmd.Flags().GetString("target")
@@ -643,6 +633,7 @@ func (c *compactPolicyArg) FromCommand(cmd *cobra.Command) (err error) {
 	c.maxMergeObjN, _ = cmd.Flags().GetInt32("maxMergeObjN")
 	c.maxRowsObj, _ = cmd.Flags().GetInt32("maxRowsObj")
 	c.minRowsQualified, _ = cmd.Flags().GetInt32("minRowsQualified")
+	c.cnMinMergeSize, _ = cmd.Flags().GetInt32("minCNMergeSize")
 	hints, _ := cmd.Flags().GetInt32Slice("mergeHints")
 	for _, h := range hints {
 		if _, ok := api.MergeHint_name[h]; !ok {
@@ -653,21 +644,22 @@ func (c *compactPolicyArg) FromCommand(cmd *cobra.Command) (err error) {
 	return nil
 }
 
-func (c *compactPolicyArg) String() string {
+func (c *mergePolicyArg) String() string {
 	t := "*"
 	if c.tbl != nil {
 		t = fmt.Sprintf("%d-%s", c.tbl.ID, c.tbl.GetLastestSchemaLocked(false).Name)
 	}
 	return fmt.Sprintf(
-		"(%s) maxMergeObjN: %v, minRowsQualified: %v, hints: %v",
-		t, c.maxMergeObjN, c.minRowsQualified, c.hints,
+		"(%s) maxMergeObjN: %v, minRowsQualified: %v, cnSize: %vMB, hints: %v",
+		t, c.maxMergeObjN, c.minRowsQualified, c.cnMinMergeSize, c.hints,
 	)
 }
 
-func (c *compactPolicyArg) Run() error {
+func (c *mergePolicyArg) Run() error {
 	if c.tbl == nil {
 		common.RuntimeMaxMergeObjN.Store(c.maxMergeObjN)
 		common.RuntimeMinRowsQualified.Store(c.minRowsQualified)
+		common.RuntimeMinCNMergeSize.Store(uint64(c.cnMinMergeSize) * common.Const1MBytes)
 		if c.maxMergeObjN == 0 && c.minRowsQualified == 0 {
 			merge.StopMerge.Store(true)
 		} else {
@@ -679,6 +671,7 @@ func (c *compactPolicyArg) Run() error {
 			MergeMaxOneRun:   int(c.maxMergeObjN),
 			ObjectMinRows:    int(c.minRowsQualified),
 			MaxRowsMergedObj: int(c.maxRowsObj),
+			MinCNMergeSize:   uint64(c.cnMinMergeSize) * common.Const1MBytes,
 			MergeHints:       c.hints,
 		})
 	}
@@ -741,33 +734,71 @@ func (c *RenameColArg) Run() (err error) {
 	return txn.Commit(context.Background())
 }
 
-func parseBlkTarget(address string, tbl *catalog.TableEntry) (*catalog.ObjectEntry, error) {
+type PolicyStatus struct {
+	ctx      *inspectContext
+	pruneId  uint64
+	pruneAgo time.Duration
+}
+
+func (c *PolicyStatus) FromCommand(cmd *cobra.Command) (err error) {
+	c.ctx = cmd.Flag("ictx").Value.(*inspectContext)
+	c.pruneAgo, _ = cmd.Flags().GetDuration("prune-ago")
+	c.pruneId, _ = cmd.Flags().GetUint64("prune-id")
+	return nil
+}
+
+func (c *PolicyStatus) PrepareCommand() *cobra.Command {
+	statusCmd := &cobra.Command{
+		Use:   "policy_status",
+		Short: "check cn merge status",
+		Run:   RunFactory(c),
+	}
+	statusCmd.Flags().DurationP("prune-ago", "a", 0, "prune objects by time ago")
+	statusCmd.Flags().Uint64P("prune-id", "i", 0, "prune objects by table id")
+	return statusCmd
+}
+
+func (c *PolicyStatus) String() string {
+	return fmt.Sprintf("policy status: prune %v ago, by id %v", c.pruneAgo, c.pruneId)
+}
+
+func (c *PolicyStatus) Run() (err error) {
+	if c.pruneAgo == 0 && c.pruneId == 0 {
+		c.ctx.resp.Payload = []byte(merge.ActiveCNObj.String())
+		return nil
+	} else {
+		merge.ActiveCNObj.Prune(c.pruneId, c.pruneAgo)
+		return nil
+	}
+}
+
+func parseBlkTarget(address string, tbl *catalog.TableEntry) (*catalog.ObjectEntry, int, error) {
 	if address == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
 	parts := strings.Split(address, "_")
 	if len(parts) != 3 {
-		return nil, moerr.NewInvalidInputNoCtx(fmt.Sprintf("invalid block address: %q", address))
+		return nil, 0, moerr.NewInvalidInputNoCtx(fmt.Sprintf("invalid block address: %q", address))
 	}
 	uid, err := types.ParseUuid(parts[0])
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	fn, err := strconv.Atoi(parts[1])
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	bn, err := strconv.Atoi(parts[2])
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	bid := objectio.NewBlockid(&uid, uint16(fn), uint16(bn))
 	objid := bid.Object()
 	oentry, err := tbl.GetObjectByID(objid, false)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return oentry, nil
+	return oentry, bn, nil
 }
 
 func parseTableTarget(address string, ac *db.AccessInfo, db *db.DB) (*catalog.TableEntry, error) {

@@ -1154,12 +1154,7 @@ func bindFuncExprImplUdf(b *baseBinder, name string, udf *function.Udf, args []t
 
 		if !strings.Contains(sql, "select") {
 			sql = "select " + sql
-			substmts, err := parsers.Parse(b.GetContext(), dialect.MYSQL, sql, 1)
-			defer func() {
-				for _, s := range substmts {
-					s.Free()
-				}
-			}()
+			substmts, err := parsers.Parse(b.GetContext(), dialect.MYSQL, sql, 1, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -1168,12 +1163,7 @@ func bindFuncExprImplUdf(b *baseBinder, name string, udf *function.Udf, args []t
 				return nil, err
 			}
 		} else {
-			substmts, err := parsers.Parse(b.GetContext(), dialect.MYSQL, sql, 1)
-			defer func() {
-				for _, s := range substmts {
-					s.Free()
-				}
-			}()
+			substmts, err := parsers.Parse(b.GetContext(), dialect.MYSQL, sql, 1, 0)
 			if err != nil {
 				return nil, err
 			}
@@ -1725,16 +1715,6 @@ func BindFuncExprImplByPlanExpr(ctx context.Context, name string, args []*Expr) 
 				}
 			}
 		}
-	}
-
-	if name == NameGroupConcat {
-		expressionList := args[:len(args)-1]
-		separator := args[len(args)-1]
-		compactCol, e := BindFuncExprImplByPlanExpr(ctx, "serial", expressionList)
-		if e != nil {
-			return nil, e
-		}
-		args = []*plan.Expr{compactCol, separator}
 	}
 
 	// return new expr

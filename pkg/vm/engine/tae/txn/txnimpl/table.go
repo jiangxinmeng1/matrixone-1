@@ -223,7 +223,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			// nil: transferred successfully
 			// ErrTxnRWConflict: the target block was also be compacted
 			// ErrTxnWWConflict: w-w error
-			if _, err = tbl.TransferDeleteRows(id, offset, pk, phase); err != nil {
+			if _, err = tbl.TransferDeleteRows(id, offset, pk, phase, ts); err != nil {
 				return err
 			}
 		}
@@ -286,13 +286,17 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	return
 }
 
+// recurTransferDelete recursively transfer the deletes to the target block.
+// memo stores the pined transfer hash page for deleted and committed blocks.
+// id is the deleted and committed block to transfer
 func (tbl *txnTable) recurTransferDelete(
 	memo map[types.Blockid]*common.PinnedItem[*model.TransferHashPage],
 	page *model.TransferHashPage,
-	id *common.ID,
+	id *common.ID, // the block had been deleted and committed.
 	row uint32,
 	pk any,
-	depth int) error {
+	depth int,
+	ts types.TS) error {
 
 	var page2 *common.PinnedItem[*model.TransferHashPage]
 
@@ -315,44 +319,73 @@ func (tbl *txnTable) recurTransferDelete(
 		TableID: id.TableID,
 		BlockID: blockID,
 	}
-	var err error
+
+	//check if the target block had been soft deleted and committed before ts,
+	//if not, transfer the deletes to the target block,
+	//otherwise recursively transfer the deletes to the next target block.
+	err := tbl.store.warChecker.checkOne(newID, ts)
+	if err == nil {
+		//transfer the deletes to the target block.
+		if err = tbl.RangeDelete(newID, offset, offset, pk, handle.DT_Normal); err != nil {
+			return err
+		}
+		common.DoIfInfoEnabled(func() {
+			logutil.Infof("depth-%d %s transfer delete from blk-%s row-%d to blk-%s row-%d",
+				depth,
+				tbl.schema.Name,
+				id.BlockID.String(),
+				row,
+				blockID.String(),
+				offset)
+		})
+		return nil
+	}
+	tbl.store.warChecker.conflictSet[*newID.ObjectID()] = true
+	//prepare for recursively transfer the deletes to the next target block.
 	if page2, ok = memo[blockID]; !ok {
 		page2, err = tbl.store.rt.TransferTable.Pin(*newID)
-		if err == nil {
-			memo[blockID] = page2
+		if err != nil {
+			return err
 		}
+		memo[blockID] = page2
 	}
-	if page2 != nil {
-		return tbl.recurTransferDelete(
-			memo,
-			page2.Item(),
-			newID,
+
+	rowID, ok = page2.Item().Transfer(offset)
+	if !ok {
+		err := moerr.NewTxnWWConflictNoCtx(0, "")
+		msg := fmt.Sprintf("table-%d blk-%d delete row-%d depth-%d",
+			newID.TableID,
+			newID.BlockID,
 			offset,
-			pk,
-			depth+1)
-	}
-	pkVec := containers.MakeVector(tbl.schema.GetSingleSortKeyType(), common.WorkspaceAllocator)
-	pkVec.Append(pk, false)
-	if err = tbl.RangeDelete(newID, offset, offset, pkVec, handle.DT_Normal); err != nil {
+			depth)
+		logutil.Warnf("[ts=%s]TransferDeleteNode: %v",
+			tbl.store.txn.GetStartTS().ToString(),
+			msg)
 		return err
 	}
-	common.DoIfInfoEnabled(func() {
-		logutil.Infof("depth-%d %s transfer delete from blk-%s row-%d to blk-%s row-%d",
-			depth,
-			tbl.schema.Name,
-			id.BlockID.String(),
-			row,
-			blockID.String(),
-			offset)
-	})
-	return nil
+	blockID, offset = rowID.Decode()
+	newID = &common.ID{
+		DbID:    id.DbID,
+		TableID: id.TableID,
+		BlockID: blockID,
+	}
+	//caudal recursion
+	return tbl.recurTransferDelete(
+		memo,
+		page2.Item(),
+		newID,
+		offset,
+		pk,
+		depth+1,
+		ts)
 }
 
 func (tbl *txnTable) TransferDeleteRows(
 	id *common.ID,
 	row uint32,
 	pk any,
-	phase string) (transferred bool, err error) {
+	phase string,
+	ts types.TS) (transferred bool, err error) {
 	memo := make(map[types.Blockid]*common.PinnedItem[*model.TransferHashPage])
 	common.DoIfInfoEnabled(func() {
 		logutil.Info("[Start]",
@@ -387,7 +420,7 @@ func (tbl *txnTable) TransferDeleteRows(
 	// logutil.Infof("TransferDeleteNode deletenode %s", node.DeleteNode.(*updates.DeleteNode).GeneralVerboseString())
 	page := pinned.Item()
 	depth := 0
-	if err = tbl.recurTransferDelete(memo, page, id, row, pk, depth); err != nil {
+	if err = tbl.recurTransferDelete(memo, page, id, row, pk, depth,ts); err != nil {
 		return
 	}
 
@@ -586,7 +619,7 @@ func (tbl *txnTable) Close() error {
 }
 
 func (tbl *txnTable) Append(ctx context.Context, data *containers.Batch) (err error) {
-	if tbl.schema.HasPK() {
+	if tbl.schema.HasPK() && !tbl.schema.IsSecondaryIndexTable() {
 		dedupType := tbl.store.txn.GetDedupType()
 		if dedupType == txnif.FullDedup {
 			//do PK deduplication check against txn's work space.
@@ -665,7 +698,7 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 	if isTombstone {
 		schema = tbl.tombstoneSchema
 	}
-	if schema.HasPK() {
+	if schema.HasPK()  && !tbl.schema.IsSecondaryIndexTable(){
 		dedupType := tbl.store.txn.GetDedupType()
 		if dedupType == txnif.FullDedup {
 			//TODO::parallel load pk.
@@ -890,7 +923,7 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		tableSpace = tbl.tableSpace
 		schema = tbl.schema
 	}
-	if tableSpace == nil || !schema.HasPK() {
+	if tableSpace == nil || !schema.HasPK()|| tbl.schema.IsSecondaryIndexTable() {
 		return
 	}
 	var zm index.ZM

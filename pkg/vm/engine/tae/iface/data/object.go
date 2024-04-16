@@ -128,7 +128,7 @@ type Object interface {
 		sels []uint32,
 		mp *mpool.MPool,
 	) error
-	PPString(level common.PPLevel, depth int, prefix string) string
+	PPString(level common.PPLevel, depth int, prefix string, blkid int) string
 	EstimateMemSize() (int, int)
 	GetRuntime() *dbutils.Runtime
 
@@ -151,6 +151,7 @@ type Tombstone interface {
 	GetDeltaPersistedTS() types.TS
 	// GetOrCreateDeleteChain(blkID uint16) *updates.MVCCHandle
 	HasDeleteIntentsPreparedIn(from types.TS, to types.TS) (found bool, isPersist bool)
+	HasInMemoryDeleteIntentsPreparedInByBlock(blockID uint16, from, to types.TS) (bool, bool)
 	IsDeletedLocked(row uint32, txn txnif.TxnReader, blkID uint16) (bool, error)
 	SetDeletesListener(l func(uint64, types.TS) error)
 	StringLocked(level common.PPLevel, depth int, prefix string) string

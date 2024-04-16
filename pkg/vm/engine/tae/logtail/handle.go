@@ -694,6 +694,7 @@ func LoadCheckpointEntries(
 		v2.LogTailLoadCheckpointDurationHistogram.Observe(time.Since(now).Seconds())
 	}()
 	locationsAndVersions := strings.Split(metLoc, ";")
+
 	datas := make([]*CNCheckpointData, len(locationsAndVersions)/2)
 
 	readers := make([]*blockio.BlockReader, len(locationsAndVersions)/2)

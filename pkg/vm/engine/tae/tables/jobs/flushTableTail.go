@@ -342,7 +342,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	}
 
 	phaseDesc = "1-wait LogTxnEntry"
-	txnEntry := txnentries.NewFlushTableTailEntry(
+	txnEntry, err := txnentries.NewFlushTableTailEntry(
 		task.txn,
 		task.ID(),
 		task.transMappings,
@@ -357,6 +357,9 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 		task.createdMergedTombstoneName,
 		task.rt,
 	)
+	if err != nil {
+		return err
+	}
 	readset := make([]*common.ID, 0, len(task.aObjMetas))
 	for _, obj := range task.aObjMetas {
 		readset = append(readset, obj.AsCommonID())
@@ -447,7 +450,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		return
 	}
 
-	var sortMapping []int32
+	var sortMapping []int64
 	if sortKeyPos >= 0 {
 		if objIdx == 0 {
 			logutil.Infof("flushtabletail sort obj on %s", bat.Attrs[sortKeyPos])

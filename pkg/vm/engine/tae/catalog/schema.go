@@ -994,6 +994,9 @@ func MockSnapShotSchema() *Schema {
 	schema.AppendCol("tid", types.T_uint64.ToType())
 	schema.AppendCol("ts", types.T_TS.ToType())
 	schema.Constraint, _ = constraintDef.MarshalBinary()
+	// mock fake pk
+	schema.AppendFakePKCol()
+	schema.ColDefs[len(schema.ColDefs)-1].NullAbility = true
 
 	_ = schema.Finalize(false)
 	return schema

@@ -63,9 +63,11 @@ type merger[T any] struct {
 
 	rowPerBlk uint32
 	blkPerObj uint16
+
+	isTombstone bool
 }
 
-func newMerger[T any](host MergeTaskHost, lessFunc lessFunc[T], sortKeyPos int, mustColFunc func(*vector.Vector) []T) Merger {
+func newMerger[T any](host MergeTaskHost, lessFunc lessFunc[T], sortKeyPos int, isTombstone bool, mustColFunc func(*vector.Vector) []T) Merger {
 	size := host.GetObjectCnt()
 	m := &merger[T]{
 		host:       host,
@@ -82,6 +84,7 @@ func newMerger[T any](host MergeTaskHost, lessFunc lessFunc[T], sortKeyPos int, 
 		objBlkCnts:       host.GetBlkCnts(),
 		loadedObjBlkCnts: make([]int, size),
 		mustColFunc:      mustColFunc,
+		isTombstone:      isTombstone,
 	}
 	m.rowPerBlk, m.blkPerObj = host.GetObjLayout()
 	for _, cnt := range m.objBlkCnts {
@@ -160,9 +163,15 @@ func (m *merger[T]) Merge(ctx context.Context) {
 			if m.writer == nil {
 				m.writer = m.host.PrepareNewWriter()
 			}
+			if m.isTombstone {
+				if _, err := m.writer.WriteTombstoneBatch(m.buffer); err != nil {
+					panic(err)
+				}
+			} else {
 
-			if _, err := m.writer.WriteBatch(m.buffer); err != nil {
-				panic(err)
+				if _, err := m.writer.WriteBatch(m.buffer); err != nil {
+					panic(err)
+				}
 			}
 			// force clean
 			m.buffer.CleanOnlyData()
@@ -188,8 +197,15 @@ func (m *merger[T]) Merge(ctx context.Context) {
 		if m.writer == nil {
 			m.writer = m.host.PrepareNewWriter()
 		}
-		if _, err := m.writer.WriteBatch(m.buffer); err != nil {
-			panic(err)
+		if m.isTombstone {
+			if _, err := m.writer.WriteTombstoneBatch(m.buffer); err != nil {
+				panic(err)
+			}
+		} else {
+
+			if _, err := m.writer.WriteBatch(m.buffer); err != nil {
+				panic(err)
+			}
 		}
 		m.buffer.CleanOnlyData()
 	}

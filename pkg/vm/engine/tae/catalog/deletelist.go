@@ -27,100 +27,35 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
-// for each tombstone in range [start,end]
-func (entry *TableEntry) foreachTombstoneInRange(
-	ctx context.Context,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		err := tombstone.foreachTombstoneInRange(ctx, start, end, mp, op)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// for each tombstone in range [start,end]
-func (entry *TableEntry) foreachTombstoneInRangeWithObjectID(
-	ctx context.Context,
-	objID types.Objectid,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objID, start, end, mp, op)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// for each tombstone in range [start,end]
-func (entry *TableEntry) foreachTombstoneInRangeWithBlockID(
-	ctx context.Context,
-	blkID types.Blockid,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		err := tombstone.foreachTombstoneInRangeWithBlockID(ctx, blkID, start, end, mp, op)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (entry *TableEntry) tryGetTombstone(
-	ctx context.Context,
-	rowID types.Rowid,
-	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		ok, commitTS, aborted, pk, err = tombstone.tryGetTombstone(ctx, rowID, mp)
-		if err != nil {
-			return
-		}
-		if ok {
-			return
-		}
-	}
-	return
-}
 func (entry *TableEntry) CollectDeleteInRange(
 	ctx context.Context,
 	start, end types.TS,
 	blockID objectio.Blockid,
 	mp *mpool.MPool,
 ) (bat *containers.Batch, err error) {
-	entry.foreachTombstoneInRangeWithBlockID(
-		ctx, blockID, start, end, mp,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			if bat == nil {
-				pkType := entry.GetLastestSchema(false).GetPrimaryKey().Type
-				bat = NewTombstoneBatch(pkType, mp)
-			}
-			bat.GetVectorByName(AttrRowID).Append(rowID, false)
-			bat.GetVectorByName(AttrCommitTs).Append(commitTS, false)
-			bat.GetVectorByName(AttrPKVal).Append(pk, false)
-			bat.GetVectorByName(AttrAborted).Append(aborted, false)
-			return true, nil
-		})
+	it := entry.MakeObjectIt(false, true)
+	for ; it.Valid(); it.Next() {
+		node := it.Get()
+		tombstone := node.GetPayload()
+		err := tombstone.foreachTombstoneInRangeWithBlockID(ctx, blockID, start, end, mp,
+			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
+				if bat == nil {
+					pkType := entry.GetLastestSchema(false).GetPrimaryKey().Type
+					bat = NewTombstoneBatch(pkType, mp)
+				}
+				bat.GetVectorByName(AttrRowID).Append(rowID, false)
+				bat.GetVectorByName(AttrCommitTs).Append(commitTS, false)
+				bat.GetVectorByName(AttrPKVal).Append(pk, false)
+				bat.GetVectorByName(AttrAborted).Append(aborted, false)
+				return true, nil
+			})
+		if err != nil {
+			return nil, err
+		}
+	}
 	return
 }
+
 func (entry *TableEntry) IsDeleted(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -199,6 +134,24 @@ func (entry *TableEntry) OnApplyDelete(
 	return
 }
 
+func (entry *TableEntry) tryGetTombstone(
+	ctx context.Context,
+	rowID types.Rowid,
+	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
+	it := entry.MakeObjectIt(false, true)
+	for ; it.Valid(); it.Next() {
+		node := it.Get()
+		tombstone := node.GetPayload()
+		ok, commitTS, aborted, pk, err = tombstone.tryGetTombstone(ctx, rowID, mp)
+		if err != nil {
+			return
+		}
+		if ok {
+			return
+		}
+	}
+	return
+}
 func (entry *TableEntry) IsDeletedLocked(
 	row types.Rowid, txn txnif.TxnReader,
 ) (bool, error) {

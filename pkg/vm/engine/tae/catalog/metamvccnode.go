@@ -207,7 +207,6 @@ type ObjectNode struct {
 	sorted   bool   // deprecated
 
 	// for tombstone
-	PersistedByCN bool
 	IsTombstone   bool
 
 	remainingRows common.FixedSampleIII[int]
@@ -238,11 +237,6 @@ func (node *ObjectNode) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 	n += 1
-	_, err = r.Read(types.EncodeBool(&node.PersistedByCN))
-	if err != nil {
-		return
-	}
-	n += 1
 	_, err = r.Read(types.EncodeBool(&node.IsTombstone))
 	if err != nil {
 		return
@@ -268,11 +262,6 @@ func (node *ObjectNode) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	n += 8
 	_, err = w.Write(types.EncodeBool(&node.sorted))
-	if err != nil {
-		return
-	}
-	n += 1
-	_, err = w.Write(types.EncodeBool(&node.PersistedByCN))
 	if err != nil {
 		return
 	}

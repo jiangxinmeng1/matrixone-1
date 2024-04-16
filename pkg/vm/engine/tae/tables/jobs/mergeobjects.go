@@ -126,24 +126,12 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 	schema := task.rel.Schema(task.isTombstone).(*catalog.Schema)
 	idxs := make([]int, 0, len(schema.ColDefs)-1)
 	attrs := make([]string, 0, len(schema.ColDefs)-1)
-	// for tombstone
-	cnidxs := make([]int, 0, len(schema.ColDefs)-1)
-	cnattrs := make([]string, 0, len(schema.ColDefs)-1)
 	for _, def := range schema.ColDefs {
 		if def.IsPhyAddr() {
 			continue
 		}
 		idxs = append(idxs, def.Idx)
 		attrs = append(attrs, def.Name)
-	}
-	if task.isTombstone {
-		for _, def := range schema.ColDefs {
-			if def.IsPhyAddr() {
-				continue
-			}
-			cnidxs = append(cnidxs, def.Idx)
-			cnattrs = append(cnattrs, def.Name)
-		}
 	}
 	for i, obj := range task.mergedObjsHandle {
 
@@ -154,20 +142,9 @@ func (task *mergeObjectsTask) PrepareData() ([]*batch.Batch, []*nulls.Nulls, fun
 		minBlockOffset := task.mergedBlkCnt[i]
 
 		columnIdx := idxs
-		if task.isTombstone && obj.GetMeta().(*catalog.ObjectEntry).PersistedByCN {
-			columnIdx = cnidxs
-		}
 		for j := 0; j < maxBlockOffset-minBlockOffset; j++ {
 			if views[minBlockOffset+j], err = obj.GetColumnDataByIds(context.Background(), uint16(j), columnIdx, common.MergeAllocator); err != nil {
 				return nil, nil, nil, err
-			}
-			meta := task.mergedObjs[i]
-			if task.isTombstone && meta.PersistedByCN {
-				view := views[minBlockOffset+j]
-				meta.RLock()
-				commitTS := meta.GetCreatedAtLocked()
-				meta.RUnlock()
-				views[minBlockOffset+j] = catalog.CNTombstoneView2DNTombstoneView(view, commitTS)
 			}
 			// if the object is dropped, skip the tombstone row
 			if task.isTombstone {

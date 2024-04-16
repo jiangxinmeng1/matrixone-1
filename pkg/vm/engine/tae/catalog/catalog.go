@@ -605,7 +605,6 @@ func (catalog *Catalog) onReplayCheckpointObject(
 			state:         state,
 			sorted:        state == ES_NotAppendable,
 			SortHint:      catalog.NextObject(),
-			PersistedByCN: persistedByCN,
 			IsTombstone:   isTombstone,
 		}
 		rel.AddEntryLocked(obj)

@@ -89,9 +89,6 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	if entry.PersistedByCN {
-		panic("logic err")
-	}
 	entry.RLock()
 	droppedTS := entry.GetDeleteAt()
 	entry.RUnlock()
@@ -133,12 +130,7 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
 	var bat *containers.BlockView
 	var err error
-	var idx []int
-	if entry.PersistedByCN {
-		idx = []int{0, 1}
-	} else {
-		idx = []int{0, 1}
-	}
+	idx := []int{0, 1}
 	schema := entry.GetTable().GetLastestSchema(true)
 	bat, err = entry.GetObjectData().GetColumnDataByIds(ctx, txn, schema, blkOffset, idx, mp)
 	if err != nil {

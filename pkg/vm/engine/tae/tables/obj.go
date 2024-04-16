@@ -54,13 +54,6 @@ func (obj *object) Init() (err error) {
 	return
 }
 
-func (obj *object) OnApplyDelete(
-	deleted uint64,
-	ts types.TS) (err error) {
-	obj.meta.GetTable().RemoveRows(deleted)
-	return
-}
-
 func (obj *object) PrepareCompact() bool {
 	return obj.meta.PrepareCompact()
 }
@@ -187,6 +180,7 @@ func (obj *object) estimateRawScore() (score int, dropped bool) {
 		dropped = true
 		return
 	}
+	// TODO
 	changeCnt := obj.meta.GetDeleteCount()
 	if changeCnt == 0 {
 		// No deletes found

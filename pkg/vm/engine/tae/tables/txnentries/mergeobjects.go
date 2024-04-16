@@ -280,7 +280,7 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 		return
 	}
 	// phase 2 transfer
-	transCnt, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS())
+	transCnt, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS().Prev())
 	if err != nil {
 		return nil
 	}

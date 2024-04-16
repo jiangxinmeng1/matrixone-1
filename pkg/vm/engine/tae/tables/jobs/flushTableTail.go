@@ -740,7 +740,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 		var dataVer *containers.BatchWithVersion
 		objData := obj.GetObjectData()
 		if dataVer, err = objData.CollectAppendInRange(
-			types.TS{}, task.txn.GetStartTS(), true, false, common.MergeAllocator,
+			types.TS{}, task.txn.GetStartTS(), true, common.MergeAllocator,
 		); err != nil {
 			return
 		}

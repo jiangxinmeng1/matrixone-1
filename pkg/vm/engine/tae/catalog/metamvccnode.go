@@ -207,7 +207,7 @@ type ObjectNode struct {
 	sorted   bool   // deprecated
 
 	// for tombstone
-	IsTombstone   bool
+	IsTombstone bool
 
 	remainingRows common.FixedSampleIII[int]
 }

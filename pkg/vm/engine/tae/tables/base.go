@@ -520,7 +520,7 @@ func (blk *baseObject) MutationInfo() string {
 }
 
 func (blk *baseObject) CollectAppendInRange(
-	start, end types.TS, withAborted bool, notWait bool, mp *mpool.MPool,
+	start, end types.TS, withAborted bool, mp *mpool.MPool,
 ) (*containers.BatchWithVersion, error) {
 	return nil, nil
 }

@@ -212,7 +212,7 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
 		}
 
 		factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-			return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt,false)
+			return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, false)
 		}
 		task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory)
 		if err != nil {

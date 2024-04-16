@@ -82,7 +82,6 @@ func (obj *object) GetColumnDataByIds(
 	node := obj.PinNode()
 	defer node.Unref()
 	schema := readSchema.(*catalog.Schema)
-	logutil.Infof("lalala get %v",obj.meta.ID.String())
 	return obj.ResolvePersistedColumnDatas(
 		ctx, txn, schema, blkID, colIdxes, false, mp,
 	)

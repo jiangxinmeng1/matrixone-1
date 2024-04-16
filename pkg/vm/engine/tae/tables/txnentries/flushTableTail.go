@@ -81,7 +81,7 @@ func NewFlushTableTailEntry(
 	createdTombstoneHandles handle.Object,
 	createdMergedTombstoneFile string,
 	rt *dbutils.Runtime,
-)(*flushTableTailEntry, error) {
+) (*flushTableTailEntry, error) {
 
 	entry := &flushTableTailEntry{
 		txn:                     txn,
@@ -103,7 +103,7 @@ func NewFlushTableTailEntry(
 		entry.delTbls = make([]*model.TransDels, entry.createdBlkHandles.GetMeta().(*catalog.ObjectEntry).BlockCnt())
 		entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 		// collect deletes phase 1
-		entry.collectTs = rt.Now()// TODO skip appendnodes of flush txn when collect
+		entry.collectTs = rt.Now() // TODO skip appendnodes of flush txn when collect
 		var err error
 		entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
 		if err != nil {
@@ -203,7 +203,7 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 	defer func() {
 		v2.TaskCommitTableTailDurationHistogram.Observe(time.Since(inst).Seconds())
 	}()
-	trans, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS())
+	trans, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS().Prev())
 	if err != nil {
 		return err
 	}

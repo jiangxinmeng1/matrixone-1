@@ -95,7 +95,7 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
 		return nil
 	}
-	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, true, mp)
+	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, mp)
 	if err != nil {
 		return err
 	}

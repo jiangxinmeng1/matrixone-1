@@ -602,10 +602,10 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		obj.ID = *objid
 		obj.table = rel
 		obj.ObjectNode = &ObjectNode{
-			state:         state,
-			sorted:        state == ES_NotAppendable,
-			SortHint:      catalog.NextObject(),
-			IsTombstone:   isTombstone,
+			state:       state,
+			sorted:      state == ES_NotAppendable,
+			SortHint:    catalog.NextObject(),
+			IsTombstone: isTombstone,
 		}
 		rel.AddEntryLocked(obj)
 	}

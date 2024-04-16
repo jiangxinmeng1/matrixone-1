@@ -186,14 +186,14 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
 		if e.rt.Scheduler.CheckAsyncScopes(cids) != nil {
 			return
 		}
-		schema := entry.GetLastestSchema()
+		schema := entry.GetLastestSchema(false)
 		cntask := &api.MergeTaskEntry{
 			AccountId:         schema.AcInfo.TenantID,
 			UserId:            schema.AcInfo.UserID,
 			RoleId:            schema.AcInfo.RoleID,
 			TblId:             entry.ID,
 			DbId:              entry.GetDB().GetID(),
-			TableName:         entry.GetLastestSchema().Name,
+			TableName:         entry.GetLastestSchema(false).Name,
 			DbName:            entry.GetDB().GetName(),
 			ToMergeObjs:       stats,
 			EstimatedMemUsage: uint64(esize),
@@ -212,7 +212,7 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
 		}
 
 		factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-			return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt)
+			return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt,false)
 		}
 		task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory)
 		if err != nil {

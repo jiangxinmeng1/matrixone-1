@@ -650,12 +650,12 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cn
 func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (*containers.Batch, *containers.Batch) {
 	collector := logtail.NewIncrementalCollector(start, end, false)
 	p := &catalog.LoopProcessor{}
-	p.TombstoneFn = func(be data.Tombstone) error {
-		if be.GetObject().(*catalog.ObjectEntry).GetTable().ID != tid {
-			return nil
-		}
-		return collector.VisitTombstone(be)
-	}
+	// p.TombstoneFn = func(be *catalog.ObjectEntry) error {
+	// 	if be.GetTable().ID != tid {
+	// 		return nil
+	// 	}
+	// 	return collector.VisitTombstone(be)
+	// }
 	p.ObjectFn = func(se *catalog.ObjectEntry) error {
 		if se.GetTable().ID != tid {
 			return nil

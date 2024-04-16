@@ -277,7 +277,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 		// nil: transferred successfully
 		// ErrTxnRWConflict: the target block was also be compacted
 		// ErrTxnWWConflict: w-w error
-		if _, err = tbl.TransferDeleteRows(id, rowOffset, pk, phase); err != nil {
+		if _, err = tbl.TransferDeleteRows(id, rowOffset, pk, phase, ts); err != nil {
 			return
 		}
 	}
@@ -325,8 +325,11 @@ func (tbl *txnTable) recurTransferDelete(
 	//otherwise recursively transfer the deletes to the next target block.
 	err := tbl.store.warChecker.checkOne(newID, ts)
 	if err == nil {
+		pkVec := containers.MakeVector(tbl.schema.GetSingleSortKeyType(), common.WorkspaceAllocator)
+		pkVec.Append(pk, false)
+		defer pkVec.Close()
 		//transfer the deletes to the target block.
-		if err = tbl.RangeDelete(newID, offset, offset, pk, handle.DT_Normal); err != nil {
+		if err = tbl.RangeDelete(newID, offset, offset, pkVec, handle.DT_Normal); err != nil {
 			return err
 		}
 		common.DoIfInfoEnabled(func() {
@@ -420,7 +423,7 @@ func (tbl *txnTable) TransferDeleteRows(
 	// logutil.Infof("TransferDeleteNode deletenode %s", node.DeleteNode.(*updates.DeleteNode).GeneralVerboseString())
 	page := pinned.Item()
 	depth := 0
-	if err = tbl.recurTransferDelete(memo, page, id, row, pk, depth,ts); err != nil {
+	if err = tbl.recurTransferDelete(memo, page, id, row, pk, depth, ts); err != nil {
 		return
 	}
 
@@ -698,7 +701,7 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 	if isTombstone {
 		schema = tbl.tombstoneSchema
 	}
-	if schema.HasPK()  && !tbl.schema.IsSecondaryIndexTable(){
+	if schema.HasPK() && !tbl.schema.IsSecondaryIndexTable() {
 		dedupType := tbl.store.txn.GetDedupType()
 		if dedupType == txnif.FullDedup {
 			//TODO::parallel load pk.
@@ -923,7 +926,7 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		tableSpace = tbl.tableSpace
 		schema = tbl.schema
 	}
-	if tableSpace == nil || !schema.HasPK()|| tbl.schema.IsSecondaryIndexTable() {
+	if tableSpace == nil || !schema.HasPK() || tbl.schema.IsSecondaryIndexTable() {
 		return
 	}
 	var zm index.ZM

@@ -44,18 +44,12 @@ type mergeObjectsEntry struct {
 	totalCreatedBlkCnt int
 	transMappings      *api.BlkTransferBooking
 
-<<<<<<< HEAD
-	rt          *dbutils.Runtime
-	pageIds     []*common.ID
-	isTombstone bool
-=======
 	rt                   *dbutils.Runtime
 	pageIds              []*common.ID
+	isTombstone          bool
 	delTbls              []*model.TransDels
 	collectTs            types.TS
 	transCntBeforeCommit int
-	nextRoundDirties     map[*catalog.ObjectEntry]struct{}
->>>>>>> main
 }
 
 func NewMergeObjectsEntry(
@@ -86,7 +80,6 @@ func NewMergeObjectsEntry(
 
 	if totalCreatedBlkCnt > 0 {
 		entry.delTbls = make([]*model.TransDels, totalCreatedBlkCnt)
-		entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 		entry.collectTs = rt.Now()
 		var err error
 		// phase 1 transfer
@@ -185,14 +178,8 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 
 	bat, _, err := dataBlock.CollectDeleteInRange(
 		entry.txn.GetContext(),
-<<<<<<< HEAD
-		startTS.Next(),
-		entry.txn.GetPrepareTS().Prev(), // If use prepare TS, it'll wait for merge txn and lead to deadlock
-=======
 		from.Next(),
 		to,
-		false,
->>>>>>> main
 		common.MergeAllocator,
 	)
 	if err != nil {
@@ -202,16 +189,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 		return
 	}
 
-<<<<<<< HEAD
-	tblEntry.Stats.Lock()
-	tblEntry.DeletedDirties = append(tblEntry.DeletedDirties, dropped)
-	tblEntry.Stats.Unlock()
-	rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.AttrRowID).GetDownstreamVector())
-=======
-	entry.nextRoundDirties[dropped] = struct{}{}
-
 	rowid := vector.MustFixedCol[types.Rowid](bat.GetVectorByName(catalog.PhyAddrColumnName).GetDownstreamVector())
->>>>>>> main
 	ts := vector.MustFixedCol[types.TS](bat.GetVectorByName(catalog.AttrCommitTs).GetDownstreamVector())
 
 	count := len(rowid)
@@ -244,21 +222,14 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 		if entry.delTbls[destpos.BlkIdx] == nil {
 			entry.delTbls[destpos.BlkIdx] = model.NewTransDels(entry.txn.GetPrepareTS())
 		}
-<<<<<<< HEAD
-		delTbls[destpos.Idx].Mapping[int(destpos.Row)] = ts[i]
-		id := created.Fingerprint()
-		id.SetBlockOffset(uint16(destpos.Idx))
-		if err = created.GetRelation().RangeDelete(
-			id, uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact,
-=======
 		entry.delTbls[destpos.BlkIdx].Mapping[int(destpos.RowIdx)] = ts[i]
-		targetObj, err := entry.relation.GetObject(&entry.createdObjs[destpos.ObjIdx].ID)
+		targetObj, err := entry.relation.GetObject(&entry.createdObjs[destpos.ObjIdx].ID, entry.isTombstone)
 		if err != nil {
 			return 0, err
 		}
-		if err = targetObj.RangeDelete(
-			uint16(destpos.BlkIdx), uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact, common.MergeAllocator,
->>>>>>> main
+		id := targetObj.Fingerprint()
+		if err = targetObj.GetRelation().RangeDelete(
+			id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 		); err != nil {
 			return 0, err
 		}
@@ -308,23 +279,11 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 	if len(entry.createdBlkCnt) == 0 {
 		return
 	}
-<<<<<<< HEAD
-	created, err := entry.relation.GetObject(&entry.createdObjs[0].ID, entry.isTombstone)
-=======
-
 	// phase 2 transfer
 	transCnt, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS())
->>>>>>> main
 	if err != nil {
 		return nil
 	}
-
-	tblEntry := entry.droppedObjs[0].GetTable()
-	tblEntry.Stats.Lock()
-	for dropped := range entry.nextRoundDirties {
-		tblEntry.DeletedDirties = append(tblEntry.DeletedDirties, dropped)
-	}
-	tblEntry.Stats.Unlock()
 
 	objID := entry.createdObjs[0].ID
 	for i, delTbl := range entry.delTbls {
@@ -333,12 +292,11 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 			entry.rt.TransferDelsMap.SetDelsForBlk(*destid, delTbl)
 		}
 	}
-	logutil.Infof("mergeblocks commit %v, [%v,%v], trans %d on %d objects, %d in commit queue",
+	logutil.Infof("mergeblocks commit %v, [%v,%v], trans %d, %d in commit queue",
 		entry.relation.ID(),
 		entry.txn.GetStartTS().ToString(),
 		entry.txn.GetCommitTS().ToString(),
 		entry.transCntBeforeCommit+transCnt,
-		len(entry.nextRoundDirties),
 		transCnt,
 	)
 

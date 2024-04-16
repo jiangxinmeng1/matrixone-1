@@ -55,6 +55,7 @@ type mergeObjectsTask struct {
 
 	blkCnt     []int
 	nMergedBlk []int
+	schema     *catalog.Schema
 	idxs       []int
 	attrs      []string
 }
@@ -101,7 +102,7 @@ func NewMergeObjectsTask(
 		}
 		task.mergedObjsHandle = append(task.mergedObjsHandle, obj)
 	}
-	task.schema = task.rel.Schema().(*catalog.Schema)
+	task.schema = task.rel.Schema(isTombstone).(*catalog.Schema)
 	task.idxs = make([]int, 0, len(task.schema.ColDefs)-1)
 	task.attrs = make([]string, 0, len(task.schema.ColDefs)-1)
 	for _, def := range task.schema.ColDefs {
@@ -410,11 +411,11 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *
 	}
 
 	if isTombstone {
-		if err = txn.LogTxnEntry(entry.DbID, entry.TableID, txnEntry, nil, ids); err != nil {
+		if err = txn.LogTxnEntry(entry.DbId, entry.TblId, txnEntry, nil, ids); err != nil {
 			return nil, err
 		}
 	} else {
-		if err = txn.LogTxnEntry(entry.DbID, entry.TableID, txnEntry, ids, nil); err != nil {
+		if err = txn.LogTxnEntry(entry.DbId, entry.TblId, txnEntry, ids, nil); err != nil {
 			return nil, err
 		}
 	}

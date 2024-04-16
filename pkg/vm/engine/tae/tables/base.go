@@ -450,7 +450,7 @@ func (blk *baseObject) getPersistedValue(
 	return
 }
 
-func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string) string {
+func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkID int) string {
 	rows, err := blk.Rows()
 	if err != nil {
 		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)

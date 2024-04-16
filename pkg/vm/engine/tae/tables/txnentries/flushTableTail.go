@@ -43,13 +43,11 @@ type flushTableTailEntry struct {
 	taskID     uint64
 	tableEntry *catalog.TableEntry
 
-<<<<<<< HEAD
 	ablksMetas        []*catalog.ObjectEntry
 	ablksHandles      []handle.Object
 	createdBlkHandles handle.Object
 	createdMergeFile  string
 	transMappings     *api.BlkTransferBooking
-	pageIds           []*common.ID
 
 	atombstonesMetas        []*catalog.ObjectEntry
 	atombstoneksHandles     []handle.Object
@@ -57,19 +55,6 @@ type flushTableTailEntry struct {
 	createdDeletesFile      string
 
 	rt *dbutils.Runtime
-=======
-	transMappings      *api.BlkTransferBooking
-	ablksMetas         []*catalog.ObjectEntry
-	delSrcMetas        []*catalog.ObjectEntry
-	ablksHandles       []handle.Object
-	delSrcHandles      []handle.Object
-	createdBlkHandles  handle.Object
-	createdDeletesFile string
-	createdMergeFile   string
-	dirtyLen           int
-	rt                 *dbutils.Runtime
-	dirtyEndTs         types.TS
-
 	// use TxnMgr.Now as collectTs to do the first collect deletes,
 	// which is a relief for the second try in the commit queue
 	collectTs types.TS
@@ -80,7 +65,6 @@ type flushTableTailEntry struct {
 	pageIds              []*common.ID
 	transCntBeforeCommit int
 	nextRoundDirties     map[*catalog.ObjectEntry]struct{}
->>>>>>> main
 }
 
 func NewFlushTableTailEntry(
@@ -97,12 +81,7 @@ func NewFlushTableTailEntry(
 	createdTombstoneHandles handle.Object,
 	createdMergedTombstoneFile string,
 	rt *dbutils.Runtime,
-<<<<<<< HEAD
-) *flushTableTailEntry {
-=======
-	dirtyEndTs types.TS,
-) (*flushTableTailEntry, error) {
->>>>>>> main
+)(*flushTableTailEntry, error) {
 
 	entry := &flushTableTailEntry{
 		txn:                     txn,
@@ -124,7 +103,7 @@ func NewFlushTableTailEntry(
 		entry.delTbls = make([]*model.TransDels, entry.createdBlkHandles.GetMeta().(*catalog.ObjectEntry).BlockCnt())
 		entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 		// collect deletes phase 1
-		entry.collectTs = rt.Now()
+		entry.collectTs = rt.Now()// TODO skip appendnodes of flush txn when collect
 		var err error
 		entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
 		if err != nil {
@@ -178,14 +157,8 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 		var bat *containers.Batch
 		bat, _, err = dataBlock.CollectDeleteInRange(
 			entry.txn.GetContext(),
-<<<<<<< HEAD
-			startTS.Next(),
-			entry.txn.GetPrepareTS().Prev(), // if use prepareTS, it'll wait for flush txn and lead to deadlock
-=======
 			from.Next(), // NOTE HERE
 			to,
-			false,
->>>>>>> main
 			common.MergeAllocator,
 		)
 		if err != nil {
@@ -208,27 +181,18 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			if entry.delTbls[destpos.BlkIdx] == nil {
 				entry.delTbls[destpos.BlkIdx] = model.NewTransDels(entry.txn.GetPrepareTS())
 			}
-<<<<<<< HEAD
-			delTbls[destpos.Idx].Mapping[int(destpos.Row)] = ts[i]
-			id := entry.createdBlkHandles.Fingerprint()
-			id.SetBlockOffset(uint16(destpos.Idx))
-			if err = entry.createdBlkHandles.GetRelation().RangeDelete(
-				id, uint32(destpos.Row), uint32(destpos.Row), handle.DT_MergeCompact,
-=======
 			entry.delTbls[destpos.BlkIdx].Mapping[int(destpos.RowIdx)] = ts[i]
-			if err = entry.createdBlkHandles.RangeDelete(
-				uint16(destpos.BlkIdx), uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact, common.MergeAllocator,
->>>>>>> main
+			id := entry.createdBlkHandles.Fingerprint()
+			id.SetBlockOffset(uint16(destpos.BlkIdx))
+			if err = entry.createdBlkHandles.GetRelation().RangeDelete(
+				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 			); err != nil {
 				bat.Close()
 				return
 			}
 		}
-<<<<<<< HEAD
-=======
 		bat.Close()
 		entry.nextRoundDirties[blk] = struct{}{}
->>>>>>> main
 	}
 	return
 }
@@ -324,32 +288,6 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 
 // ApplyCommit Gc in memory deletes and update table compact status
 func (entry *flushTableTailEntry) ApplyCommit() (err error) {
-<<<<<<< HEAD
-=======
-	for _, blk := range entry.ablksMetas {
-		_ = blk.GetObjectData().TryUpgrade()
-		blk.GetObjectData().UpgradeAllDeleteChain()
-	}
-
-	for _, blk := range entry.delSrcMetas {
-		blk.GetObjectData().UpgradeAllDeleteChain()
-	}
-
-	tbl := entry.tableEntry
-	tbl.Stats.Lock()
-	defer tbl.Stats.Unlock()
-	tbl.Stats.LastFlush = entry.dirtyEndTs
-	// no merge tasks touch the dirties, we are good to clean all
-	if entry.dirtyLen == len(tbl.DeletedDirties) {
-		tbl.DeletedDirties = tbl.DeletedDirties[:0]
-	} else {
-		// some merge tasks touch the dirties, we need to keep those new dirties
-		tbl.DeletedDirties = tbl.DeletedDirties[entry.dirtyLen:]
-	}
-	for k := range entry.nextRoundDirties {
-		tbl.DeletedDirties = append(tbl.DeletedDirties, k)
-	}
->>>>>>> main
 	return
 }
 

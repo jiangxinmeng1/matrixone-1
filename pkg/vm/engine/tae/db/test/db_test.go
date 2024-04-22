@@ -8326,3 +8326,102 @@ func TestSplitCommand(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	tae.CheckRowsByScan(50, false)
 }
+
+func TestFlushAndAppend(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 50
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 50)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+
+	txn, rel := tae.GetRelation()
+	var metas []*catalog.ObjectEntry
+	it := rel.MakeObjectIt(false)
+	for it.Valid() {
+		blk := it.GetObject()
+		meta := blk.GetMeta().(*catalog.ObjectEntry)
+		metas = append(metas, meta)
+		it.Next()
+	}
+	_ = txn.Commit(context.Background())
+
+	txn, _ = tae.GetRelation()
+
+	tae.DeleteAll(true)
+
+	task, err := jobs.NewFlushTableTailTask(nil, txn, metas, nil, tae.Runtime, txn.GetStartTS())
+	assert.NoError(t, err)
+	_ = task.OnExec(context.Background())
+
+	txn2, _ := tae.GetRelation()
+
+	_ = txn.Commit(context.Background())
+
+	tae.DoAppendWithTxn(bat, txn2, true)
+
+	t.Log(tae.Catalog.SimplePPString(3))
+	err = txn2.Commit(context.Background())
+	require.NoError(t, err)
+
+}
+
+func TestFlushAndAppend2(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 50
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 50)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+
+	txn, rel := tae.GetRelation()
+	var metas []*catalog.ObjectEntry
+	it := rel.MakeObjectIt(false)
+	for it.Valid() {
+		blk := it.GetObject()
+		meta := blk.GetMeta().(*catalog.ObjectEntry)
+		metas = append(metas, meta)
+		it.Next()
+	}
+	_ = txn.Commit(context.Background())
+
+	txn, _ = tae.GetRelation()
+
+	task, err := jobs.NewFlushTableTailTask(nil, txn, metas, nil, tae.Runtime, txn.GetStartTS())
+	assert.NoError(t, err)
+	_ = task.OnExec(context.Background())
+
+	tae.DeleteAll(true)
+
+	txn2, _ := tae.GetRelation()
+
+	_ = txn.Commit(context.Background())
+
+	tae.DoAppendWithTxn(bat, txn2, true)
+
+	t.Log(tae.Catalog.SimplePPString(3))
+	err = txn2.Commit(context.Background())
+	require.NoError(t, err)
+
+	p := &catalog.LoopProcessor{}
+	p.TombstoneFn = func(oe *catalog.ObjectEntry) error {
+		prepareTS:=oe.GetLatestNodeLocked().GetPrepare()
+		require.False(t, prepareTS.Equal(&txnif.UncommitTS),oe.ID.String())
+		return nil
+	}
+	tae.Catalog.RecurLoop(p)
+}

@@ -271,6 +271,7 @@ func (obj *aobject) resolveColumnData(
 			0,
 			col,
 			skipDeletes,
+			false,
 			mp,
 		)
 	}

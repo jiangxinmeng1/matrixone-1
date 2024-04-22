@@ -304,6 +304,7 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	blkID uint16,
 	colIdx int,
 	skipDeletes bool,
+	collectAllDeletes bool,
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
 	view = containers.NewColumnView(colIdx)
@@ -324,7 +325,11 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	}()
 	// TODO workspace
 	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	if collectAllDeletes {
+		err = blk.meta.GetTable().FillCommittedDeletes(ctx, *blkid, view.BaseView, mp)
+	} else {
+		err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -342,6 +347,7 @@ func (blk *baseObject) dedupWithLoad(
 	rowmask *roaring.Bitmap,
 	blkOffset uint16,
 	isAblk bool,
+	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	schema := blk.meta.GetSchema()
@@ -353,6 +359,7 @@ func (blk *baseObject) dedupWithLoad(
 		blkOffset,
 		def.Idx,
 		false,
+		isCommitting,
 		mp,
 	)
 	if err != nil {
@@ -376,6 +383,7 @@ func (blk *baseObject) dedupWithLoad(
 			keys.GetType().Oid, dedupNABlkFunctions, view.GetData(), view.DeleteMask, def,
 		)
 	}
+	logutil.Infof("obj %v, view deletes %v", blk.meta.ID.String(), view.DeleteMask.Count())
 	err = containers.ForeachVector(keys, dedupFn, sels)
 	return
 }
@@ -411,7 +419,7 @@ func (blk *baseObject) PersistedBatchDedup(
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 			continue
 		}
-		err = blk.dedupWithLoad(ctx, txn, keys, sels, rowmask, uint16(i), isAblk, mp)
+		err = blk.dedupWithLoad(ctx, txn, keys, sels, rowmask, uint16(i), isAblk, isCommitting, mp)
 		if err != nil {
 			return err
 		}
@@ -441,7 +449,7 @@ func (blk *baseObject) getPersistedValue(
 		err = moerr.NewNotFoundNoCtx()
 		return
 	}
-	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, mp)
+	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, false, mp)
 	if err != nil {
 		return
 	}

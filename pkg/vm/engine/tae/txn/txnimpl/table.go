@@ -1414,12 +1414,26 @@ func (tbl *txnTable) PrePrepare() (err error) {
 }
 
 func (tbl *txnTable) PrepareCommit() (err error) {
+	nodeCount := len(tbl.txnEntries.entries)
 	for idx, node := range tbl.txnEntries.entries {
 		if tbl.txnEntries.IsDeleted(idx) {
 			continue
 		}
 		if err = node.PrepareCommit(); err != nil {
 			break
+		}
+	}
+	// In flush and merge, it transfers deletes when prepare commit.
+	// It may adds new txn entries.
+	// Prepare commit them, if the length of tbl.txnEntries.entries changes.
+	if len(tbl.txnEntries.entries) != nodeCount {
+		for idx := nodeCount; idx < len(tbl.txnEntries.entries); idx++ {
+			if tbl.txnEntries.IsDeleted(idx) {
+				continue
+			}
+			if err = tbl.txnEntries.entries[idx].PrepareCommit(); err != nil {
+				break
+			}
 		}
 	}
 	return

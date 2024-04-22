@@ -27,6 +27,7 @@ import (
 func (entry *ObjectEntry) foreachTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
+	checkTombstoneVisibility bool,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
 	if entry.IsAppendable() {
@@ -36,11 +37,13 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 	createTS := entry.GetCreatedAtLocked()
 	droppedTS := entry.GetDeleteAt()
 	entry.RUnlock()
-	if createTS.Less(&start) || createTS.Greater(&end) {
-		return nil
-	}
-	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
-		return nil
+	if checkTombstoneVisibility {
+		if createTS.Less(&start) || createTS.Greater(&end) {
+			return nil
+		}
+		if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
+			return nil
+		}
 	}
 	bat, err := entry.GetObjectData().GetAllColumns(ctx, entry.GetTable().GetLastestSchema(true), mp)
 	if err != nil {
@@ -183,7 +186,7 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.foreachTombstoneInRange(ctx, start, end, mp,
+	entry.foreachTombstoneInRange(ctx, start, end, true, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if *rowID.BorrowObjectID() != objID {
 				return true, nil
@@ -200,7 +203,7 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithBlockID(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.foreachTombstoneInRange(ctx, start, end, mp,
+	entry.foreachTombstoneInRange(ctx, start, end, true, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if *rowID.BorrowBlockID() != blkID {
 				return true, nil
@@ -214,7 +217,7 @@ func (entry *ObjectEntry) tryGetTombstone(
 	ctx context.Context,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	entry.foreachTombstoneInRange(ctx, types.TS{}, types.MaxTs(), mp,
+	entry.foreachTombstoneInRange(ctx, types.TS{}, types.MaxTs(), true, mp,
 		func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
 			if row != rowID {
 				return true, nil

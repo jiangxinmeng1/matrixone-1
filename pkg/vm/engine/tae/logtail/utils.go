@@ -2974,7 +2974,7 @@ func (collector *BaseCollector) visitObjectEntry(entry *catalog.ObjectEntry) err
 			logutil.Infof("checkpoint %v->%v, when try visit object, object %v need to load stats",
 				collector.start.ToString(),
 				collector.end.ToString(),
-				entry.ID.String())
+				entry.String())
 			if collector.data.bats[ObjectInfoIDX] != nil {
 				collector.data.bats[ObjectInfoIDX].Close()
 			}

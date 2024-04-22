@@ -20,7 +20,6 @@ import (
 	"math"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
-	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -104,9 +103,9 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 		if i == 0 {
 			w.objMetaBuilder.AddRowCnt(vec.Length())
 		}
-		if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
-			continue
-		}
+		// if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
+		// 	continue
+		// }
 		if w.isSetPK && w.pk == uint16(i) {
 			isPK = true
 		}
@@ -146,6 +145,7 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 }
 
 func (w *BlockWriter) WriteTombstoneBatch(batch *batch.Batch) (objectio.BlockObject, error) {
+	return w.WriteBatch(batch)
 	block, err := w.writer.WriteTombstone(batch)
 	if err != nil {
 		return nil, err

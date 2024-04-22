@@ -170,7 +170,7 @@ func (blk *baseObject) GetID() *common.ID         { return blk.meta.AsCommonID()
 
 func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) {
 	if !blk.meta.ObjectPersisted() {
-		return nil, nil
+		panic("logic error")
 	}
 	stats, err := blk.meta.MustGetObjectStats()
 	if err != nil {
@@ -383,7 +383,6 @@ func (blk *baseObject) dedupWithLoad(
 			keys.GetType().Oid, dedupNABlkFunctions, view.GetData(), view.DeleteMask, def,
 		)
 	}
-	logutil.Infof("obj %v, view deletes %v", blk.meta.ID.String(), view.DeleteMask.Count())
 	err = containers.ForeachVector(keys, dedupFn, sels)
 	return
 }

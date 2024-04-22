@@ -65,6 +65,15 @@ func (entry *TableEntry) IsDeleted(
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
 		tombstone := node.GetPayload()
+		tombstone.RLock()
+		visible,err:=tombstone.IsVisible(txn,tombstone.RWMutex)
+		tombstone.RUnlock()
+		if err!=nil{
+			return false,err
+		}
+		if !visible{
+			continue
+		}
 		ok, _, _, _, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
 		if err != nil {
 			return false, err

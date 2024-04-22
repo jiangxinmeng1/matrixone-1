@@ -225,8 +225,12 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
 			}
 		}
 
-		e.scheduleMergeObjects(objScopes, objs, objectBlkCnt, entry, false)
-		e.scheduleMergeObjects(tombstoneScopes, tombstones, tombstoneBlkCnt, entry, true)
+		if len(objs) > 1 {
+			e.scheduleMergeObjects(objScopes, objs, objectBlkCnt, entry, false)
+		}
+		if len(tombstones) > 1 {
+			e.scheduleMergeObjects(tombstoneScopes, tombstones, tombstoneBlkCnt, entry, true)
+		}
 	}
 
 }

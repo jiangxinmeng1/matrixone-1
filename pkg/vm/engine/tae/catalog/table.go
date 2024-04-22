@@ -287,6 +287,15 @@ func (entry *TableEntry) AddEntryLocked(objectEntry *ObjectEntry) {
 }
 
 func (entry *TableEntry) deleteEntryLocked(objectEntry *ObjectEntry) error {
+	if objectEntry.IsTombstone{
+		if n, ok := entry.tombstoneEntries[objectEntry.ID]; !ok {
+			return moerr.GetOkExpectedEOB()
+		} else {
+			entry.tombstoneLink.Delete(n)
+			delete(entry.tombstoneEntries, objectEntry.ID)
+		}
+		return nil
+	}
 	if n, ok := entry.entries[objectEntry.ID]; !ok {
 		return moerr.GetOkExpectedEOB()
 	} else {

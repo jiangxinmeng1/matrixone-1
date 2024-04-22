@@ -180,6 +180,16 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 		}
 		return nil
 	}
+	processor.TombstoneFn = func(se *ObjectEntry) error {
+		se.RLock()
+		needGC := se.DeleteBefore(ts)
+		se.RUnlock()
+		if needGC {
+			tbl := se.table
+			tbl.RemoveEntry(se)
+		}
+		return nil
+	}
 	err := catalog.RecurLoop(&processor)
 	if err != nil {
 		panic(err)

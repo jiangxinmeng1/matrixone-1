@@ -1108,7 +1108,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		}
 		it.Next()
 	}
-	if isTombstone {
+	if !isTombstone {
 		tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, true)
 	}
 	for i := 0; i < rowIDs.Length(); i++ {
@@ -1132,11 +1132,13 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	maxObjectHint := uint64(0)
 	pkType := rowIDs.GetType()
 	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
+	if err = index.BatchUpdateZM(keysZM, rowIDs.GetDownstreamVector()); err != nil {
+		return
+	}
 	var (
-		name objectio.ObjectNameShort
-		bf   objectio.BloomFilter
+		bf objectio.BloomFilter
 	)
-	tbl.contains(rowIDs, common.WorkspaceAllocator)
+	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
 	for it.Valid() {
 		objH := it.GetObject()
 		obj := objH.GetMeta().(*catalog.ObjectEntry)
@@ -1164,18 +1166,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 				continue
 			}
 		}
-		if obj.HasCommittedPersistedData() {
-			if bf, err = tbl.tryGetCurrentObjectBF(
-				ctx,
-				stats.ObjectLocation(),
-				bf,
-				&name,
-				obj.IsTombstone,
-			); err != nil {
-				return
-			}
-		}
-		name = *stats.ObjectShortName()
 
 		if err = objData.Contains(
 			ctx,
@@ -1198,10 +1188,33 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 // which are visible and not dropped at txn's snapshot timestamp.
 // 2. It is called when appending blocks into this table.
 func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objectio.Location, dedupAfterSnapshotTS bool, isTombstone bool) (err error) {
-	loaded := make(map[int]containers.Vector)
 	maxObjectHint := uint64(0)
 	maxBlockID := &types.Blockid{}
-	for i, loc := range metaLocs {
+	for _, loc := range metaLocs {
+		//TODO::laod zm index first, then load pk column if necessary.
+		//Extend lifetime of vectors is within the function.
+		//No NeedCopy. closeFunc is required after use.
+		//VectorPool is nil.
+		vectors, closeFunc, err2 := blockio.LoadColumns2(
+			ctx,
+			[]uint16{uint16(tbl.schema.GetSingleSortKeyIdx())},
+			nil,
+			tbl.store.rt.Fs.Service,
+			loc,
+			fileservice.Policy(0),
+			false,
+			nil,
+		)
+		if err2 != nil {
+			return err2
+		}
+		defer closeFunc()
+		keys := vectors[0]
+		rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
+		length := keys.Length()
+		for i := 0; i < length; i++ {
+			rowIDs.Append(nil, true)
+		}
 		it := newObjectItOnSnap(tbl, isTombstone)
 		for it.Valid() {
 			obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
@@ -1224,51 +1237,38 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 				continue
 			}
 
-			var rowmask *roaring.Bitmap
-			if !isTombstone {
-				fp := obj.AsCommonID()
-				rowmask = tbl.getWorkSpaceDeletes(fp)
-			}
-			//TODO::laod zm index first, then load pk column if necessary.
-			_, ok := loaded[i]
-			if !ok {
-				//Extend lifetime of vectors is within the function.
-				//No NeedCopy. closeFunc is required after use.
-				//VectorPool is nil.
-				vectors, closeFunc, err := blockio.LoadColumns2(
-					ctx,
-					[]uint16{uint16(tbl.schema.GetSingleSortKeyIdx())},
-					nil,
-					tbl.store.rt.Fs.Service,
-					loc,
-					fileservice.Policy(0),
-					false,
-					nil,
-				)
-				if err != nil {
-					return err
-				}
-				defer closeFunc()
-				loaded[i] = vectors[0]
-			}
-			if err = objData.BatchDedup(
+			if err = objData.GetDuplicatedRows(
 				ctx,
 				tbl.store.txn,
-				loaded[i],
+				keys,
 				nil,
-				rowmask,
 				false,
 				objectio.BloomFilter{},
+				rowIDs,
 				common.WorkspaceAllocator,
 			); err != nil {
 				// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
-				loaded[i].Close()
+				keys.Close()
 				return
 			}
+			if !isTombstone {
+				tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, true)
+			}
+			for i := 0; i < rowIDs.Length(); i++ {
+				var colName string
+				if isTombstone {
+					colName = tbl.tombstoneSchema.GetPrimaryKey().Name
+				} else {
+					colName = tbl.schema.GetPrimaryKey().Name
+				}
+				if !rowIDs.IsNull(i) {
+					entry := common.TypeStringValue(*keys.GetType(), keys.Get(i), false)
+					keys.Close()
+					return moerr.NewDuplicateEntryNoCtx(entry, colName)
+				}
+			}
+			keys.Close()
 			it.Next()
-		}
-		if v, ok := loaded[i]; ok {
-			v.Close()
 		}
 		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID, isTombstone)
 	}
@@ -1282,6 +1282,10 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 //     TODO::it would be used to do deduplication with the logtail.
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM, isTombstone bool) (err error) {
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
+		rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
+		for i := 0; i < pks.Length(); i++ {
+			rowIDs.Append(nil, true)
+		}
 		objIt := tbl.entry.MakeObjectIt(false, isTombstone)
 		for objIt.Valid() {
 			obj := objIt.Get().GetPayload()
@@ -1309,22 +1313,33 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM,
 				}
 			}
 			objData := obj.GetObjectData()
-			var rowmask *roaring.Bitmap
-			if !isTombstone {
-				fp := obj.AsCommonID()
-				rowmask = tbl.getWorkSpaceDeletes(fp)
-			}
-			if err = objData.BatchDedup(
+			if err = objData.GetDuplicatedRows(
 				context.Background(),
 				tbl.store.txn,
 				pks,
 				pksZM,
-				rowmask,
 				true,
 				objectio.BloomFilter{},
+				rowIDs,
 				common.WorkspaceAllocator,
 			); err != nil {
 				return
+			}
+			if !isTombstone {
+				tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+			}
+			for i := 0; i < rowIDs.Length(); i++ {
+				var colName string
+				if isTombstone {
+					colName = tbl.tombstoneSchema.GetPrimaryKey().Name
+				} else {
+					colName = tbl.schema.GetPrimaryKey().Name
+				}
+				if !rowIDs.IsNull(i) {
+					entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
+					err = moerr.NewDuplicateEntryNoCtx(entry, colName)
+					return
+				}
 			}
 			objIt.Next()
 		}
@@ -1336,6 +1351,20 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 	objIt := tbl.entry.MakeObjectIt(false, isTombstone)
 	var pks containers.Vector
 	//loaded := false
+	//TODO::load ZM/BF index first, then load PK column if necessary.
+	if pks == nil {
+		colV, err := node.GetColumnDataById(ctx, tbl.schema.GetSingleSortKeyIdx(), common.WorkspaceAllocator)
+		if err != nil {
+			return err
+		}
+		colV.ApplyDeletes()
+		pks = colV.Orphan()
+		defer pks.Close()
+	}
+	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
+	for i := 0; i < pks.Length(); i++ {
+		rowIDs.Append(nil, true)
+	}
 	for objIt.Valid() {
 		obj := objIt.Get().GetPayload()
 		dedupedHint := tbl.dedupedObjectHint
@@ -1362,31 +1391,16 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 			}
 		}
 
-		//TODO::load ZM/BF index first, then load PK column if necessary.
-		if pks == nil {
-			colV, err := node.GetColumnDataById(ctx, tbl.schema.GetSingleSortKeyIdx(), common.WorkspaceAllocator)
-			if err != nil {
-				return err
-			}
-			colV.ApplyDeletes()
-			pks = colV.Orphan()
-			defer pks.Close()
-		}
 		err = nil
 		objData := obj.GetObjectData()
-		var rowmask *roaring.Bitmap
-		if !isTombstone {
-			fp := obj.AsCommonID()
-			rowmask = tbl.getWorkSpaceDeletes(fp)
-		}
-		if err = objData.BatchDedup(
+		if err = objData.GetDuplicatedRows(
 			context.Background(),
 			tbl.store.txn,
 			pks,
 			nil,
-			rowmask,
 			true,
 			objectio.BloomFilter{},
+			rowIDs,
 			common.WorkspaceAllocator,
 		); err != nil {
 			return err

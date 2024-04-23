@@ -169,12 +169,12 @@ func (idx *MutIndex) GetDuplicatedRows(
 		maxRow := rows[len(rows)-1]
 		for _, row := range rows {
 			// TODO: remove
-			if row < maxRow {
+			if row > maxRow {
 				panic("logic err")
 			}
 		}
 		rowID := objectio.NewRowid(blkID, maxRow)
-		containers.UpdateValue(rowIDs, uint32(offset), rowID[:], false, mp)
+		containers.UpdateValue(rowIDs, uint32(offset), *rowID, false, mp)
 		return nil
 	}
 	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {
@@ -206,14 +206,10 @@ func (idx *MutIndex) Contains(
 		if err == index.ErrNotFound {
 			return nil
 		}
-		maxRow := rows[len(rows)-1]
-		for _, row := range rows {
-			// TODO: remove
-			if row < maxRow {
-				panic("logic err")
-			}
+		if len(rows)!=1{
+			panic("logic err: tombstones doesn't have duplicate rows")
 		}
-		containers.UpdateValue(keys, maxRow, nil, true, mp)
+		containers.UpdateValue(keys, uint32(offset), nil, true, mp)
 		return nil
 	}
 	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {

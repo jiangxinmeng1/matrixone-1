@@ -236,7 +236,7 @@ func getDuplicateRowIDNABlkFuncFactory[T any](comp func(T, T) int) func(args ...
 				nil,
 			); existed {
 				rowID := objectio.NewRowid(blkID, uint32(offset))
-				rowIDs.Update(row, rowID[:], false)
+				rowIDs.Update(row, *rowID, false)
 			}
 			return
 		}
@@ -247,7 +247,7 @@ func containsNABlkFuncFactory[T any](comp func(T, T) int) func(args ...any) func
 	return func(args ...any) func(T, bool, int) error {
 		vec, rowIDs := parseNAContainsArgs(args...)
 		vs := vector.MustFixedCol[T](vec)
-		return func(v T, _ bool, row int) (err error) {
+		return func(v T, isNull bool, row int) (err error) {
 			// logutil.Infof("row=%d,v=%v", row, v)
 			if rowIDs.IsNull(row) {
 				return
@@ -278,7 +278,7 @@ func getDuplicatedRowIDsNABlkBytesFunc(args ...any) func([]byte, bool, int) erro
 			nil,
 		); existed {
 			rowID := objectio.NewRowid(blkID, uint32(offset))
-			rowIDs.Update(row, rowID[:], false)
+			rowIDs.Update(row, *rowID, false)
 		}
 		return
 	}
@@ -314,7 +314,7 @@ func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, b
 			nil,
 		); existed {
 			rowID := objectio.NewRowid(blkID, uint32(offset))
-			rowIDs.Update(row, rowID[:], false)
+			rowIDs.Update(row, *rowID, false)
 		}
 		return
 	}
@@ -359,7 +359,7 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 					return
 				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
-				rowIDs.Update(row, rowID[:], false)
+				rowIDs.Update(row, *rowID, false)
 				return nil
 			}, nil, nil)
 	}
@@ -410,7 +410,7 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 						return
 					}
 					rowID := objectio.NewRowid(blkID, uint32(row))
-					rowIDs.Update(row, rowID[:], false)
+					rowIDs.Update(row, *rowID, false)
 					return nil
 				}, nil, nil)
 		}

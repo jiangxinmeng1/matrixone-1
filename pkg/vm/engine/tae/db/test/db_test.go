@@ -3198,10 +3198,24 @@ func TestImmutableIndexInAblk(t *testing.T) {
 	_, _, err = meta.GetObjectData().GetByFilter(context.Background(), txn, filter, common.DefaultAllocator)
 	assert.NoError(t, err)
 
-	err = meta.GetObjectData().BatchDedup(
-		context.Background(), txn, bat.Vecs[1], nil, nil, false, objectio.BloomFilter{}, common.DefaultAllocator,
+	rowIDs:=containers.MakeVector(types.T_Rowid.ToType(),common.DefaultAllocator)
+	for i := 0; i < bat.Length(); i++ {
+		rowIDs.Append(nil,true)
+	}
+	err = meta.GetObjectData().GetDuplicatedRows(
+		context.Background(), txn, bat.Vecs[1], nil,  false, objectio.BloomFilter{},rowIDs, common.DefaultAllocator,
 	)
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	err = meta.GetObjectData().Contains(context.Background(),txn,false,bat.Vecs[1],nil,objectio.BloomFilter{},common.DebugAllocator)
+	assert.NoError(t, err)
+	duplicate :=false
+	rowIDs.Foreach(func(v any, isNull bool, row int) error {
+		if !isNull{
+			duplicate = true
+		}
+		return nil
+	},nil)
+	assert.True(t,duplicate)
 }
 
 func TestDelete3(t *testing.T) {

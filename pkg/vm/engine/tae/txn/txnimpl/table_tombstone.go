@@ -23,15 +23,19 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 )
 
 func (tbl *txnTable) RangeDeleteLocalRows(start, end uint32) (err error) {
@@ -168,23 +172,89 @@ func (tbl *txnTable) getWorkSpaceDeletes(fp *common.ID) (deletes *roaring.Bitmap
 	return
 }
 func (tbl *txnTable) contains(
-	keys containers.Vector, mp *mpool.MPool) {
+	ctx context.Context,
+	keys containers.Vector,
+	keysZM index.ZM, mp *mpool.MPool) (err error) {
 	if tbl.tombstoneTableSpace == nil {
 		return
 	}
-	workspaceDeleteBatch := tbl.tombstoneTableSpace.nodes[0].(*anode).data
-	for j := 0; j < keys.Length(); j++ {
-		if keys.IsNull(j) {
-			continue
-		}
-		rid := keys.Get(j).(types.Rowid)
-		for i := 0; i < workspaceDeleteBatch.Length(); i++ {
-			rowID := workspaceDeleteBatch.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
-			if rid == rowID {
-				containers.UpdateValue(keys.GetDownstreamVector(), uint32(j), nil, true, mp)
+	if len(tbl.tombstoneTableSpace.nodes) > 0 {
+		workspaceDeleteBatch := tbl.tombstoneTableSpace.nodes[0].(*anode).data
+		for j := 0; j < keys.Length(); j++ {
+			if keys.IsNull(j) {
+				continue
+			}
+			rid := keys.Get(j).(types.Rowid)
+			for i := 0; i < workspaceDeleteBatch.Length(); i++ {
+				rowID := workspaceDeleteBatch.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+				if rid == rowID {
+					containers.UpdateValue(keys.GetDownstreamVector(), uint32(j), nil, true, mp)
+				}
 			}
 		}
 	}
+	for _, stats := range tbl.tombstoneTableSpace.stats {
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneSchema.BlockMaxRows
+		tombStoneZM := stats.SortKeyZoneMap()
+		var skip bool
+		if skip = !tombStoneZM.FastIntersect(keysZM); skip {
+			continue
+		}
+		var bf objectio.BloomFilter
+		bf, err = objectio.FastLoadBF(ctx, stats.ObjectLocation(), false, true, tbl.store.rt.Fs.Service)
+		if err != nil {
+			return
+		}
+		idx := indexwrapper.NewImmutIndex(stats.SortKeyZoneMap(), bf, true, stats.ObjectLocation())
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			sel, err := idx.BatchDedup(ctx, keys, keysZM, tbl.store.rt, uint32(i))
+			if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
+				continue
+			}
+
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				metaloc,
+				false,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			data := vector.MustFixedCol[types.Rowid](vectors[0].GetDownstreamVector())
+			containers.ForeachVector(keys,
+				func(id types.Rowid, isNull bool, row int) error {
+					if keys.IsNull(row) {
+						return nil
+					}
+					if _, existed := compute.GetOffsetWithFunc(
+						data,
+						id,
+						types.CompareRowidRowidAligned,
+						nil,
+					); existed {
+						keys.Update(row, nil, true)
+					}
+					return nil
+				}, sel)
+			closeFunc()
+		}
+	}
+	return nil
 }
 func (tbl *txnTable) createTombstoneBatch(
 	id *common.ID,

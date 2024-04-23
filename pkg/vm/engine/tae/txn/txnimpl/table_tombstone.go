@@ -20,6 +20,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
@@ -165,6 +166,25 @@ func (tbl *txnTable) getWorkSpaceDeletes(fp *common.ID) (deletes *roaring.Bitmap
 		}
 	}
 	return
+}
+func (tbl *txnTable) contains(
+	keys containers.Vector, mp *mpool.MPool) {
+	if tbl.tombstoneTableSpace == nil {
+		return
+	}
+	workspaceDeleteBatch := tbl.tombstoneTableSpace.nodes[0].(*anode).data
+	for j := 0; j < keys.Length(); j++ {
+		if keys.IsNull(j) {
+			continue
+		}
+		rid := keys.Get(j).(types.Rowid)
+		for i := 0; i < workspaceDeleteBatch.Length(); i++ {
+			rowID := workspaceDeleteBatch.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+			if rid == rowID {
+				containers.UpdateValue(keys.GetDownstreamVector(), uint32(j), nil, true, mp)
+			}
+		}
+	}
 }
 func (tbl *txnTable) createTombstoneBatch(
 	id *common.ID,

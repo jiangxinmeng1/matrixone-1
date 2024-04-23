@@ -17,7 +17,6 @@ package tables
 import (
 	"context"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -123,14 +122,14 @@ func (obj *object) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	return creatTS.Less(&ts)
 }
 
-func (obj *object) BatchDedup(
+func (obj *object) GetDuplicatedRows(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	keys containers.Vector,
 	keysZM index.ZM,
-	rowmask *roaring.Bitmap,
 	precommit bool,
 	bf objectio.BloomFilter,
+	rowIDs containers.Vector,
 	mp *mpool.MPool,
 ) (err error) {
 	defer func() {
@@ -142,19 +141,46 @@ func (obj *object) BatchDedup(
 				err)
 		}
 	}()
-	return obj.PersistedBatchDedup(
+	return obj.persistedGetDuplicatedRows(
 		ctx,
 		txn,
 		precommit,
 		keys,
 		keysZM,
-		rowmask,
+		rowIDs,
 		false,
 		bf,
 		mp,
 	)
 }
-
+func (obj *object) Contains(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	isCommitting bool,
+	keys containers.Vector,
+	keysZM index.ZM,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool) (err error) {
+	defer func() {
+		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
+			logutil.Infof("BatchDedup %s (%v)obj-%s: %v",
+				obj.meta.GetTable().GetLastestSchemaLocked(false).Name,
+				obj.IsAppendable(),
+				obj.meta.ID.String(),
+				err)
+		}
+	}()
+	return obj.persistedContains(
+		ctx,
+		txn,
+		isCommitting,
+		keys,
+		keysZM,
+		false,
+		bf,
+		mp,
+	)
+}
 func (obj *object) GetValue(
 	ctx context.Context,
 	txn txnif.AsyncTxn,

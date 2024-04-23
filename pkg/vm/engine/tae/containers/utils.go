@@ -306,6 +306,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -320,6 +321,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -332,6 +334,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -344,6 +347,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -356,6 +360,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -368,6 +373,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -380,6 +386,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -392,6 +399,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -404,6 +412,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -416,6 +425,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -428,6 +438,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -440,6 +451,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -452,6 +464,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -464,6 +477,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -476,6 +490,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -488,6 +503,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -500,6 +516,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -512,6 +529,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -524,6 +542,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -536,6 +555,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -548,6 +568,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -560,6 +581,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -572,6 +594,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -584,6 +607,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -596,6 +620,7 @@ func ForeachVectorWindow(
 			col,
 			start,
 			length,
+			false,
 			op,
 			op2,
 			sel)
@@ -612,7 +637,7 @@ func ForeachWindowBytes(
 ) (err error) {
 	typ := vec.GetType()
 	if typ.IsVarlen() {
-		return ForeachWindowVarlen(vec, start, length, op, nil, sels)
+		return ForeachWindowVarlen(vec, start, length, false, op, nil, sels)
 	}
 	tsize := typ.TypeSize()
 	data := vec.UnsafeGetRawData()[start*tsize : (start+length)*tsize]
@@ -645,6 +670,7 @@ func ForeachWindowBytes(
 func ForeachWindowFixed[T any](
 	vec *movec.Vector,
 	start, length int,
+	reverse bool,
 	op ItOpT[T],
 	opAny ItOp,
 	sels *nulls.Bitmap,
@@ -658,36 +684,55 @@ func ForeachWindowFixed[T any](
 			v = movec.GetFixedAt[T](vec, 0)
 		}
 		if sels.IsEmpty() {
-			for i := 0; i < length; i++ {
-				if op != nil {
-					if err = op(v, isnull, i+start); err != nil {
-						break
+			if reverse {
+				for i := length - 1; i >= 0; i-- {
+					if op != nil {
+						if err = op(v, isnull, i+start); err != nil {
+							break
+						}
+					}
+					if opAny != nil {
+						if err = opAny(v, isnull, i+start); err != nil {
+							break
+						}
 					}
 				}
-				if opAny != nil {
-					if err = opAny(v, isnull, i+start); err != nil {
-						break
+			} else {
+				for i := 0; i < length; i++ {
+					if op != nil {
+						if err = op(v, isnull, i+start); err != nil {
+							break
+						}
+					}
+					if opAny != nil {
+						if err = opAny(v, isnull, i+start); err != nil {
+							break
+						}
 					}
 				}
 			}
 		} else {
 			end := start + length
 			it := sels.GetBitmap().Iterator()
-			for it.HasNext() {
-				idx := uint32(it.Next())
-				if int(idx) < start {
-					continue
-				} else if int(idx) >= end {
-					break
-				}
-				if op != nil {
-					if err = op(v, isnull, int(idx)); err != nil {
+			if reverse {
+				panic("not support") // TODO
+			} else {
+				for it.HasNext() {
+					idx := uint32(it.Next())
+					if int(idx) < start {
+						continue
+					} else if int(idx) >= end {
 						break
 					}
-				}
-				if opAny != nil {
-					if err = opAny(v, isnull, int(idx)); err != nil {
-						break
+					if op != nil {
+						if err = op(v, isnull, int(idx)); err != nil {
+							break
+						}
+					}
+					if opAny != nil {
+						if err = opAny(v, isnull, int(idx)); err != nil {
+							break
+						}
 					}
 				}
 			}
@@ -697,21 +742,39 @@ func ForeachWindowFixed[T any](
 	}
 	slice := movec.MustFixedCol[T](vec)[start : start+length]
 	if sels.IsEmpty() {
-		for i, v := range slice {
-			if op != nil {
-				if err = op(v, vec.IsNull(uint64(i+start)), i+start); err != nil {
-					break
+		if reverse {
+			for i := len(slice) - 1; i >= 0; i-- {
+				if op != nil {
+					if err = op(slice[i], vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(slice[i], vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
 				}
 			}
-			if opAny != nil {
-				if err = opAny(v, vec.IsNull(uint64(i+start)), i+start); err != nil {
-					break
+		} else {
+			for i, v := range slice {
+				if op != nil {
+					if err = op(v, vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(v, vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
 				}
 			}
 		}
 	} else {
 		end := start + length
 		it := sels.GetBitmap().Iterator()
+		if reverse {
+			panic("not support") //TODO
+		}
 		for it.HasNext() {
 			idx := uint32(it.Next())
 			if int(idx) < start {
@@ -738,6 +801,7 @@ func ForeachWindowFixed[T any](
 func ForeachWindowVarlen(
 	vec *movec.Vector,
 	start, length int,
+	reverse bool,
 	op ItOpT[[]byte],
 	opAny ItOp,
 	sels *nulls.Bitmap,
@@ -750,15 +814,30 @@ func ForeachWindowVarlen(
 		} else {
 			v = vec.GetBytesAt(0)
 		}
-		for i := 0; i < length; i++ {
-			if op != nil {
-				if err = op(v, isnull, i+start); err != nil {
-					break
+		if reverse {
+			for i := length - 1; i >= 0; i-- {
+				if op != nil {
+					if err = op(v, isnull, i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(v, isnull, i+start); err != nil {
+						break
+					}
 				}
 			}
-			if opAny != nil {
-				if err = opAny(v, isnull, i+start); err != nil {
-					break
+		} else {
+			for i := 0; i < length; i++ {
+				if op != nil {
+					if err = op(v, isnull, i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(v, isnull, i+start); err != nil {
+						break
+					}
 				}
 			}
 		}
@@ -767,19 +846,37 @@ func ForeachWindowVarlen(
 	slice, area := movec.MustVarlenaRawData(vec)
 	slice = slice[start : start+length]
 	if sels.IsEmpty() {
-		for i, v := range slice {
-			if op != nil {
-				if err = op(v.GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
-					break
+		if reverse {
+			for i := len(slice) - 1; i >= 0; i-- {
+				if op != nil {
+					if err = op(slice[i].GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(slice[i].GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
 				}
 			}
-			if opAny != nil {
-				if err = opAny(v.GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
-					break
+		} else {
+			for i, v := range slice {
+				if op != nil {
+					if err = op(v.GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
+				}
+				if opAny != nil {
+					if err = opAny(v.GetByteSlice(area), vec.IsNull(uint64(i+start)), i+start); err != nil {
+						break
+					}
 				}
 			}
 		}
 	} else {
+		if reverse {
+			panic("todo")
+		}
 		end := start + length
 		it := sels.GetBitmap().Iterator()
 		for it.HasNext() {

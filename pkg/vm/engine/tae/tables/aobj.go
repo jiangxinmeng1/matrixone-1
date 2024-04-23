@@ -20,7 +20,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -319,13 +318,55 @@ func (obj *aobject) GetByFilter(
 	return
 }
 
-func (obj *aobject) BatchDedup(
+func (obj *aobject) GetDuplicatedRows(
 	ctx context.Context,
-	txn txnif.AsyncTxn,
+	txn txnif.TxnReader,
 	keys containers.Vector,
 	keysZM index.ZM,
-	rowmask *roaring.Bitmap,
 	precommit bool,
+	bf objectio.BloomFilter,
+	rowIDs containers.Vector,
+	mp *mpool.MPool,
+) (err error) {
+	defer func() {
+		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
+			logutil.Debugf("BatchDedup obj-%s: %v", obj.meta.ID.String(), err)
+		}
+	}()
+	node := obj.PinNode()
+	defer node.Unref()
+	if !node.IsPersisted() {
+		return node.GetDuplicatedRows(
+			ctx,
+			txn,
+			precommit,
+			keys,
+			keysZM,
+			rowIDs,
+			bf,
+			mp,
+		)
+	} else {
+		return obj.persistedGetDuplicatedRows(
+			ctx,
+			txn,
+			precommit,
+			keys,
+			keysZM,
+			rowIDs,
+			true,
+			bf,
+			mp,
+		)
+	}
+}
+
+func (obj *aobject) Contains(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	precommit bool,
+	keys containers.Vector,
+	keysZM index.ZM,
 	bf objectio.BloomFilter,
 	mp *mpool.MPool,
 ) (err error) {
@@ -337,23 +378,20 @@ func (obj *aobject) BatchDedup(
 	node := obj.PinNode()
 	defer node.Unref()
 	if !node.IsPersisted() {
-		return node.BatchDedup(
+		return node.Contains(
 			ctx,
-			txn,
-			precommit,
 			keys,
 			keysZM,
-			rowmask,
 			bf,
+			mp,
 		)
 	} else {
-		return obj.PersistedBatchDedup(
+		return obj.persistedContains(
 			ctx,
 			txn,
 			precommit,
 			keys,
 			keysZM,
-			rowmask,
 			true,
 			bf,
 			mp,

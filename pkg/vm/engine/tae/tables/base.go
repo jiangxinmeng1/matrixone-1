@@ -23,7 +23,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -339,12 +338,12 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	return
 }
 
-func (blk *baseObject) dedupWithLoad(
+func (blk *baseObject) getDuplicateRowsWithLoad(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	keys containers.Vector,
 	sels *nulls.Bitmap,
-	rowmask *roaring.Bitmap,
+	rowIDs containers.Vector,
 	blkOffset uint16,
 	isAblk bool,
 	isCommitting bool,
@@ -358,42 +357,74 @@ func (blk *baseObject) dedupWithLoad(
 		schema,
 		blkOffset,
 		def.Idx,
-		false,
+		true,
 		isCommitting,
 		mp,
 	)
 	if err != nil {
-		return err
+		return
 	}
-	if rowmask != nil {
-		if view.DeleteMask == nil {
-			view.DeleteMask = common.RoaringToMOBitmap(rowmask)
-		} else {
-			common.MOOrRoaringBitmap(view.DeleteMask, rowmask)
-		}
-	}
-	defer view.Close()
+	blkID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkOffset)
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, dedupAlkFunctions, view.GetData(), view.DeleteMask, def, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, dedupNABlkFunctions, view.GetData(), view.DeleteMask, def,
+			keys.GetType().Oid, getDuplicatedRowIDNABlkFunctions, view.GetData(), rowIDs, blkID,
 		)
 	}
 	err = containers.ForeachVector(keys, dedupFn, sels)
 	return
 }
 
-func (blk *baseObject) PersistedBatchDedup(
+func (blk *baseObject) containsWithLoad(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	keys containers.Vector,
+	sels *nulls.Bitmap,
+	blkOffset uint16,
+	isAblk bool,
+	isCommitting bool,
+	mp *mpool.MPool,
+) (err error) {
+	schema := blk.meta.GetSchema()
+	def := schema.GetSingleSortKey()
+	view, err := blk.ResolvePersistedColumnData(
+		ctx,
+		txn,
+		schema,
+		blkOffset,
+		def.Idx,
+		true,
+		isCommitting,
+		mp,
+	)
+	if err != nil {
+		return
+	}
+	var dedupFn any
+	if isAblk {
+		dedupFn = containers.MakeForeachVectorOp(
+			keys.GetType().Oid, containsAlkFunctions, view.GetData(), keys,
+		)
+	} else {
+		dedupFn = containers.MakeForeachVectorOp(
+			keys.GetType().Oid, containsNABlkFunctions, view.GetData(), keys,
+		)
+	}
+	err = containers.ForeachVector(keys, dedupFn, sels)
+	return
+}
+
+func (blk *baseObject) persistedGetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	isCommitting bool,
 	keys containers.Vector,
 	keysZM index.ZM,
-	rowmask *roaring.Bitmap,
+	rowIDs containers.Vector,
 	isAblk bool,
 	bf objectio.BloomFilter,
 	mp *mpool.MPool,
@@ -418,7 +449,7 @@ func (blk *baseObject) PersistedBatchDedup(
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 			continue
 		}
-		err = blk.dedupWithLoad(ctx, txn, keys, sels, rowmask, uint16(i), isAblk, isCommitting, mp)
+		err = blk.getDuplicateRowsWithLoad(ctx, txn, keys, sels, rowIDs, uint16(i), isAblk, isCommitting, mp)
 		if err != nil {
 			return err
 		}
@@ -426,6 +457,42 @@ func (blk *baseObject) PersistedBatchDedup(
 	return nil
 }
 
+func (blk *baseObject) persistedContains(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	isCommitting bool,
+	keys containers.Vector,
+	keysZM index.ZM,
+	isAblk bool,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool) (err error) {
+	pkIndex, err := MakeImmuIndex(
+		ctx,
+		blk.meta,
+		bf,
+		blk.rt,
+	)
+	if err != nil {
+		return
+	}
+	for i := 0; i < blk.meta.BlockCnt(); i++ {
+		sels, err := pkIndex.BatchDedup(
+			ctx,
+			keys,
+			keysZM,
+			blk.rt,
+			uint32(i),
+		)
+		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
+			continue
+		}
+		err = blk.containsWithLoad(ctx, txn, keys, sels, uint16(i), isAblk, isCommitting, mp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (blk *baseObject) getPersistedValue(
 	ctx context.Context,
 	txn txnif.TxnReader,

@@ -56,6 +56,15 @@ func (node *persistedNode) Rows() (uint32, error) {
 	return stats.Rows(), nil
 }
 
+func (node *persistedNode) Contains(
+	ctx context.Context,
+	keys containers.Vector,
+	keysZM index.ZM,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool,
+) (err error) {
+	panic("should not be called")
+}
 func (node *persistedNode) BatchDedup(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -66,6 +75,19 @@ func (node *persistedNode) BatchDedup(
 	bf objectio.BloomFilter,
 ) (err error) {
 	panic("should not be called")
+}
+
+func (node *persistedNode) GetDuplicatedRows(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	isCommitting bool,
+	keys containers.Vector,
+	keysZM index.ZM,
+	rowIDs containers.Vector,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool,
+) (err error) {
+	panic("should not be balled")
 }
 
 func (node *persistedNode) ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error) {

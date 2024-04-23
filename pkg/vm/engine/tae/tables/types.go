@@ -55,6 +55,23 @@ type NodeT interface {
 		rowmask *roaring.Bitmap,
 		bf objectio.BloomFilter,
 	) (err error)
+	Contains(
+		ctx context.Context,
+		keys containers.Vector,
+		keysZM index.ZM,
+		bf objectio.BloomFilter,
+		mp *mpool.MPool,
+	) (err error) 
+	GetDuplicatedRows(
+		ctx context.Context,
+		txn txnif.TxnReader,
+		isCommitting bool,
+		keys containers.Vector,
+		keysZM index.ZM,
+		rowIDs containers.Vector,
+		bf objectio.BloomFilter,
+		mp *mpool.MPool,
+	) (err error) 
 	ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error)
 
 	Rows() (uint32, error)

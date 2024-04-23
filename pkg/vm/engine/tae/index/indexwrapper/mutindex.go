@@ -19,6 +19,7 @@ import (
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -141,6 +142,85 @@ func (idx *MutIndex) BatchDedup(
 	return
 }
 
+func (idx *MutIndex) GetDuplicatedRows(
+	ctx context.Context,
+	keys *vector.Vector,
+	keysZM index.ZM,
+	_ objectio.BloomFilter,
+	blkID *types.Blockid,
+	rowIDs *vector.Vector,
+	mp *mpool.MPool,
+) (err error) {
+	if keysZM.Valid() {
+		if exist := idx.zonemap.FastIntersect(keysZM); !exist {
+			return
+		}
+	} else {
+		// 1. all keys are definitely not existed
+		if exist := idx.zonemap.FastContainsAny(keys); !exist {
+			return
+		}
+	}
+	op := func(v []byte, _ bool, offset int) error {
+		rows, err := idx.art.Search(v)
+		if err == index.ErrNotFound {
+			return nil
+		}
+		maxRow := rows[len(rows)-1]
+		for _, row := range rows {
+			// TODO: remove
+			if row < maxRow {
+				panic("logic err")
+			}
+		}
+		rowID := objectio.NewRowid(blkID, maxRow)
+		containers.UpdateValue(rowIDs, uint32(offset), rowID[:], false, mp)
+		return nil
+	}
+	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {
+		panic(err)
+	}
+	return
+}
+
+func (idx *MutIndex) Contains(
+	ctx context.Context,
+	keys *vector.Vector,
+	keysZM index.ZM,
+	_ objectio.BloomFilter,
+	blkID *types.Blockid,
+	mp *mpool.MPool,
+) (err error) {
+	if keysZM.Valid() {
+		if exist := idx.zonemap.FastIntersect(keysZM); !exist {
+			return
+		}
+	} else {
+		// 1. all keys are definitely not existed
+		if exist := idx.zonemap.FastContainsAny(keys); !exist {
+			return
+		}
+	}
+	op := func(v []byte, _ bool, offset int) error {
+		rows, err := idx.art.Search(v)
+		if err == index.ErrNotFound {
+			return nil
+		}
+		maxRow := rows[len(rows)-1]
+		for _, row := range rows {
+			// TODO: remove
+			if row < maxRow {
+				panic("logic err")
+			}
+		}
+		containers.UpdateValue(keys, maxRow, nil, true, mp)
+		return nil
+	}
+	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {
+		panic(err)
+	}
+	return
+}
 func (idx *MutIndex) Close() error {
 	idx.art = nil
 	idx.zonemap = nil

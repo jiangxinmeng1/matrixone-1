@@ -23,7 +23,6 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
@@ -104,18 +103,16 @@ type Object interface {
 	CoarseCheckAllRowsCommittedBefore(ts types.TS) bool
 	GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error)
 	GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error)
-	BatchDedup(ctx context.Context,
-		txn txnif.AsyncTxn,
-		pks containers.Vector,
-		pksZM index.ZM,
-		rowmask *roaring.Bitmap,
+	GetDuplicatedRows(
+		ctx context.Context,
+		txn txnif.TxnReader,
+		keys containers.Vector,
+		keysZM index.ZM,
 		precommit bool,
 		bf objectio.BloomFilter,
+		rowIDs containers.Vector,
 		mp *mpool.MPool,
-	) error
-	//TODO::
-	//BatchDedupByMetaLoc(txn txnif.AsyncTxn, fs *objectio.ObjectFS,
-	//	metaLoc objectio.Location, rowmask *roaring.Bitmap, precommit bool) error
+	) (err error)
 
 	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, mp *mpool.MPool) (any, bool, error)
@@ -138,6 +135,14 @@ type Object interface {
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 
+	Contains(
+		ctx context.Context,
+		txn txnif.TxnReader,
+		isCommitting bool,
+		keys containers.Vector,
+		keysZM index.ZM,
+		bf objectio.BloomFilter,
+		mp *mpool.MPool) (err error )
 	Close()
 }
 

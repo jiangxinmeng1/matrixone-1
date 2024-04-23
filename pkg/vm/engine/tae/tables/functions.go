@@ -19,6 +19,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
@@ -26,239 +27,417 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
-var dedupNABlkFunctions = map[types.T]any{
-	types.T_bool:       dedupNABlkFuncFactory(compute.CompareBool),
-	types.T_bit:        dedupNABlkOrderedFunc[uint64],
-	types.T_int8:       dedupNABlkOrderedFunc[int8],
-	types.T_int16:      dedupNABlkOrderedFunc[int16],
-	types.T_int32:      dedupNABlkOrderedFunc[int32],
-	types.T_int64:      dedupNABlkOrderedFunc[int64],
-	types.T_uint8:      dedupNABlkOrderedFunc[uint8],
-	types.T_uint16:     dedupNABlkOrderedFunc[uint16],
-	types.T_uint32:     dedupNABlkOrderedFunc[uint32],
-	types.T_uint64:     dedupNABlkOrderedFunc[uint64],
-	types.T_float32:    dedupNABlkOrderedFunc[float32],
-	types.T_float64:    dedupNABlkOrderedFunc[float64],
-	types.T_timestamp:  dedupNABlkOrderedFunc[types.Timestamp],
-	types.T_date:       dedupNABlkOrderedFunc[types.Date],
-	types.T_time:       dedupNABlkOrderedFunc[types.Time],
-	types.T_datetime:   dedupNABlkOrderedFunc[types.Datetime],
-	types.T_enum:       dedupNABlkOrderedFunc[types.Enum],
-	types.T_decimal64:  dedupNABlkFuncFactory(types.CompareDecimal64),
-	types.T_decimal128: dedupNABlkFuncFactory(types.CompareDecimal128),
-	types.T_decimal256: dedupNABlkFuncFactory(types.CompareDecimal256),
-	types.T_TS:         dedupNABlkFuncFactory(types.CompareTSTSAligned),
-	types.T_Rowid:      dedupNABlkFuncFactory(types.CompareRowidRowidAligned),
-	types.T_Blockid:    dedupNABlkFuncFactory(types.CompareBlockidBlockidAligned),
-	types.T_uuid:       dedupNABlkFuncFactory(types.CompareUuid),
+var getDuplicatedRowIDNABlkFunctions = map[types.T]any{
+	types.T_bool:       getDuplicateRowIDNABlkFuncFactory(compute.CompareBool),
+	types.T_bit:        getDuplicatedRowIDNABlkOrderedFunc[uint64],
+	types.T_int8:       getDuplicatedRowIDNABlkOrderedFunc[int8],
+	types.T_int16:      getDuplicatedRowIDNABlkOrderedFunc[int16],
+	types.T_int32:      getDuplicatedRowIDNABlkOrderedFunc[int32],
+	types.T_int64:      getDuplicatedRowIDNABlkOrderedFunc[int64],
+	types.T_uint8:      getDuplicatedRowIDNABlkOrderedFunc[uint8],
+	types.T_uint16:     getDuplicatedRowIDNABlkOrderedFunc[uint16],
+	types.T_uint32:     getDuplicatedRowIDNABlkOrderedFunc[uint32],
+	types.T_uint64:     getDuplicatedRowIDNABlkOrderedFunc[uint64],
+	types.T_float32:    getDuplicatedRowIDNABlkOrderedFunc[float32],
+	types.T_float64:    getDuplicatedRowIDNABlkOrderedFunc[float64],
+	types.T_timestamp:  getDuplicatedRowIDNABlkOrderedFunc[types.Timestamp],
+	types.T_date:       getDuplicatedRowIDNABlkOrderedFunc[types.Date],
+	types.T_time:       getDuplicatedRowIDNABlkOrderedFunc[types.Time],
+	types.T_datetime:   getDuplicatedRowIDNABlkOrderedFunc[types.Datetime],
+	types.T_enum:       getDuplicatedRowIDNABlkOrderedFunc[types.Enum],
+	types.T_decimal64:  getDuplicateRowIDNABlkFuncFactory(types.CompareDecimal64),
+	types.T_decimal128: getDuplicateRowIDNABlkFuncFactory(types.CompareDecimal128),
+	types.T_decimal256: getDuplicateRowIDNABlkFuncFactory(types.CompareDecimal256),
+	types.T_TS:         getDuplicateRowIDNABlkFuncFactory(types.CompareTSTSAligned),
+	types.T_Rowid:      getDuplicateRowIDNABlkFuncFactory(types.CompareRowidRowidAligned),
+	types.T_Blockid:    getDuplicateRowIDNABlkFuncFactory(types.CompareBlockidBlockidAligned),
+	types.T_uuid:       getDuplicateRowIDNABlkFuncFactory(types.CompareUuid),
 
-	types.T_char:      dedupNABlkBytesFunc,
-	types.T_varchar:   dedupNABlkBytesFunc,
-	types.T_blob:      dedupNABlkBytesFunc,
-	types.T_binary:    dedupNABlkBytesFunc,
-	types.T_varbinary: dedupNABlkBytesFunc,
-	types.T_json:      dedupNABlkBytesFunc,
-	types.T_text:      dedupNABlkBytesFunc,
+	types.T_char:      getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_varchar:   getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_blob:      getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_binary:    getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_varbinary: getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_json:      getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_text:      getDuplicatedRowIDsNABlkBytesFunc,
 
-	types.T_array_float32: dedupNABlkBytesFunc,
-	types.T_array_float64: dedupNABlkBytesFunc,
+	types.T_array_float32: getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_array_float64: getDuplicatedRowIDsNABlkBytesFunc,
 }
 
-var dedupAlkFunctions = map[types.T]any{
-	types.T_bool:       dedupABlkFuncFactory(compute.CompareBool),
-	types.T_bit:        dedupABlkFuncFactory(compute.CompareOrdered[uint64]),
-	types.T_int8:       dedupABlkFuncFactory(compute.CompareOrdered[int8]),
-	types.T_int16:      dedupABlkFuncFactory(compute.CompareOrdered[int16]),
-	types.T_int32:      dedupABlkFuncFactory(compute.CompareOrdered[int32]),
-	types.T_int64:      dedupABlkFuncFactory(compute.CompareOrdered[int64]),
-	types.T_uint8:      dedupABlkFuncFactory(compute.CompareOrdered[uint8]),
-	types.T_uint16:     dedupABlkFuncFactory(compute.CompareOrdered[uint16]),
-	types.T_uint32:     dedupABlkFuncFactory(compute.CompareOrdered[uint32]),
-	types.T_uint64:     dedupABlkFuncFactory(compute.CompareOrdered[uint64]),
-	types.T_float32:    dedupABlkFuncFactory(compute.CompareOrdered[float32]),
-	types.T_float64:    dedupABlkFuncFactory(compute.CompareOrdered[float64]),
-	types.T_timestamp:  dedupABlkFuncFactory(compute.CompareOrdered[types.Timestamp]),
-	types.T_date:       dedupABlkFuncFactory(compute.CompareOrdered[types.Date]),
-	types.T_time:       dedupABlkFuncFactory(compute.CompareOrdered[types.Time]),
-	types.T_datetime:   dedupABlkFuncFactory(compute.CompareOrdered[types.Datetime]),
-	types.T_enum:       dedupABlkFuncFactory(compute.CompareOrdered[types.Enum]),
-	types.T_decimal64:  dedupABlkFuncFactory(types.CompareDecimal64),
-	types.T_decimal128: dedupABlkFuncFactory(types.CompareDecimal128),
-	types.T_decimal256: dedupABlkFuncFactory(types.CompareDecimal256),
-	types.T_TS:         dedupABlkFuncFactory(types.CompareTSTSAligned),
-	types.T_Rowid:      dedupABlkFuncFactory(types.CompareRowidRowidAligned),
-	types.T_Blockid:    dedupABlkFuncFactory(types.CompareBlockidBlockidAligned),
-	types.T_uuid:       dedupABlkFuncFactory(types.CompareUuid),
+var getRowIDAlkFunctions = map[types.T]any{
+	types.T_bool:       getDuplicatedRowIDABlkFuncFactory(compute.CompareBool),
+	types.T_bit:        getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[uint64]),
+	types.T_int8:       getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[int8]),
+	types.T_int16:      getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[int16]),
+	types.T_int32:      getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[int32]),
+	types.T_int64:      getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[int64]),
+	types.T_uint8:      getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[uint8]),
+	types.T_uint16:     getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[uint16]),
+	types.T_uint32:     getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[uint32]),
+	types.T_uint64:     getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[uint64]),
+	types.T_float32:    getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[float32]),
+	types.T_float64:    getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[float64]),
+	types.T_timestamp:  getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[types.Timestamp]),
+	types.T_date:       getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[types.Date]),
+	types.T_time:       getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[types.Time]),
+	types.T_datetime:   getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[types.Datetime]),
+	types.T_enum:       getDuplicatedRowIDABlkFuncFactory(compute.CompareOrdered[types.Enum]),
+	types.T_decimal64:  getDuplicatedRowIDABlkFuncFactory(types.CompareDecimal64),
+	types.T_decimal128: getDuplicatedRowIDABlkFuncFactory(types.CompareDecimal128),
+	types.T_decimal256: getDuplicatedRowIDABlkFuncFactory(types.CompareDecimal256),
+	types.T_TS:         getDuplicatedRowIDABlkFuncFactory(types.CompareTSTSAligned),
+	types.T_Rowid:      getDuplicatedRowIDABlkFuncFactory(types.CompareRowidRowidAligned),
+	types.T_Blockid:    getDuplicatedRowIDABlkFuncFactory(types.CompareBlockidBlockidAligned),
+	types.T_uuid:       getDuplicatedRowIDABlkFuncFactory(types.CompareUuid),
 
-	types.T_char:      dedupABlkBytesFunc,
-	types.T_varchar:   dedupABlkBytesFunc,
-	types.T_blob:      dedupABlkBytesFunc,
-	types.T_binary:    dedupABlkBytesFunc,
-	types.T_varbinary: dedupABlkBytesFunc,
-	types.T_json:      dedupABlkBytesFunc,
-	types.T_text:      dedupABlkBytesFunc,
+	types.T_char:      getDuplicatedRowIDABlkBytesFunc,
+	types.T_varchar:   getDuplicatedRowIDABlkBytesFunc,
+	types.T_blob:      getDuplicatedRowIDABlkBytesFunc,
+	types.T_binary:    getDuplicatedRowIDABlkBytesFunc,
+	types.T_varbinary: getDuplicatedRowIDABlkBytesFunc,
+	types.T_json:      getDuplicatedRowIDABlkBytesFunc,
+	types.T_text:      getDuplicatedRowIDABlkBytesFunc,
 
-	types.T_array_float32: dedupABlkBytesFunc,
-	types.T_array_float64: dedupABlkBytesFunc,
+	types.T_array_float32: getDuplicatedRowIDABlkBytesFunc,
+	types.T_array_float64: getDuplicatedRowIDABlkBytesFunc,
+}
+var containsNABlkFunctions = map[types.T]any{
+	types.T_bool:       containsNABlkFuncFactory(compute.CompareBool),
+	types.T_bit:        containsValNABlkOrderedFunc[uint64],
+	types.T_int8:       containsValNABlkOrderedFunc[int8],
+	types.T_int16:      containsValNABlkOrderedFunc[int16],
+	types.T_int32:      containsValNABlkOrderedFunc[int32],
+	types.T_int64:      containsValNABlkOrderedFunc[int64],
+	types.T_uint8:      containsValNABlkOrderedFunc[uint8],
+	types.T_uint16:     containsValNABlkOrderedFunc[uint16],
+	types.T_uint32:     containsValNABlkOrderedFunc[uint32],
+	types.T_uint64:     containsValNABlkOrderedFunc[uint64],
+	types.T_float32:    containsValNABlkOrderedFunc[float32],
+	types.T_float64:    containsValNABlkOrderedFunc[float64],
+	types.T_timestamp:  containsValNABlkOrderedFunc[types.Timestamp],
+	types.T_date:       containsValNABlkOrderedFunc[types.Date],
+	types.T_time:       containsValNABlkOrderedFunc[types.Time],
+	types.T_datetime:   containsValNABlkOrderedFunc[types.Datetime],
+	types.T_enum:       containsValNABlkOrderedFunc[types.Enum],
+	types.T_decimal64:  containsNABlkFuncFactory(types.CompareDecimal64),
+	types.T_decimal128: containsNABlkFuncFactory(types.CompareDecimal128),
+	types.T_decimal256: containsNABlkFuncFactory(types.CompareDecimal256),
+	types.T_TS:         containsNABlkFuncFactory(types.CompareTSTSAligned),
+	types.T_Rowid:      containsNABlkFuncFactory(types.CompareRowidRowidAligned),
+	types.T_Blockid:    containsNABlkFuncFactory(types.CompareBlockidBlockidAligned),
+	types.T_uuid:       containsNABlkFuncFactory(types.CompareUuid),
+
+	types.T_char:      containsNABlkBytesFunc,
+	types.T_varchar:   containsNABlkBytesFunc,
+	types.T_blob:      containsNABlkBytesFunc,
+	types.T_binary:    containsNABlkBytesFunc,
+	types.T_varbinary: containsNABlkBytesFunc,
+	types.T_json:      containsNABlkBytesFunc,
+	types.T_text:      containsNABlkBytesFunc,
+
+	types.T_array_float32: containsNABlkBytesFunc,
+	types.T_array_float64: containsNABlkBytesFunc,
 }
 
-func parseNADedeupArgs(args ...any) (vec *vector.Vector, mask *nulls.Bitmap, def *catalog.ColDef) {
+var containsAlkFunctions = map[types.T]any{
+	types.T_bool:       containsABlkFuncFactory(compute.CompareBool),
+	types.T_bit:        containsABlkFuncFactory(compute.CompareOrdered[uint64]),
+	types.T_int8:       containsABlkFuncFactory(compute.CompareOrdered[int8]),
+	types.T_int16:      containsABlkFuncFactory(compute.CompareOrdered[int16]),
+	types.T_int32:      containsABlkFuncFactory(compute.CompareOrdered[int32]),
+	types.T_int64:      containsABlkFuncFactory(compute.CompareOrdered[int64]),
+	types.T_uint8:      containsABlkFuncFactory(compute.CompareOrdered[uint8]),
+	types.T_uint16:     containsABlkFuncFactory(compute.CompareOrdered[uint16]),
+	types.T_uint32:     containsABlkFuncFactory(compute.CompareOrdered[uint32]),
+	types.T_uint64:     containsABlkFuncFactory(compute.CompareOrdered[uint64]),
+	types.T_float32:    containsABlkFuncFactory(compute.CompareOrdered[float32]),
+	types.T_float64:    containsABlkFuncFactory(compute.CompareOrdered[float64]),
+	types.T_timestamp:  containsABlkFuncFactory(compute.CompareOrdered[types.Timestamp]),
+	types.T_date:       containsABlkFuncFactory(compute.CompareOrdered[types.Date]),
+	types.T_time:       containsABlkFuncFactory(compute.CompareOrdered[types.Time]),
+	types.T_datetime:   containsABlkFuncFactory(compute.CompareOrdered[types.Datetime]),
+	types.T_enum:       containsABlkFuncFactory(compute.CompareOrdered[types.Enum]),
+	types.T_decimal64:  containsABlkFuncFactory(types.CompareDecimal64),
+	types.T_decimal128: containsABlkFuncFactory(types.CompareDecimal128),
+	types.T_decimal256: containsABlkFuncFactory(types.CompareDecimal256),
+	types.T_TS:         containsABlkFuncFactory(types.CompareTSTSAligned),
+	types.T_Rowid:      containsABlkFuncFactory(types.CompareRowidRowidAligned),
+	types.T_Blockid:    containsABlkFuncFactory(types.CompareBlockidBlockidAligned),
+	types.T_uuid:       containsABlkFuncFactory(types.CompareUuid),
+
+	types.T_char:      containsABlkBytesFunc,
+	types.T_varchar:   containsABlkBytesFunc,
+	types.T_blob:      containsABlkBytesFunc,
+	types.T_binary:    containsABlkBytesFunc,
+	types.T_varbinary: containsABlkBytesFunc,
+	types.T_json:      containsABlkBytesFunc,
+	types.T_text:      containsABlkBytesFunc,
+
+	types.T_array_float32: containsABlkBytesFunc,
+	types.T_array_float64: containsABlkBytesFunc,
+}
+
+func parseNAGetDuplicatedArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vector, blkID *types.Blockid) {
 	vec = args[0].(containers.Vector).GetDownstreamVector()
 	if args[1] != nil {
-		mask = args[1].(*nulls.Bitmap)
+		rowIDs = args[1].(containers.Vector)
 	}
 	if args[2] != nil {
-		def = args[2].(*catalog.ColDef)
+		blkID = args[2].(*types.Blockid)
 	}
 	return
 }
 
-func parseADedeupArgs(args ...any) (
-	vec containers.Vector, mask *nulls.Bitmap, def *catalog.ColDef,
-	scan func(uint16) (containers.Vector, error),
-	txn txnif.TxnReader,
+func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vector) {
+	vec = args[0].(containers.Vector).GetDownstreamVector()
+	if args[1] != nil {
+		rowIDs = args[1].(containers.Vector)
+	}
+	return
+}
+
+func parseAGetDuplicateRowIDsArgs(args ...any) (
+	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
-		mask = args[1].(*nulls.Bitmap)
+		rowIDs = args[1].(containers.Vector)
 	}
 	if args[2] != nil {
-		def = args[2].(*catalog.ColDef)
-	}
-	if args[3] != nil {
-		scan = args[3].(func(uint16) (containers.Vector, error))
-	}
-	if args[4] != nil {
-		txn = args[4].(txnif.TxnReader)
+		blkID = args[2].(*types.Blockid)
 	}
 	return
 }
 
-func dedupNABlkFuncFactory[T any](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
+func parseAContainsArgs(args ...any) (
+	vec containers.Vector, rowIDs containers.Vector,
+) {
+	vec = args[0].(containers.Vector)
+	if args[1] != nil {
+		rowIDs = args[1].(containers.Vector)
+	}
+	return
+}
+
+func getDuplicateRowIDNABlkFuncFactory[T any](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, mask, def := parseNADedeupArgs(args...)
+		vec, rowIDs, blkID := parseNAGetDuplicatedArgs(args...)
 		vs := vector.MustFixedCol[T](vec)
 		return func(v T, _ bool, row int) (err error) {
 			// logutil.Infof("row=%d,v=%v", row, v)
-			if _, existed := compute.GetOffsetWithFunc(
+			if !rowIDs.IsNull(row) {
+				return
+			}
+			if offset, existed := compute.GetOffsetWithFunc(
 				vs,
 				v,
 				comp,
-				mask,
+				nil,
 			); existed {
-				entry := common.TypeStringValue(*vec.GetType(), any(v), false)
-				return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+				rowID := objectio.NewRowid(blkID, uint32(offset))
+				rowIDs.Update(row, rowID[:], false)
 			}
 			return
 		}
 	}
 }
 
-func dedupNABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, mask, def := parseNADedeupArgs(args...)
+func containsNABlkFuncFactory[T any](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
+	return func(args ...any) func(T, bool, int) error {
+		vec, rowIDs := parseNAContainsArgs(args...)
+		vs := vector.MustFixedCol[T](vec)
+		return func(v T, _ bool, row int) (err error) {
+			// logutil.Infof("row=%d,v=%v", row, v)
+			if rowIDs.IsNull(row) {
+				return
+			}
+			if _, existed := compute.GetOffsetWithFunc(
+				vs,
+				v,
+				comp,
+				nil,
+			); existed {
+				rowIDs.Update(row, nil, true)
+			}
+			return
+		}
+	}
+}
+
+func getDuplicatedRowIDsNABlkBytesFunc(args ...any) func([]byte, bool, int) error {
+	vec, rowIDs, blkID := parseNAGetDuplicatedArgs(args...)
 	return func(v []byte, _ bool, row int) (err error) {
 		// logutil.Infof("row=%d,v=%v", row, v)
+		if !rowIDs.IsNull(row) {
+			return
+		}
+		if offset, existed := compute.GetOffsetOfBytes(
+			vec,
+			v,
+			nil,
+		); existed {
+			rowID := objectio.NewRowid(blkID, uint32(offset))
+			rowIDs.Update(row, rowID[:], false)
+		}
+		return
+	}
+}
+func containsNABlkBytesFunc(args ...any) func([]byte, bool, int) error {
+	vec, rowIDs := parseNAContainsArgs(args...)
+	return func(v []byte, _ bool, row int) (err error) {
+		// logutil.Infof("row=%d,v=%v", row, v)
+		if rowIDs.IsNull(row) {
+			return
+		}
 		if _, existed := compute.GetOffsetOfBytes(
 			vec,
 			v,
-			mask,
+			nil,
 		); existed {
-			entry := common.TypeStringValue(*vec.GetType(), any(v), false)
-			return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+			rowIDs.Update(row, nil, true)
 		}
 		return
 	}
 }
-
-func dedupNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, int) error {
-	vec, mask, def := parseNADedeupArgs(args...)
+func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, int) error {
+	vec, rowIDs, blkID := parseNAGetDuplicatedArgs(args...)
 	vs := vector.MustFixedCol[T](vec)
 	return func(v T, _ bool, row int) (err error) {
 		// logutil.Infof("row=%d,v=%v", row, v)
-		if _, existed := compute.GetOffsetOfOrdered(
+		if !rowIDs.IsNull(row) {
+			return
+		}
+		if offset, existed := compute.GetOffsetOfOrdered(
 			vs,
 			v,
-			mask,
+			nil,
 		); existed {
-			entry := common.TypeStringValue(*vec.GetType(), any(v), false)
-			return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+			rowID := objectio.NewRowid(blkID, uint32(offset))
+			rowIDs.Update(row, rowID[:], false)
 		}
 		return
 	}
 }
 
-func dedupABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, mask, def, scan, txn := parseADedeupArgs(args...)
-	return func(v1 []byte, _ bool, _ int) error {
-		var tsVec containers.Vector
-		defer func() {
-			if tsVec != nil {
-				tsVec.Close()
-				tsVec = nil
-			}
-		}()
+func containsValNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, int) error {
+	vec, rowIDs := parseNAContainsArgs(args...)
+	vs := vector.MustFixedCol[T](vec)
+	return func(v T, _ bool, row int) (err error) {
+		// logutil.Infof("row=%d,v=%v", row, v)
+		if rowIDs.IsNull(row) {
+			return
+		}
+		if _, existed := compute.GetOffsetOfOrdered(
+			vs,
+			v,
+			nil,
+		); existed {
+			rowIDs.Update(row, nil, true)
+		}
+		return
+	}
+}
+
+func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
+	vec, rowIDs, blkID := parseAGetDuplicateRowIDsArgs(args...)
+	return func(v1 []byte, _ bool, rowOffset int) error {
+		if !rowIDs.IsNull(rowOffset) {
+			return nil
+		}
 		return containers.ForeachWindowVarlen(
 			vec.GetDownstreamVector(),
 			0,
 			vec.Length(),
+			true,
 			func(v2 []byte, _ bool, row int) (err error) {
 				// logutil.Infof("row=%d,v1=%v,v2=%v", row, v1, v2)
-				if mask.Contains(uint64(row)) {
-					return
+				if !rowIDs.IsNull(rowOffset) {
+					return nil
 				}
 				if compute.CompareBytes(v1, v2) != 0 {
 					return
 				}
-				if tsVec == nil {
-					if tsVec, err = scan(0); err != nil {
-						return
-					}
-				}
-				commitTS := tsVec.Get(row).(types.TS)
-				startTS := txn.GetStartTS()
-				if commitTS.Greater(&startTS) {
-					return txnif.ErrTxnWWConflict
-				}
-				entry := common.TypeStringValue(*vec.GetType(), any(v1), false)
-				return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+				rowID := objectio.NewRowid(blkID, uint32(row))
+				rowIDs.Update(row, rowID[:], false)
+				return nil
 			}, nil, nil)
 	}
 }
 
-func dedupABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
-	return func(args ...any) func(T, bool, int) error {
-		vec, mask, def, scan, txn := parseADedeupArgs(args...)
-		return func(v1 T, _ bool, _ int) error {
-			var tsVec containers.Vector
-			defer func() {
-				if tsVec != nil {
-					tsVec.Close()
-					tsVec = nil
+func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
+	vec, rowIDs := parseAContainsArgs(args...)
+	return func(v1 []byte, _ bool, rowOffset int) error {
+		if rowIDs.IsNull(rowOffset) {
+			return nil
+		}
+		return containers.ForeachWindowVarlen(
+			vec.GetDownstreamVector(),
+			0,
+			vec.Length(),
+			true,
+			func(v2 []byte, _ bool, row int) (err error) {
+				// logutil.Infof("row=%d,v1=%v,v2=%v", row, v1, v2)
+				if rowIDs.IsNull(rowOffset) {
+					return nil
 				}
-			}()
+				if compute.CompareBytes(v1, v2) != 0 {
+					return
+				}
+				rowIDs.Update(row, nil, true)
+				return nil
+			}, nil, nil)
+	}
+}
+
+func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
+	return func(args ...any) func(T, bool, int) error {
+		vec, rowIDs, blkID := parseAGetDuplicateRowIDsArgs(args...)
+		return func(v1 T, _ bool, rowOffset int) error {
+			if !rowIDs.IsNull(rowOffset) {
+				return nil
+			}
 			return containers.ForeachWindowFixed(
 				vec.GetDownstreamVector(),
 				0,
 				vec.Length(),
+				true,
 				func(v2 T, _ bool, row int) (err error) {
-					if mask.Contains(uint64(row)) {
-						return
+					if !rowIDs.IsNull(rowOffset) {
+						return nil
 					}
 					if comp(v1, v2) != 0 {
 						return
 					}
-					if tsVec == nil {
-						if tsVec, err = scan(0); err != nil {
-							return
-						}
+					rowID := objectio.NewRowid(blkID, uint32(row))
+					rowIDs.Update(row, rowID[:], false)
+					return nil
+				}, nil, nil)
+		}
+	}
+}
+
+func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
+	return func(args ...any) func(T, bool, int) error {
+		vec, rowIDs := parseAContainsArgs(args...)
+		return func(v1 T, _ bool, rowOffset int) error {
+			if rowIDs.IsNull(rowOffset) {
+				return nil
+			}
+			return containers.ForeachWindowFixed(
+				vec.GetDownstreamVector(),
+				0,
+				vec.Length(),
+				false,
+				func(v2 T, _ bool, row int) (err error) {
+					if rowIDs.IsNull(rowOffset) {
+						return nil
 					}
-					commitTS := tsVec.Get(row).(types.TS)
-					startTS := txn.GetStartTS()
-					if commitTS.Greater(&startTS) {
-						return txnif.ErrTxnWWConflict
+					if comp(v1, v2) != 0 {
+						return
 					}
-					entry := common.TypeStringValue(*vec.GetType(), any(v1), false)
-					return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+					rowIDs.Update(row, nil, true)
+					return nil
 				}, nil, nil)
 		}
 	}

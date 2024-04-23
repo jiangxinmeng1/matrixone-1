@@ -115,6 +115,28 @@ func (node *memoryNode) doBatchDedup(
 	return node.pkIndex.BatchDedup(ctx, keys.GetDownstreamVector(), keysZM, skipFn, bf)
 }
 
+func (node *memoryNode) Contains(
+	ctx context.Context,
+	keys containers.Vector,
+	keysZM index.ZM,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool,
+) (err error) {
+	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, mp)
+}
+func (node *memoryNode) getDuplicatedRows(
+	ctx context.Context,
+	keys containers.Vector,
+	keysZM index.ZM,
+	bf objectio.BloomFilter,
+	rowIDs containers.Vector,
+	mp *mpool.MPool,
+) (err error) {
+	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), mp)
+}
+
 func (node *memoryNode) ContainsKey(ctx context.Context, key any, _ uint32) (ok bool, err error) {
 	if err = node.pkIndex.Dedup(ctx, key, nil); err != nil {
 		return
@@ -407,6 +429,22 @@ func (node *memoryNode) BatchDedup(
 	v, isNull := node.GetValueByRow(node.writeSchema, int(dupRow), def.Idx)
 	entry := common.TypeStringValue(*keys.GetType(), v, isNull)
 	return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
+}
+func (node *memoryNode) GetDuplicatedRows(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	isCommitting bool,
+	keys containers.Vector,
+	keysZM index.ZM,
+	rowIDs containers.Vector,
+	bf objectio.BloomFilter,
+	mp *mpool.MPool,
+) (err error) {
+	node.object.RLock()
+	defer node.object.RUnlock()
+	err = node.getDuplicatedRows(ctx, keys, keysZM, bf, rowIDs, mp)
+
+	return
 }
 
 func (node *memoryNode) checkConflictAndDupClosure(

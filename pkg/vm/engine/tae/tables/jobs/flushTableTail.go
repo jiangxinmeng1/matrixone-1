@@ -21,7 +21,6 @@ import (
 	"time"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
-	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -426,10 +425,13 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 	}
 
 	var obj handle.Object
+	var schema *catalog.Schema
 	if isTombstone {
 		obj = task.aTombstoneHandles[objIdx]
+		schema = task.tombstoneSchema
 	} else {
 		obj = task.aObjHandles[objIdx]
+		schema = task.schema
 	}
 
 	views, err := obj.GetColumnDataByIds(ctx, 0, idxs, common.MergeAllocator)
@@ -454,7 +456,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 			bat.Close()
 			return
 		}
-		bat.AddVector(task.schema.ColDefs[colidx].Name, vec.TryConvertConst())
+		bat.AddVector(schema.ColDefs[colidx].Name, vec.TryConvertConst())
 	}
 
 	if isTombstone && deletes != nil {
@@ -463,10 +465,6 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 
 	if deletes != nil {
 		task.aObjDeletesCnt += deletes.GetCardinality()
-	}
-
-	if isTombstone {
-		return
 	}
 
 	var sortMapping []int64
@@ -478,6 +476,10 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		if err != nil {
 			return
 		}
+	}
+
+	if isTombstone {
+		return
 	}
 	if task.doTransfer {
 		mergesort.AddSortPhaseMapping(task.transMappings, objIdx, rowCntBeforeApplyDelete, deletes, sortMapping)
@@ -579,7 +581,11 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		fromLayout = append(fromLayout, uint32(vec.Length()))
 		totalRowCnt += vec.Length()
 	}
-	task.mergeRowsCnt = totalRowCnt
+	if isTombstone {
+		task.tombstoneMergeRowsCnt = totalRowCnt
+	} else {
+		task.mergeRowsCnt = totalRowCnt
+	}
 	rowsLeft := totalRowCnt
 	for rowsLeft > 0 {
 		if rowsLeft > int(schema.BlockMaxRows) {
@@ -605,16 +611,25 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		writtenBatches, releaseF = mergesort.ReshapeBatches(cnBatches, fromLayout, toLayout, task)
 	}
 	defer releaseF()
-	if task.doTransfer {
+	if !isTombstone && task.doTransfer {
 		mergesort.UpdateMappingAfterMerge(task.transMappings, mapping, toLayout)
 	}
 
 	// write!
 	// create new object to hold merged blocks
-	if task.createdObjHandles, err = task.rel.CreateNonAppendableObject(false, nil); err != nil {
-		return
+	var createdObjectHandle handle.Object
+	if isTombstone {
+		if task.createdTombstoneHandles, err = task.rel.CreateNonAppendableObject(false, isTombstone, nil); err != nil {
+			return
+		}
+		createdObjectHandle = task.createdTombstoneHandles
+	} else {
+		if task.createdObjHandles, err = task.rel.CreateNonAppendableObject(false, isTombstone, nil); err != nil {
+			return
+		}
+		createdObjectHandle = task.createdObjHandles
 	}
-	toObjectEntry := task.createdObjHandles.GetMeta().(*catalog.ObjectEntry)
+	toObjectEntry := createdObjectHandle.GetMeta().(*catalog.ObjectEntry)
 	toObjectEntry.SetSorted()
 	name := objectio.BuildObjectNameWithObjectID(&toObjectEntry.ID)
 	writer, err := blockio.NewBlockWriterNew(task.rt.Fs.Service, name, schema.Version, seqnums)
@@ -629,14 +644,14 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 	if isTombstone {
 		for _, bat := range writtenBatches {
-			_, err = writer.WriteTombstoneBatch(containers.ToCNBatch(bat))
+			_, err = writer.WriteTombstoneBatch(bat)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
 		for _, bat := range writtenBatches {
-			_, err = writer.WriteBatch(containers.ToCNBatch(bat))
+			_, err = writer.WriteBatch(bat)
 			if err != nil {
 				return err
 			}
@@ -653,11 +668,11 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 
 	// update new status for created blocks
-	err = task.createdObjHandles.UpdateStats(writer.Stats(isTombstone))
+	err = createdObjectHandle.UpdateStats(writer.Stats(isTombstone))
 	if err != nil {
 		return
 	}
-	err = task.createdObjHandles.GetMeta().(*catalog.ObjectEntry).GetObjectData().Init()
+	err = createdObjectHandle.GetMeta().(*catalog.ObjectEntry).GetObjectData().Init()
 	if err != nil {
 		return
 	}

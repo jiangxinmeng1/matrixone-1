@@ -209,7 +209,7 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 		// no del table, no transfer
 		return nil
 	}
-	trans, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS())
+	trans, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS().Prev())
 	if err != nil {
 		return err
 	}

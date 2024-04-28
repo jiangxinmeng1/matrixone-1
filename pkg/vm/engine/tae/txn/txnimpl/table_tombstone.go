@@ -66,7 +66,7 @@ func (tbl *txnTable) RangeDelete(
 		// This err also captured by txn's write conflict check.
 		if err != nil {
 			if moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
-				err = moerr.NewTxnWWConflictNoCtx(id.TableID, pk.PPString(int(start-end+1)))
+				err = moerr.NewTxnWWConflictNoCtx(id.TableID, pk.PPString(int(end-start+1)))
 			}
 
 			logutil.Debugf("[ts=%s]: table-%d blk-%s delete rows from %d to %d %v",
@@ -89,6 +89,15 @@ func (tbl *txnTable) RangeDelete(
 		}
 	}()
 	deleteBatch := tbl.createTombstoneBatch(id, start, end, pk)
+	defer func ()  {
+		for _,attr:=range deleteBatch.Attrs {
+			if attr == catalog.AttrPKVal {
+				// not close pk
+				continue
+			}
+			deleteBatch.GetVectorByName(attr).Close()
+		}
+	}()
 
 	dedupType := tbl.store.txn.GetDedupType()
 	ctx := tbl.store.ctx
@@ -264,7 +273,7 @@ func (tbl *txnTable) createTombstoneBatch(
 	if pk.Length() != int(end-start+1) {
 		panic(fmt.Sprintf("logic err, invalid pkVec length, pk length = %d, start = %d, end = %d", pk.Length(), start, end))
 	}
-	bat := catalog.NewTombstoneBatchWithPKVector(pk, tbl.store.rt.VectorPool.Small.GetAllocator())
+	bat := catalog.NewTombstoneBatchWithPKVector(pk, common.WorkspaceAllocator)
 	for row := start; row <= end; row++ {
 		rowID := objectio.NewRowid(&id.BlockID, row)
 		bat.GetVectorByName(catalog.AttrRowID).Append(*rowID, false)

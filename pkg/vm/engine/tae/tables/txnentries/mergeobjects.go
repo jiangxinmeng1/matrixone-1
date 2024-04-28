@@ -83,7 +83,6 @@ func NewMergeObjectsEntry(
 	if !entry.skipTransfer {
 		if totalCreatedBlkCnt > 0 {
 			entry.delTbls = make([]*model.TransDels, totalCreatedBlkCnt)
-			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			entry.collectTs = rt.Now()
 			var err error
 			// phase 1 transfer
@@ -335,6 +334,7 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 		return nil
 	}
 
+	inst1 := time.Now()
 	objID := entry.createdObjs[0].ID
 	for i, delTbl := range entry.delTbls {
 		if delTbl != nil {
@@ -342,6 +342,7 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 			entry.rt.TransferDelsMap.SetDelsForBlk(*destid, delTbl)
 		}
 	}
+	rest := time.Since(inst1)
 	logutil.Infof("mergeblocks commit %v, [%v,%v], trans %d, %d in commit queue",
 		entry.relation.ID(),
 		entry.txn.GetStartTS().ToString(),

@@ -1128,7 +1128,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	return
 }
 func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, dedupAfterSnapshotTS, isCommitting bool) (err error) {
-	it := newObjectItOnSnap(tbl, true)
 	maxObjectHint := uint64(0)
 	pkType := rowIDs.GetType()
 	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
@@ -1139,10 +1138,9 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		bf objectio.BloomFilter
 	)
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
+	it := tbl.entry.MakeObjectIt(false, true)
 	for it.Valid() {
-		objH := it.GetObject()
-		obj := objH.GetMeta().(*catalog.ObjectEntry)
-		objH.Close()
+		obj := it.Get().GetPayload()
 		ObjectHint := obj.SortHint
 		if ObjectHint > maxObjectHint {
 			maxObjectHint = ObjectHint

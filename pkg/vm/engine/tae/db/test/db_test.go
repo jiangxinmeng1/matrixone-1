@@ -2371,7 +2371,7 @@ func TestReshapeBlocks(t *testing.T) {
 	assert.Nil(t, err)
 	rel, err := db.GetRelationByName(schema.Name)
 	assert.Nil(t, err)
-	it := rel.MakeObjectIt()
+	it := rel.MakeObjectIt(false)
 	blkID := it.GetObject().Fingerprint()
 	err = rel.RangeDelete(blkID, 5, 9, handle.DT_Normal)
 	assert.Nil(t, err)
@@ -2379,6 +2379,11 @@ func TestReshapeBlocks(t *testing.T) {
 
 	txn, err = tae.StartTxn(nil)
 	assert.Nil(t, err)
+	db, err = txn.GetDatabase("db")
+	assert.Nil(t, err)
+	rel, err = db.GetRelationByName(schema.Name)
+	assert.Nil(t, err)
+	it = rel.MakeObjectIt(false)
 	for it.Valid() {
 		testutil.CheckAllColRowsByScan(t, rel, bat.Length(), false)
 		obj := it.GetObject()
@@ -2402,7 +2407,7 @@ func TestReshapeBlocks(t *testing.T) {
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.Nil(t, err)
 	assert.Equal(t, uint64(25), rel.GetMeta().(*catalog.TableEntry).GetRows())
-	it = rel.MakeObjectIt()
+	it = rel.MakeObjectIt(false)
 	for it.Valid() {
 		testutil.CheckAllColRowsByScan(t, rel, bat.Length()-5, false)
 		obj := it.GetObject()
@@ -3267,24 +3272,24 @@ func TestImmutableIndexInAblk(t *testing.T) {
 	_, _, err = meta.GetObjectData().GetByFilter(context.Background(), txn, filter, common.DefaultAllocator)
 	assert.NoError(t, err)
 
-	rowIDs:=containers.MakeVector(types.T_Rowid.ToType(),common.DefaultAllocator)
+	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)
 	for i := 0; i < bat.Length(); i++ {
-		rowIDs.Append(nil,true)
+		rowIDs.Append(nil, true)
 	}
 	err = meta.GetObjectData().GetDuplicatedRows(
-		context.Background(), txn, bat.Vecs[1], nil,  false, objectio.BloomFilter{},rowIDs, common.DefaultAllocator,
+		context.Background(), txn, bat.Vecs[1], nil, false, objectio.BloomFilter{}, rowIDs, common.DefaultAllocator,
 	)
 	assert.NoError(t, err)
-	err = meta.GetObjectData().Contains(context.Background(),txn,false,bat.Vecs[1],nil,objectio.BloomFilter{},common.DebugAllocator)
+	err = meta.GetObjectData().Contains(context.Background(), txn, false, bat.Vecs[1], nil, objectio.BloomFilter{}, common.DebugAllocator)
 	assert.NoError(t, err)
-	duplicate :=false
+	duplicate := false
 	rowIDs.Foreach(func(v any, isNull bool, row int) error {
-		if !isNull{
+		if !isNull {
 			duplicate = true
 		}
 		return nil
-	},nil)
-	assert.True(t,duplicate)
+	}, nil)
+	assert.True(t, duplicate)
 }
 
 func TestDelete3(t *testing.T) {
@@ -8506,8 +8511,8 @@ func TestFlushAndAppend2(t *testing.T) {
 
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(oe *catalog.ObjectEntry) error {
-		prepareTS:=oe.GetLatestNodeLocked().GetPrepare()
-		require.False(t, prepareTS.Equal(&txnif.UncommitTS),oe.ID.String())
+		prepareTS := oe.GetLatestNodeLocked().GetPrepare()
+		require.False(t, prepareTS.Equal(&txnif.UncommitTS), oe.ID.String())
 		return nil
 	}
 	tae.Catalog.RecurLoop(p)

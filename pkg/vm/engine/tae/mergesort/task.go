@@ -145,55 +145,55 @@ func DoMergeAndWrite(
 		var merger Merger
 		typ := mergehost.GetSortKeyType()
 		if typ.IsVarlen() {
-			merger = newMerger(mergehost, NumericLess[string], sortkeyPos, vector.MustStrCol)
+			merger = newMerger(mergehost, NumericLess[string], sortkeyPos, isTombstone, vector.MustStrCol)
 		} else {
 			switch typ.Oid {
 			case types.T_bool:
-				merger = newMerger(mergehost, BoolLess, sortkeyPos,isTombstone, vector.MustFixedCol[bool])
+				merger = newMerger(mergehost, BoolLess, sortkeyPos, isTombstone, vector.MustFixedCol[bool])
 			case types.T_bit:
-				merger = newMerger(mergehost, NumericLess[uint64], sortkeyPos,isTombstone, vector.MustFixedCol[uint64])
+				merger = newMerger(mergehost, NumericLess[uint64], sortkeyPos, isTombstone, vector.MustFixedCol[uint64])
 			case types.T_int8:
-				merger = newMerger(mergehost, NumericLess[int8], sortkeyPos,isTombstone, vector.MustFixedCol[int8])
+				merger = newMerger(mergehost, NumericLess[int8], sortkeyPos, isTombstone, vector.MustFixedCol[int8])
 			case types.T_int16:
-				merger = newMerger(mergehost, NumericLess[int16], sortkeyPos,isTombstone, vector.MustFixedCol[int16])
+				merger = newMerger(mergehost, NumericLess[int16], sortkeyPos, isTombstone, vector.MustFixedCol[int16])
 			case types.T_int32:
-				merger = newMerger(mergehost, NumericLess[int32], sortkeyPos, isTombstone,vector.MustFixedCol[int32])
+				merger = newMerger(mergehost, NumericLess[int32], sortkeyPos, isTombstone, vector.MustFixedCol[int32])
 			case types.T_int64:
-				merger = newMerger(mergehost, NumericLess[int64], sortkeyPos, isTombstone,vector.MustFixedCol[int64])
+				merger = newMerger(mergehost, NumericLess[int64], sortkeyPos, isTombstone, vector.MustFixedCol[int64])
 			case types.T_float32:
-				merger = newMerger(mergehost, NumericLess[float32], sortkeyPos,isTombstone, vector.MustFixedCol[float32])
+				merger = newMerger(mergehost, NumericLess[float32], sortkeyPos, isTombstone, vector.MustFixedCol[float32])
 			case types.T_float64:
-				merger = newMerger(mergehost, NumericLess[float64], sortkeyPos,isTombstone, vector.MustFixedCol[float64])
+				merger = newMerger(mergehost, NumericLess[float64], sortkeyPos, isTombstone, vector.MustFixedCol[float64])
 			case types.T_uint8:
-				merger = newMerger(mergehost, NumericLess[uint8], sortkeyPos, isTombstone,vector.MustFixedCol[uint8])
+				merger = newMerger(mergehost, NumericLess[uint8], sortkeyPos, isTombstone, vector.MustFixedCol[uint8])
 			case types.T_uint16:
-				merger = newMerger(mergehost, NumericLess[uint16], sortkeyPos,isTombstone, vector.MustFixedCol[uint16])
+				merger = newMerger(mergehost, NumericLess[uint16], sortkeyPos, isTombstone, vector.MustFixedCol[uint16])
 			case types.T_uint32:
-				merger = newMerger(mergehost, NumericLess[uint32], sortkeyPos,isTombstone, vector.MustFixedCol[uint32])
+				merger = newMerger(mergehost, NumericLess[uint32], sortkeyPos, isTombstone, vector.MustFixedCol[uint32])
 			case types.T_uint64:
-				merger = newMerger(mergehost, NumericLess[uint64], sortkeyPos, isTombstone,vector.MustFixedCol[uint64])
+				merger = newMerger(mergehost, NumericLess[uint64], sortkeyPos, isTombstone, vector.MustFixedCol[uint64])
 			case types.T_date:
-				merger = newMerger(mergehost, NumericLess[types.Date], sortkeyPos, isTombstone,vector.MustFixedCol[types.Date])
+				merger = newMerger(mergehost, NumericLess[types.Date], sortkeyPos, isTombstone, vector.MustFixedCol[types.Date])
 			case types.T_timestamp:
-				merger = newMerger(mergehost, NumericLess[types.Timestamp], sortkeyPos, isTombstone,vector.MustFixedCol[types.Timestamp])
+				merger = newMerger(mergehost, NumericLess[types.Timestamp], sortkeyPos, isTombstone, vector.MustFixedCol[types.Timestamp])
 			case types.T_datetime:
-				merger = newMerger(mergehost, NumericLess[types.Datetime], sortkeyPos,isTombstone, vector.MustFixedCol[types.Datetime])
+				merger = newMerger(mergehost, NumericLess[types.Datetime], sortkeyPos, isTombstone, vector.MustFixedCol[types.Datetime])
 			case types.T_time:
-				merger = newMerger(mergehost, NumericLess[types.Time], sortkeyPos,isTombstone, vector.MustFixedCol[types.Time])
+				merger = newMerger(mergehost, NumericLess[types.Time], sortkeyPos, isTombstone, vector.MustFixedCol[types.Time])
 			case types.T_enum:
-				merger = newMerger(mergehost, NumericLess[types.Enum], sortkeyPos,isTombstone, vector.MustFixedCol[types.Enum])
+				merger = newMerger(mergehost, NumericLess[types.Enum], sortkeyPos, isTombstone, vector.MustFixedCol[types.Enum])
 			case types.T_decimal64:
-				merger = newMerger(mergehost, LtTypeLess[types.Decimal64], sortkeyPos,isTombstone, vector.MustFixedCol[types.Decimal64])
+				merger = newMerger(mergehost, LtTypeLess[types.Decimal64], sortkeyPos, isTombstone, vector.MustFixedCol[types.Decimal64])
 			case types.T_decimal128:
-				merger = newMerger(mergehost, LtTypeLess[types.Decimal128], sortkeyPos, isTombstone,vector.MustFixedCol[types.Decimal128])
+				merger = newMerger(mergehost, LtTypeLess[types.Decimal128], sortkeyPos, isTombstone, vector.MustFixedCol[types.Decimal128])
 			case types.T_uuid:
-				merger = newMerger(mergehost, LtTypeLess[types.Uuid], sortkeyPos,isTombstone, vector.MustFixedCol[types.Uuid])
+				merger = newMerger(mergehost, LtTypeLess[types.Uuid], sortkeyPos, isTombstone, vector.MustFixedCol[types.Uuid])
 			case types.T_TS:
-				merger = newMerger(mergehost, TsLess, sortkeyPos,isTombstone, vector.MustFixedCol[types.TS])
+				merger = newMerger(mergehost, TsLess, sortkeyPos, isTombstone, vector.MustFixedCol[types.TS])
 			case types.T_Rowid:
-				merger = newMerger(mergehost, RowidLess, sortkeyPos,isTombstone, vector.MustFixedCol[types.Rowid])
+				merger = newMerger(mergehost, RowidLess, sortkeyPos, isTombstone, vector.MustFixedCol[types.Rowid])
 			case types.T_Blockid:
-				merger = newMerger(mergehost, BlockidLess, sortkeyPos,isTombstone, vector.MustFixedCol[types.Blockid])
+				merger = newMerger(mergehost, BlockidLess, sortkeyPos, isTombstone, vector.MustFixedCol[types.Blockid])
 			default:
 				panic(fmt.Sprintf("unsupported type %s", typ.String()))
 			}

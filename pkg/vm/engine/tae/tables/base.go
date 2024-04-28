@@ -361,6 +361,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		isCommitting,
 		mp,
 	)
+	defer view.Close()
 	if err != nil {
 		return
 	}

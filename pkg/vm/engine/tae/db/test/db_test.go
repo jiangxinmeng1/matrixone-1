@@ -5358,9 +5358,7 @@ func TestInsertPerf(t *testing.T) {
 	t.Skip(any("for debug"))
 	ctx := context.Background()
 
-	opts := new(options.Options)
-	options.WithCheckpointScanInterval(time.Second * 10)(opts)
-	options.WithFlushInterval(time.Second * 10)(opts)
+	opts := config.WithLongScanAndCKPOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 	schema := catalog.MockSchemaAll(10, 2)
@@ -5403,13 +5401,11 @@ func TestUpdatePerf(t *testing.T) {
 	// t.Skip(any("for debug"))
 	ctx := context.Background()
 
-	totalCnt := 40
-	poolSize := 20
+	totalCnt := 4000
+	poolSize := 4
 	cnt := totalCnt / poolSize
 
-	opts := new(options.Options)
-	options.WithCheckpointScanInterval(time.Second * 10)(opts)
-	options.WithFlushInterval(time.Second * 10)(opts)
+	opts := config.WithLongScanAndCKPOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 	schema := catalog.MockSchemaAll(10, 2)
@@ -5433,7 +5429,9 @@ func TestUpdatePerf(t *testing.T) {
 				assert.NoError(t,err)
 				err = txn.Commit(context.Background())
 				assert.NoError(t,err)
-				t.Logf("%d-%d",idx,i)
+				if i%50 ==0{
+					t.Logf("lalala %d",i)
+				}
 			}
 		}
 	}
@@ -5441,7 +5439,7 @@ func TestUpdatePerf(t *testing.T) {
 	p, _ := ants.NewPool(poolSize)
 	defer p.Release()
 	now := time.Now()
-	for i := 1; i <= poolSize; i++ {
+	for i := 0; i < poolSize; i++ {
 		wg.Add(1)
 		_ = p.Submit(run(i))
 	}

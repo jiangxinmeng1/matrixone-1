@@ -236,6 +236,7 @@ func (obj *object) GetByFilter(
 	if filter.Op != handle.FilterEq {
 		panic("logic error")
 	}
+	mp = common.WorkspaceAllocator3
 	if obj.meta.GetSchema().SortKey == nil {
 		rid := filter.Val.(types.Rowid)
 		offset = rid.GetRowOffset()

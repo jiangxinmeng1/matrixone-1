@@ -273,7 +273,7 @@ func (tbl *txnTable) createTombstoneBatch(
 	if pk.Length() != int(end-start+1) {
 		panic(fmt.Sprintf("logic err, invalid pkVec length, pk length = %d, start = %d, end = %d", pk.Length(), start, end))
 	}
-	bat := catalog.NewTombstoneBatchWithPKVector(pk, common.WorkspaceAllocator)
+	bat := catalog.NewTombstoneBatchWithPKVector(pk, common.WorkspaceAllocator2)
 	for row := start; row <= end; row++ {
 		rowID := objectio.NewRowid(&id.BlockID, row)
 		bat.GetVectorByName(catalog.AttrRowID).Append(*rowID, false)

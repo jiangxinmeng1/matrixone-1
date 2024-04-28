@@ -201,11 +201,13 @@ func (n *AppendMVCCHandle) GetVisibleRowLocked(
 	anToWait := make([]*AppendNode, 0)
 	txnToWait := make([]txnif.TxnReader, 0)
 	n.appends.ForEach(func(an *AppendNode) bool {
-		needWait, waitTxn := an.NeedWaitCommitting(txn.GetStartTS())
-		if needWait {
-			anToWait = append(anToWait, an)
-			txnToWait = append(txnToWait, waitTxn)
-			return true
+		if !an.IsSameTxn(txn) {
+			needWait, waitTxn := an.NeedWaitCommitting(txn.GetStartTS())
+			if needWait {
+				anToWait = append(anToWait, an)
+				txnToWait = append(txnToWait, waitTxn)
+				return true
+			}
 		}
 		if an.IsVisible(txn) {
 			visible = true

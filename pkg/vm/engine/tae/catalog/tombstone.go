@@ -142,6 +142,7 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 	if bat == nil || bat.Columns[0].Length() == 0 {
 		return nil
 	}
+	defer bat.Close()
 	rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 	var commitTSs []types.TS
@@ -150,6 +151,7 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 		if err != nil {
 			return err
 		}
+		defer commitTSVec.Close()
 		commitTSs = vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
 	}
 	for i := 0; i < rowIDVec.Length(); i++ {

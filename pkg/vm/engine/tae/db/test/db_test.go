@@ -5399,6 +5399,55 @@ func TestInsertPerf(t *testing.T) {
 	t.Log(time.Since(now))
 }
 
+func TestUpdatePerf(t *testing.T) {
+	// t.Skip(any("for debug"))
+	ctx := context.Background()
+
+	totalCnt := 40
+	poolSize := 20
+	cnt := totalCnt / poolSize
+
+	opts := new(options.Options)
+	options.WithCheckpointScanInterval(time.Second * 10)(opts)
+	options.WithFlushInterval(time.Second * 10)(opts)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(10, 2)
+	schema.BlockMaxRows = 1000
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+
+	bat := catalog.MockBatch(schema, poolSize)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+	var wg sync.WaitGroup
+	run := func(idx int) func() {
+		return func() {
+			defer wg.Done()
+			v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(idx)
+			filter := handle.NewEQFilter(v)
+			for i := 0; i < cnt; i++ {
+				txn, rel := tae.GetRelation()
+				err := rel.UpdateByFilter(context.Background(), filter, 0, int8(0), false)
+				assert.NoError(t,err)
+				err = txn.Commit(context.Background())
+				assert.NoError(t,err)
+				t.Logf("%d-%d",idx,i)
+			}
+		}
+	}
+
+	p, _ := ants.NewPool(poolSize)
+	defer p.Release()
+	now := time.Now()
+	for i := 1; i <= poolSize; i++ {
+		wg.Add(1)
+		_ = p.Submit(run(i))
+	}
+	wg.Wait()
+	t.Log(time.Since(now))
+}
 func TestAppendBat(t *testing.T) {
 	p, _ := ants.NewPool(100)
 	defer p.Release()

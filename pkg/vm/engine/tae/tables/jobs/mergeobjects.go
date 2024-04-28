@@ -17,7 +17,9 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
@@ -52,6 +54,8 @@ type mergeObjectsTask struct {
 	rel               handle.Relation
 	did, tid          uint64
 	isTombstone       bool
+
+	doTransfer bool
 
 	blkCnt     []int
 	nMergedBlk []int
@@ -106,6 +110,7 @@ func NewMergeObjectsTask(
 		task.mergedObjsHandle = append(task.mergedObjsHandle, obj)
 	}
 	task.schema = task.rel.Schema(isTombstone).(*catalog.Schema)
+	task.doTransfer = !strings.Contains(task.schema.Comment, pkgcatalog.MO_COMMENT_NO_DEL_HINT)
 	task.idxs = make([]int, 0, len(task.schema.ColDefs)-1)
 	task.attrs = make([]string, 0, len(task.schema.ColDefs)-1)
 	for _, def := range task.schema.ColDefs {
@@ -157,7 +162,7 @@ func (task *mergeObjectsTask) GetVector(typ *types.Type) (*vector.Vector, func()
 }
 
 func (task *mergeObjectsTask) GetMPool() *mpool.MPool {
-	return task.rt.VectorPool.Transient.MPool()
+	return task.rt.VectorPool.Transient.GetMPool()
 }
 
 func (task *mergeObjectsTask) HostHintName() string { return "DN" }
@@ -321,6 +326,10 @@ func (task *mergeObjectsTask) PrepareNewWriter() *blockio.BlockWriter {
 	}
 
 	return mergesort.GetNewWriter(task.rt.Fs.Service, schema.Version, seqnums, sortkeyPos, sortkeyIsPK)
+}
+
+func (task *mergeObjectsTask) DoTransfer() bool {
+	return task.doTransfer
 }
 
 func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {

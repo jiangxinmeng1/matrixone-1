@@ -374,9 +374,8 @@ func (s *service) isStatus(status pb.Status) bool {
 }
 
 func (s *service) fetchTxnWaitingList(txn pb.WaitTxn, waiters *waiters) (bool, error) {
-	activeTxn := s.activeTxnHolder.getActiveTxn(txn.TxnID, false, "")
-
 	if txn.CreatedOn == s.serviceID {
+		activeTxn := s.activeTxnHolder.getActiveTxn(txn.TxnID, false, "")
 		// the active txn closed
 		if activeTxn == nil {
 			return true, nil
@@ -391,17 +390,6 @@ func (s *service) fetchTxnWaitingList(txn pb.WaitTxn, waiters *waiters) (bool, e
 			s.activeTxnHolder,
 			waiters.add,
 			s.getLockTable), nil
-	}
-
-	if activeTxn != nil {
-		added := activeTxn.fetchWhoWaitingMeInBlockingWaiters(
-			txn.TxnID,
-			waiters.add,
-			false,
-		)
-		if !added {
-			return false, nil
-		}
 	}
 
 	waitingList, err := s.getTxnWaitingListOnRemote(txn.TxnID, txn.CreatedOn)
@@ -585,7 +573,7 @@ type mapBasedTxnHolder struct {
 	serviceID string
 	fsp       *fixedSlicePool
 	valid     func(sid string) (bool, error)
-	notify    func([]pb.OrphanTxn) error
+	notify    func([]pb.OrphanTxn) ([][]byte, error)
 	mu        struct {
 		sync.RWMutex
 		// remoteServices known remote service
@@ -601,7 +589,7 @@ func newMapBasedTxnHandler(
 	serviceID string,
 	fsp *fixedSlicePool,
 	valid func(sid string) (bool, error),
-	notify func([]pb.OrphanTxn) error,
+	notify func([]pb.OrphanTxn) ([][]byte, error),
 ) activeTxnHolder {
 	h := &mapBasedTxnHolder{}
 	h.fsp = fsp
@@ -764,10 +752,30 @@ func (h *mapBasedTxnHolder) getTimeoutRemoveTxn(
 	h.mu.Unlock()
 
 	if len(cannotCommit) > 0 {
-		if err := h.notify(cannotCommit); err == nil {
+		// found txn1 cannot commit, but txn1 is still running in other cn.
+		// There are 2 possible timings here:
+		// 1. txn1's commit request arrive TN before cannot commit request
+		// 2. txn1's commit request arrive TN after cannot commit request
+		//
+		// In case1: we cannot make txn1 as timeout txn.
+		// In case2: txn1'commit request will failed, and we can make txn1 as
+		//           timeout txn.
+		if committing, err := h.notify(cannotCommit); err == nil {
 			for sid, idx := range cannotCommitServices {
-				needRemoved = append(needRemoved, cannotCommit[idx].Txn...)
-				timeoutServices[sid] = struct{}{}
+				if len(committing) == 0 {
+					needRemoved = append(needRemoved, cannotCommit[idx].Txn...)
+					timeoutServices[sid] = struct{}{}
+				} else {
+					m := make(map[string]struct{}, len(committing))
+					for _, v := range committing {
+						m[util.UnsafeBytesToString(v)] = struct{}{}
+					}
+					for _, v := range cannotCommit[idx].Txn {
+						if _, ok := m[util.UnsafeBytesToString(v)]; !ok {
+							needRemoved = append(needRemoved, v)
+						}
+					}
+				}
 			}
 		}
 	}

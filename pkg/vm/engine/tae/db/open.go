@@ -267,16 +267,16 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 				return nil
 			},
 		)}
-	if opts.CheckpointCfg.MetadataCheckInterval != 0 {
+	// if opts.CheckpointCfg.MetadataCheckInterval != 0 {
 		cronJobs = append(cronJobs,
 			gc.WithCronJob(
 				"metadata-check",
-				opts.CheckpointCfg.MetadataCheckInterval,
+				time.Minute * 5,
 				func(ctx context.Context) error {
 					db.Catalog.CheckMetadata()
 					return nil
 				}))
-	}
+	// }
 	db.GCManager = gc.NewManager(cronJobs...)
 
 	db.GCManager.Start()

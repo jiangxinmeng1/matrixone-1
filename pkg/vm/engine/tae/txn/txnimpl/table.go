@@ -23,7 +23,6 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/util"
-	"go.uber.org/zap"
 
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 
@@ -328,7 +327,7 @@ func (tbl *txnTable) recurTransferDelete(
 	//otherwise recursively transfer the deletes to the next target block.
 	err := tbl.store.warChecker.checkOne(newID, ts)
 	if err == nil {
-		pkVec := containers.MakeVector(tbl.schema.GetSingleSortKeyType(), common.WorkspaceAllocator4)
+		pkVec := containers.MakeVector(tbl.schema.GetSingleSortKeyType(), common.WorkspaceAllocator)
 		pkVec.Append(pk, false)
 		defer pkVec.Close()
 		//transfer the deletes to the target block.
@@ -811,7 +810,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 			continue
 		}
 		var blkID uint16
-		blkID, offset, err = h.GetByFilter(ctx, filter, common.WorkspaceAllocator5)
+		blkID, offset, err = h.GetByFilter(ctx, filter, common.WorkspaceAllocator)
 		if err == nil {
 			id = h.Fingerprint()
 			id.SetBlockOffset(blkID)
@@ -853,7 +852,7 @@ func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, co
 	}
 	block := meta.GetObjectData()
 	_, blkIdx := id.BlockID.Offsets()
-	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(false), blkIdx, int(row), int(col), common.WorkspaceAllocator4)
+	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(false), blkIdx, int(row), int(col), common.WorkspaceAllocator)
 }
 func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
 	meta, err := tbl.entry.GetObjectByID(id.ObjectID(), isTombstone)
@@ -1051,7 +1050,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		name objectio.ObjectNameShort
 		bf   objectio.BloomFilter
 	)
-	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator3)
+	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
 	defer rowIDs.Close()
 	for i := 0; i < keys.Length(); i++ {
 		rowIDs.Append(nil, true)
@@ -1105,7 +1104,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			false,
 			bf,
 			rowIDs,
-			common.WorkspaceAllocator4,
+			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
 			return
@@ -1141,7 +1140,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	var (
 		bf objectio.BloomFilter
 	)
-	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator3)
+	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
 	it := tbl.entry.MakeObjectIt(false, true)
 	for it.Valid() {
 		obj := it.Get().GetPayload()
@@ -1176,7 +1175,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 			rowIDs,
 			keysZM,
 			bf,
-			common.WorkspaceAllocator3,
+			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
 			return

@@ -80,28 +80,14 @@ func NewMergeObjectsEntry(
 		isTombstone:        isTombstone,
 	}
 
-<<<<<<< HEAD
-	if !entry.skipTransfer {
-		if totalCreatedBlkCnt > 0 {
-			entry.delTbls = make([]*model.TransDels, totalCreatedBlkCnt)
-			entry.collectTs = rt.Now()
-			var err error
-			// phase 1 transfer
-			entry.transCntBeforeCommit, _, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
-			if err != nil {
-				return nil, err
-			}
-=======
 	if !entry.skipTransfer && totalCreatedBlkCnt > 0 {
 		entry.delTbls = make([]*model.TransDels, totalCreatedBlkCnt)
-		entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 		entry.collectTs = rt.Now()
 		var err error
 		// phase 1 transfer
 		entry.transCntBeforeCommit, _, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
 		if err != nil {
 			return nil, err
->>>>>>> main
 		}
 		entry.prepareTransferPage()
 	}

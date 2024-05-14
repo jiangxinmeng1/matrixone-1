@@ -61,7 +61,7 @@ func TableNamesOfDB(db handle.Database) ([]string, error) {
 }
 
 func AppendDataToTable(ctx context.Context, rel handle.Relation, bat *batch.Batch) (err error) {
-	tnBat := containers.ToTNBatch(bat, common.WorkspaceAllocator2)
+	tnBat := containers.ToTNBatch(bat, common.WorkspaceAllocator)
 	defer tnBat.Close()
 	err = rel.Append(ctx, tnBat)
 	return

@@ -66,7 +66,7 @@ func (entry *TableEntry) IsDeleted(
 		node := it.Get()
 		tombstone := node.GetPayload()
 		tombstone.RLock()
-		visible, err := tombstone.IsVisible(txn, tombstone.RWMutex)
+		visible, err := tombstone.IsVisibleWithLock(txn, tombstone.RWMutex)
 		tombstone.RUnlock()
 		if err != nil {
 			return false, err
@@ -97,7 +97,7 @@ func (entry *TableEntry) FillDeletes(
 		node := it.Get()
 		tombstone := node.GetPayload()
 		tombstone.RLock()
-		visible, err := tombstone.IsVisible(txn, tombstone.RWMutex)
+		visible, err := tombstone.IsVisibleWithLock(txn, tombstone.RWMutex)
 		if err != nil {
 			return err
 		}

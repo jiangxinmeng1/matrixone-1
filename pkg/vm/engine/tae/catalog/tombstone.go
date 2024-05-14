@@ -35,7 +35,7 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 	}
 	entry.RLock()
 	createTS := entry.GetCreatedAtLocked()
-	droppedTS := entry.GetDeleteAt()
+	droppedTS := entry.GetDeleteAtLocked()
 	entry.RUnlock()
 	if checkTombstoneVisibility {
 		if createTS.Less(&start) || createTS.Greater(&end) {
@@ -93,7 +93,7 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
 	entry.RLock()
-	droppedTS := entry.GetDeleteAt()
+	droppedTS := entry.GetDeleteAtLocked()
 	entry.RUnlock()
 	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
 		return nil

@@ -84,16 +84,16 @@ func (replayer *Replayer) PreReplayWal() {
 }
 
 func (replayer *Replayer) postReplayWal() {
-	processor := new(catalog.LoopProcessor)
-	processor.ObjectFn = func(entry *catalog.ObjectEntry) (err error) {
-		if entry.InMemoryDeletesExisted() {
-			entry.GetTable().DeletedDirties = append(entry.GetTable().DeletedDirties, entry)
-		}
-		return
-	}
-	if err := replayer.db.Catalog.RecurLoop(processor); err != nil {
-		panic(err)
-	}
+	// processor := new(catalog.LoopProcessor)
+	// processor.ObjectFn = func(entry *catalog.ObjectEntry) (err error) {
+	// 	if entry.InMemoryDeletesExisted() {
+	// 		entry.GetTable().DeletedDirties = append(entry.GetTable().DeletedDirties, entry)
+	// 	}
+	// 	return
+	// }
+	// if err := replayer.db.Catalog.RecurLoop(processor); err != nil {
+	// 	panic(err)
+	// }
 }
 func (replayer *Replayer) Replay() {
 	replayer.wg.Add(1)

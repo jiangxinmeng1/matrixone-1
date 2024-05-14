@@ -1077,7 +1077,7 @@ func (h *Handle) HandleWrite(
 				metalocations[location.Name().String()] = struct{}{}
 			}
 			statsCNVec := req.Batch.Vecs[1]
-			statsVec := containers.ToTNVector(statsCNVec, common.WorkspaceAllocator2)
+			statsVec := containers.ToTNVector(statsCNVec, common.WorkspaceAllocator)
 			for i := 0; i < statsVec.Length(); i++ {
 				s := objectio.ObjectStats(statsVec.Get(i).([]byte))
 				delete(metalocations, s.ObjectName().String())
@@ -1187,9 +1187,9 @@ func (h *Handle) HandleWrite(
 	if len(req.Batch.Vecs) != 2 {
 		panic(fmt.Sprintf("req.Batch.Vecs length is %d, should be 2", len(req.Batch.Vecs)))
 	}
-	rowIDVec := containers.ToTNVector(req.Batch.GetVector(0), common.WorkspaceAllocator2)
+	rowIDVec := containers.ToTNVector(req.Batch.GetVector(0), common.WorkspaceAllocator)
 	defer rowIDVec.Close()
-	pkVec := containers.ToTNVector(req.Batch.GetVector(1), common.WorkspaceAllocator2)
+	pkVec := containers.ToTNVector(req.Batch.GetVector(1), common.WorkspaceAllocator)
 	//defer pkVec.Close()
 	// TODO: debug for #13342, remove me later
 	if h.IsInterceptTable(tb.Schema(false).(*catalog2.Schema).Name) {

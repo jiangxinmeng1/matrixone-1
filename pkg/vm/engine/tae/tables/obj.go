@@ -203,38 +203,7 @@ func (obj *object) RunCalibration() (score int, err error) {
 }
 
 func (obj *object) estimateRawScore() (score int, dropped bool) {
-	if obj.meta.HasDropCommitted() && !obj.meta.InMemoryDeletesExisted() {
-		dropped = true
-		return
-	}
-<<<<<<< HEAD
-	// TODO
-	changeCnt := obj.meta.GetDeleteCount()
-=======
-	changeCnt := uint32(0)
-	obj.RLock()
-	objectMVCC := obj.tryGetMVCC()
-	if objectMVCC != nil {
-		changeCnt = objectMVCC.GetChangeIntentionCntLocked()
-	}
-	obj.RUnlock()
->>>>>>> main
-	if changeCnt == 0 {
-		// No deletes found
-		score = 0
-	} else {
-		// Any delete
-		score = 1
-	}
-
-	// If any delete found and the table or database of the object had
-	// been deleted. Force checkpoint the object
-	if score > 0 {
-		if _, terminated := obj.meta.GetTerminationTS(); terminated {
-			score = 100
-		}
-	}
-	return
+	return 0, obj.meta.HasDropCommitted()
 }
 
 func (obj *object) GetByFilter(
@@ -246,7 +215,6 @@ func (obj *object) GetByFilter(
 	if filter.Op != handle.FilterEq {
 		panic("logic error")
 	}
-	mp = common.WorkspaceAllocator3
 	if obj.meta.GetSchema().SortKey == nil {
 		rid := filter.Val.(types.Rowid)
 		offset = rid.GetRowOffset()

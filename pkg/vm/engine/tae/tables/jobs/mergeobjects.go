@@ -71,8 +71,8 @@ func NewMergeObjectsTask(
 	txn txnif.AsyncTxn,
 	mergedObjs []*catalog.ObjectEntry,
 	rt *dbutils.Runtime,
-	isTombstone bool,
-	targetObjSize uint32) (task *mergeObjectsTask, err error) {
+	targetObjSize uint32,
+	isTombstone bool) (task *mergeObjectsTask, err error) {
 	if len(mergedObjs) == 0 {
 		panic("empty mergedObjs")
 	}
@@ -209,7 +209,6 @@ func (task *mergeObjectsTask) PrepareData(ctx context.Context) ([]*batch.Batch, 
 		}
 		minBlockOffset := task.mergedBlkCnt[i]
 
-		columnIdx := idxs
 		for j := 0; j < maxBlockOffset-minBlockOffset; j++ {
 			if views[minBlockOffset+j], err = obj.GetColumnDataByIds(ctx, uint16(j), idxs, common.MergeAllocator); err != nil {
 				return nil, nil, nil, err

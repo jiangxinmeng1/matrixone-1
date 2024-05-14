@@ -338,7 +338,7 @@ func (c *objectPruneArg) String() string {
 	if c.ack != -1 {
 		return fmt.Sprintf("prune: execute task: %d", c.ack)
 	} else {
-		return fmt.Sprintf("prune: table %v-%v, %v ago, cacheLen %v", c.tbl.ID, c.tbl.GetLastestSchema().Name, c.ago, TaskCache.Len())
+		return fmt.Sprintf("prune: table %v-%v, %v ago, cacheLen %v", c.tbl.ID, c.tbl.GetLastestSchema(false).Name, c.ago, TaskCache.Len())
 	}
 }
 
@@ -378,7 +378,7 @@ func (c *objectPruneArg) Run() error {
 	TaskCache.Unlock()
 	entry := c.tbl
 
-	it := entry.MakeObjectIt(true)
+	it := entry.MakeObjectIt(true, false)
 	now := c.ctx.db.TxnMgr.Now()
 	var total, stale, selected int
 	var minR, maxR, totalR, minS, maxS, totalS int
@@ -400,9 +400,6 @@ func (c *objectPruneArg) Run() error {
 			continue
 		}
 		stale++
-		if c.tbl.TryGetTombstone(obj.ID) != nil || obj.GetObjectData().GetTotalChanges() > 0 { // has deletes
-			continue
-		}
 		selected++
 		selectedObjs = append(selectedObjs, obj)
 		stat := obj.GetObjectStats()
@@ -482,7 +479,7 @@ func (c *objectPruneArg) executePrune() error {
 	notfound := 0
 	w := &bytes.Buffer{}
 	for _, obj := range task.objs {
-		if err := tblHdl.SoftDeleteObject(&obj.ID); err != nil {
+		if err := tblHdl.SoftDeleteObject(&obj.ID, obj.IsTombstone); err != nil {
 			logutil.Errorf("objprune: del obj %s: %v", obj.ID.String(), err)
 			return err
 		}

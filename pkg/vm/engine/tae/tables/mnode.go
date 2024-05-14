@@ -355,7 +355,6 @@ func (node *memoryNode) GetRowByFilter(
 	filter *handle.Filter,
 	mp *mpool.MPool,
 ) (blkID uint16, row uint32, err error) {
-	mp = common.WorkspaceAllocator3
 	node.object.RLock()
 	defer node.object.RUnlock()
 	rows, err := node.GetRowsByKey(filter.Val)
@@ -474,7 +473,7 @@ func (node *memoryNode) checkConflictAndDupClosure(
 		fullBlockID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 		rowID := objectio.NewRowid(fullBlockID, row)
 		var deleted bool
-		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, common.WorkspaceAllocator2)
+		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, common.WorkspaceAllocator)
 		if !deleted {
 			*dupRow = row
 			return moerr.GetOkExpectedDup()

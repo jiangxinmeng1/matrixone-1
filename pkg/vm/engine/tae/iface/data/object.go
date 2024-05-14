@@ -142,7 +142,7 @@ type Object interface {
 		keys containers.Vector,
 		keysZM index.ZM,
 		bf objectio.BloomFilter,
-		mp *mpool.MPool) (err error )
+		mp *mpool.MPool) (err error)
 	Close()
 }
 

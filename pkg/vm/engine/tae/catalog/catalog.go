@@ -20,25 +20,11 @@ import (
 	"fmt"
 	"sync"
 
-<<<<<<< HEAD
-	// "github.com/matrixorigin/matrixone/pkg/objectio"
-	"go.uber.org/zap"
-
-	// "time"
-
-=======
->>>>>>> main
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-<<<<<<< HEAD
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	// "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
-=======
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
->>>>>>> main
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
@@ -166,7 +152,7 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 	}
 	processor.ObjectFn = func(se *ObjectEntry) error {
 		se.RLock()
-		needGC := se.DeleteBeforeLocked(ts) && !se.InMemoryDeletesExisted()
+		needGC := se.DeleteBeforeLocked(ts)
 		se.RUnlock()
 		if needGC {
 			tbl := se.table
@@ -176,7 +162,7 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 	}
 	processor.TombstoneFn = func(se *ObjectEntry) error {
 		se.RLock()
-		needGC := obj.DeleteBeforeLocked(ts) && !obj.InMemoryDeletesExisted()
+		needGC := se.DeleteBeforeLocked(ts)
 		se.RUnlock()
 		if needGC {
 			tbl := se.table

@@ -242,7 +242,7 @@ func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Tab
 	case pkgcatalog.SystemRelAttr_CatalogVersion:
 		colData.Append(schema.CatalogVersion, false)
 	case catalog.AccountIDDbNameTblName:
-		packer := types.NewPacker(common.WorkspaceAllocator2)
+		packer := types.NewPacker(common.WorkspaceAllocator)
 		packer.EncodeUint32(schema.AcInfo.TenantID)
 		packer.EncodeStringType([]byte(table.GetDB().GetName()))
 		packer.EncodeStringType([]byte(schema.Name))
@@ -301,7 +301,7 @@ func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode],
 	case pkgcatalog.SystemDBAttr_Type:
 		colData.Append([]byte(db.GetDatType()), false)
 	case catalog.AccountIDDbName:
-		packer := types.NewPacker(common.WorkspaceAllocator2)
+		packer := types.NewPacker(common.WorkspaceAllocator)
 		packer.EncodeUint32(db.GetTenantID())
 		packer.EncodeStringType([]byte(db.GetName()))
 		colData.Append(packer.Bytes(), false)

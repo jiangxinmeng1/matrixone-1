@@ -186,20 +186,17 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, policy Policy) {
 		}
 
 		if len(objs) > 1 {
-			factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-				return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes)
+			e.scheduleMergeObjects(objScopes, objs, objectBlkCnt, entry, false)
 		}
 		if len(tombstones) > 1 {
-			factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-				return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes)
+			e.scheduleMergeObjects(tombstoneScopes, tombstones, tombstoneBlkCnt, entry, true)
 		}
 	}
-
 }
 func (e *MergeExecutor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalog.ObjectEntry, blkCnt int, entry *catalog.TableEntry, isTombstone bool) {
 	osize, esize, _ := estimateMergeConsume(mobjs)
 	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, isTombstone)
+		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes, isTombstone)
 	}
 	task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory)
 	if err != nil {

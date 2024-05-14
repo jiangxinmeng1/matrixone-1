@@ -418,7 +418,7 @@ func (obj *aobject) CollectAppendInRange(
 }
 
 func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {
-	if obj.meta.HasDropCommitted() && !obj.meta.InMemoryDeletesExisted() {
+	if obj.meta.HasDropCommitted() {
 		dropped = true
 		return
 	}
@@ -436,8 +436,7 @@ func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {
 		return
 	}
 
-	changesCnt := obj.meta.GetDeleteCount()
-	if changesCnt == 0 && rows == 0 {
+	if rows == 0 {
 		score = 0
 	} else {
 		score = 1

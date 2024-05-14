@@ -2645,7 +2645,7 @@ func TestMergeblocks2(t *testing.T) {
 		assert.NoError(t, err)
 
 		objsToMerge := []*catalog.ObjectEntry{objHandle.GetMeta().(*catalog.ObjectEntry)}
-		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0,false)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0, false)
 		assert.NoError(t, err)
 		err = task.OnExec(context.Background())
 		assert.NoError(t, err)
@@ -5407,11 +5407,11 @@ func TestUpdatePerf(t *testing.T) {
 			for i := 0; i < cnt; i++ {
 				txn, rel := tae.GetRelation()
 				err := rel.UpdateByFilter(context.Background(), filter, 0, int8(0), false)
-				assert.NoError(t,err)
+				assert.NoError(t, err)
 				err = txn.Commit(context.Background())
-				assert.NoError(t,err)
-				if i%50 ==0{
-					t.Logf("lalala %d",i)
+				assert.NoError(t, err)
+				if i%50 == 0 {
+					t.Logf("lalala %d", i)
 				}
 			}
 		}

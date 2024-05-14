@@ -531,55 +531,6 @@ func (blk *baseObject) getPersistedValue(
 	return
 }
 
-func (blk *baseObject) DeletesInfo() string {
-	blk.RLock()
-	defer blk.RUnlock()
-	mvcc := blk.tryGetMVCC()
-	if mvcc == nil {
-		return ""
-	}
-	return mvcc.StringLocked(1, 0, "")
-}
-
-func (blk *baseObject) RangeDelete(
-	txn txnif.AsyncTxn,
-	blkID uint16,
-	start, end uint32,
-	pk containers.Vector,
-	dt handle.DeleteType) (node txnif.DeleteNode, err error) {
-	blk.Lock()
-	defer blk.Unlock()
-	blkMVCC := blk.getOrCreateMVCC().GetOrCreateDeleteChainLocked(blkID)
-	if err = blkMVCC.CheckNotDeleted(start, end, txn.GetStartTS()); err != nil {
-		return
-	}
-	node = blkMVCC.CreateDeleteNode(txn, dt)
-	node.RangeDeleteLocked(start, end, pk, common.MutMemAllocator)
-	return
-}
-
-func (blk *baseObject) TryDeleteByDeltaloc(
-	txn txnif.AsyncTxn,
-	blkID uint16,
-	deltaLoc objectio.Location) (node txnif.TxnEntry, ok bool, err error) {
-	if blk.meta.IsAppendable() {
-		return
-	}
-	blk.Lock()
-	defer blk.Unlock()
-	blkMVCC := blk.getOrCreateMVCC().GetOrCreateDeleteChainLocked(blkID)
-	return blkMVCC.TryDeleteByDeltalocLocked(txn, deltaLoc, true)
-}
-
-func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
-	rows, err := blk.Rows()
-	if err != nil {
-		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)
-	}
-	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.PPString(level, depth, prefix), rows)
-	return s
-}
-
 func (blk *baseObject) CollectDeleteInRange(
 	ctx context.Context,
 	start, end types.TS,
@@ -686,4 +637,27 @@ func (blk *baseObject) GetAllColumns(
 		}
 		return bat, err
 	}
+}
+
+func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
+	rows, err := blk.Rows()
+	if err != nil {
+		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)
+	}
+	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.PPString(level, depth, prefix), rows)
+	if level >= common.PPL1 {
+		blk.RLock()
+		var appendstr, deletestr string
+		if blk.appendMVCC != nil {
+			appendstr = blk.appendMVCC.StringLocked()
+		}
+		blk.RUnlock()
+		if appendstr != "" {
+			s = fmt.Sprintf("%s\n Appends: %s", s, appendstr)
+		}
+		if deletestr != "" {
+			s = fmt.Sprintf("%s\n Deletes: %s", s, deletestr)
+		}
+	}
+	return s
 }

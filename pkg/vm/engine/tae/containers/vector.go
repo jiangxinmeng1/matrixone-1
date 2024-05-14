@@ -113,7 +113,7 @@ func NewVector(typ types.Type, opts ...Options) *vectorWrapper {
 		capacity = opts[0].Capacity
 	}
 	if alloc == nil {
-		alloc = common.Default2
+		alloc = common.DefaultAllocator
 	}
 	vec.mpool = alloc
 	if capacity > 0 {
@@ -389,7 +389,7 @@ func (vec *vectorWrapper) CloneWindow(offset, length int, allocator ...*mpool.MP
 	}
 
 	cloned := NewVector(*vec.GetType(), opts)
-	v, err := vec.wrapped.CloneWindow(offset, offset+length, common.DebugAllocator)
+	v, err := vec.wrapped.CloneWindow(offset, offset+length, cloned.GetAllocator())
 	if err != nil {
 		panic(err)
 	}

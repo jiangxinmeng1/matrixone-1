@@ -37,10 +37,10 @@ type ErrHandler interface {
 
 type NoopErrHandler struct{}
 
-func (h *NoopErrHandler) OnObjectErr(entry *catalog.ObjectEntry, err error) error { return nil }
+func (h *NoopErrHandler) OnObjectErr(entry *catalog.ObjectEntry, err error) error    { return nil }
 func (h *NoopErrHandler) OnTombstoneErr(entry *catalog.ObjectEntry, err error) error { return nil }
-func (h *NoopErrHandler) OnTableErr(entry *catalog.TableEntry, err error) error   { return nil }
-func (h *NoopErrHandler) OnDatabaseErr(entry *catalog.DBEntry, err error) error   { return nil }
+func (h *NoopErrHandler) OnTableErr(entry *catalog.TableEntry, err error) error      { return nil }
+func (h *NoopErrHandler) OnDatabaseErr(entry *catalog.DBEntry, err error) error      { return nil }
 
 type dbScanner struct {
 	*catalog.LoopProcessor

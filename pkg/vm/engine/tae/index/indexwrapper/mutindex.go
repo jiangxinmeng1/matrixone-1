@@ -206,7 +206,7 @@ func (idx *MutIndex) Contains(
 		if err == index.ErrNotFound {
 			return nil
 		}
-		if len(rows)!=1{
+		if len(rows) != 1 {
 			panic("logic err: tombstones doesn't have duplicate rows")
 		}
 		containers.UpdateValue(keys, uint32(offset), nil, true, mp)

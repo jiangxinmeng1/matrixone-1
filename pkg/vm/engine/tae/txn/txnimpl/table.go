@@ -803,6 +803,17 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		}
 		err = nil
 	}
+	pks := containers.MakeVector(tbl.schema.GetPrimaryKey().Type, common.DefaultAllocator)
+	pks.Append(filter.Val, false)
+	defer pks.Close()
+	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)
+	rowIDs.Append(nil, true)
+	defer rowIDs.Close()
+	pkType := pks.GetType()
+	pksZM := index.NewZM(pkType.Oid, pkType.Scale)
+	if err = index.BatchUpdateZM(pksZM, pks.GetDownstreamVector()); err != nil {
+		return
+	}
 	h := newRelation(tbl)
 	blockIt := h.MakeObjectIt(false, false)
 	for blockIt.Valid() {
@@ -812,20 +823,41 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 			blockIt.Next()
 			continue
 		}
-		var blkID uint16
-		blkID, offset, err = h.GetByFilter(ctx, filter, common.WorkspaceAllocator)
-		if err == nil {
-			id = h.Fingerprint()
-			id.SetBlockOffset(blkID)
-			deleted, err := tbl.IsDeletedInWorkSpace(id.BlockID, offset)
+		obj := h.GetMeta().(*catalog.ObjectEntry)
+		obj.RLock()
+		shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAborted()
+		obj.RUnlock()
+		if shouldSkip {
+			continue
+		}
+		objData := obj.GetObjectData()
+		if err = objData.GetDuplicatedRows(
+			context.Background(),
+			tbl.store.txn,
+			pks,
+			pksZM,
+			true,
+			objectio.BloomFilter{},
+			rowIDs,
+			common.WorkspaceAllocator,
+		); err != nil {
+			return
+		}
+		tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+		if !rowIDs.IsNull(0) {
+			rowID := rowIDs.Get(0).(types.Rowid)
+			id = obj.AsCommonID()
+			id.SetBlockOffset(rowID.GetBlockOffset())
+			offset = rowID.GetRowOffset()
+			var deleted bool
+			deleted, err = tbl.IsDeletedInWorkSpace(id.BlockID, offset)
 			if err != nil {
 				return nil, 0, err
 			}
 			if !deleted {
 				break
 			}
-			id = nil
-			offset = 0
+			return
 		}
 		blockIt.Next()
 	}

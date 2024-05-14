@@ -228,7 +228,7 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 	txn, rel := e.GetRelation()
 	schema := rel.GetMeta().(*catalog.TableEntry).GetLastestSchemaLocked(false)
 	pkName := schema.GetPrimaryKey().Name
-	it := rel.MakeObjectIt(false)
+	it := rel.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		defer blk.Close()

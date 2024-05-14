@@ -241,7 +241,7 @@ func (c *APP1Client) CheckBound() {
 // TODO: rewrite
 func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint32, count uint64, err error) {
 	rel, _ := c.DB.GetRelationByName(repertory.Name)
-	blockIt := rel.MakeObjectIt(false)
+	blockIt := rel.MakeObjectIt(false, true)
 	var view *containers.ColumnView
 	found := false
 	for blockIt.Valid() {
@@ -549,7 +549,7 @@ func TestWarehouse(t *testing.T) {
 		txn, _ = db.StartTxn(nil)
 		rel, err := GetWarehouseRelation("test", txn)
 		assert.Nil(t, err)
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		blk := it.GetObject()
 		view, _ := blk.GetColumnDataById(context.Background(), 0, 1, common.DefaultAllocator)
 		t.Log(view.GetData().String())

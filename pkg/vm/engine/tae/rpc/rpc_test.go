@@ -440,7 +440,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.NoError(t, err)
 
 	rows := 0
-	it := tbH.MakeObjectIt(false)
+	it := tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -455,7 +455,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.Equal(t, taeBat.Length(), rows)
 
 	var physicals []*containers.BlockView
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -558,7 +558,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.NoError(t, err)
 
 	rows = 0
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -747,7 +747,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 
-	it := tbH.MakeObjectIt(false)
+	it := tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -764,7 +764,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	hideCol, err := GetHideKeysOfTable(tbH)
 	assert.NoError(t, err)
 
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	blk := it.GetObject()
 	cv, err := blk.GetColumnDataByName(context.Background(), 0, hideCol[0].Name, common.DefaultAllocator)
 	assert.NoError(t, err)
@@ -812,7 +812,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -1019,7 +1019,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 
-	it := tbH.MakeObjectIt(false)
+	it := tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
@@ -1035,7 +1035,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	// read row ids
 	hideCol, err := GetHideKeysOfTable(tbH)
 	assert.NoError(t, err)
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	cv, err := it.GetObject().GetColumnDataByName(context.Background(), 0, hideCol[0].Name, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer cv.Close()
@@ -1117,7 +1117,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
@@ -1343,7 +1343,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	assert.NoError(t, err)
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
-	it := tbH.MakeObjectIt(false)
+	it := tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
@@ -1358,7 +1358,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 
 	hideCol, err := GetHideKeysOfTable(tbH)
 	assert.NoError(t, err)
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	v, err := it.GetObject().GetColumnDataByName(context.Background(), 0, hideCol[0].Name, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer v.Close()
@@ -1441,7 +1441,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	tbH, err = dbH.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 
-	it = tbH.MakeObjectIt(false)
+	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
@@ -1673,7 +1673,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		tbH, err := dbH.GetRelationByName(schema.Name)
 		assert.NoError(t, err)
 
-		it := tbH.MakeObjectIt(false)
+		it := tbH.MakeObjectIt(false, true)
 		for it.Valid() {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
@@ -1711,7 +1711,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		hideCol, err := GetHideKeysOfTable(tbH)
 		assert.NoError(t, err)
 
-		it := tbH.MakeObjectIt(false)
+		it := tbH.MakeObjectIt(false, true)
 		v, err := it.GetObject().GetColumnDataByName(context.Background(), 0, hideCol[0].Name, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer v.Close()
@@ -1765,7 +1765,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		tbH, err := dbH.GetRelationByName(schema.Name)
 		assert.NoError(t, err)
 
-		it := tbH.MakeObjectIt(false)
+		it := tbH.MakeObjectIt(false, true)
 		for it.Valid() {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
@@ -1842,7 +1842,7 @@ func TestApplyDeltaloc(t *testing.T) {
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
 	var metas []*catalog.ObjectEntry
-	it := rel.MakeObjectIt(false)
+	it := rel.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		meta := blk.GetMeta().(*catalog.ObjectEntry)
@@ -1966,7 +1966,7 @@ func TestApplyDeltaloc(t *testing.T) {
 	assert.NoError(t, err)
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.NoError(t, err)
-	it = rel.MakeObjectIt(false)
+	it = rel.MakeObjectIt(false, true)
 	for _, def := range schema.ColDefs {
 		length := 0
 		for it.Valid() {

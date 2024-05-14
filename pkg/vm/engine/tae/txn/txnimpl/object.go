@@ -97,9 +97,9 @@ func newObjectItOnSnap(table *txnTable, isTombstone bool) handle.ObjectIt {
 	return it
 }
 
-func newObjectIt(table *txnTable, isTombstone bool) handle.ObjectIt {
+func newObjectIt(table *txnTable, reverse bool, isTombstone bool) handle.ObjectIt {
 	it := &ObjectIt{
-		linkIt: table.entry.MakeObjectIt(true, isTombstone),
+		linkIt: table.entry.MakeObjectIt(reverse, isTombstone),
 		table:  table,
 	}
 	var err error

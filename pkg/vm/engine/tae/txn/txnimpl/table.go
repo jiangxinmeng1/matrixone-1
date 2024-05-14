@@ -793,6 +793,9 @@ func (tbl *txnTable) IsLocalDeleted(row uint32) bool {
 }
 
 func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id *common.ID, offset uint32, err error) {
+	if filter.Op != handle.FilterEq {
+		panic("logic error")
+	}
 	if tbl.tableSpace != nil {
 		id, offset, err = tbl.tableSpace.GetByFilter(filter)
 		if err == nil {
@@ -801,7 +804,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		err = nil
 	}
 	h := newRelation(tbl)
-	blockIt := h.MakeObjectIt(false)
+	blockIt := h.MakeObjectIt(false, false)
 	for blockIt.Valid() {
 		h := blockIt.GetObject()
 		defer h.Close()

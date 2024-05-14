@@ -54,7 +54,7 @@ func TestHiddenWithPK1(t *testing.T) {
 	err := rel.Append(context.Background(), bats[0])
 	{
 		offsets := make([]uint32, 0)
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		for it.Valid() {
 			blk := it.GetObject()
 			view, err := blk.GetColumnDataById(context.Background(), 0, schema.PhyAddrKey.Idx, common.DefaultAllocator)
@@ -119,7 +119,7 @@ func TestHiddenWithPK1(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -161,7 +161,7 @@ func TestHiddenWithPK1(t *testing.T) {
 
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		objIdx := -1
 		for it.Valid() {
 			blk := it.GetObject()
@@ -305,7 +305,7 @@ func TestHidden2(t *testing.T) {
 
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		rows := 0
 		for it.Valid() {
 			blk := it.GetObject()

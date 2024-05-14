@@ -131,14 +131,14 @@ func (h *txnRelation) SimplePPString(level common.PPLevel) string {
 	if level < common.PPL1 {
 		return s
 	}
-	it := h.MakeObjectIt(false)
+	it := h.MakeObjectIt(false, true)
 	for it.Valid() {
 		object := it.GetObject()
 		defer object.Close()
 		s = fmt.Sprintf("%s\n%s", s, object.String())
 		it.Next()
 	}
-	it = h.MakeObjectIt(true)
+	it = h.MakeObjectIt(true, true)
 	for it.Valid() {
 		object := it.GetObject()
 		defer object.Close()
@@ -200,8 +200,8 @@ func (h *txnRelation) MakeObjectItOnSnap(isTombstone bool) handle.ObjectIt {
 	return newObjectItOnSnap(h.table, isTombstone)
 }
 
-func (h *txnRelation) MakeObjectIt(isTombstone bool) handle.ObjectIt {
-	return newObjectIt(h.table, isTombstone)
+func (h *txnRelation) MakeObjectIt(isTombstone bool, reverse bool) handle.ObjectIt {
+	return newObjectIt(h.table, reverse, isTombstone)
 }
 
 func (h *txnRelation) GetByFilter(

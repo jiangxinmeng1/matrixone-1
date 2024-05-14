@@ -59,7 +59,7 @@ func TestCatalog1(t *testing.T) {
 
 	{
 		_, rel = testutil.GetDefaultRelation(t, db, schema.Name)
-		it := rel.MakeObjectIt(false)
+		it := rel.MakeObjectIt(false, true)
 		cnt := 0
 		for it.Valid() {
 			object := it.GetObject()

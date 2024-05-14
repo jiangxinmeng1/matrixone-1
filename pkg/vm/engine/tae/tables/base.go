@@ -159,6 +159,12 @@ func (blk *baseObject) TryUpgrade() (err error) {
 
 func (blk *baseObject) GetMeta() any { return blk.meta }
 func (blk *baseObject) CheckFlushTaskRetry(startts types.TS) bool {
+	if !blk.meta.IsAppendable() {
+		panic("not support")
+	}
+	if blk.meta.HasDropCommitted() {
+		panic("not support")
+	}
 	blk.RLock()
 	defer blk.RUnlock()
 	x := blk.appendMVCC.GetLatestAppendPrepareTSLocked()
@@ -525,7 +531,47 @@ func (blk *baseObject) getPersistedValue(
 	return
 }
 
-func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkID int) string {
+func (blk *baseObject) DeletesInfo() string {
+	blk.RLock()
+	defer blk.RUnlock()
+	mvcc := blk.tryGetMVCC()
+	if mvcc == nil {
+		return ""
+	}
+	return mvcc.StringLocked(1, 0, "")
+}
+
+func (blk *baseObject) RangeDelete(
+	txn txnif.AsyncTxn,
+	blkID uint16,
+	start, end uint32,
+	pk containers.Vector,
+	dt handle.DeleteType) (node txnif.DeleteNode, err error) {
+	blk.Lock()
+	defer blk.Unlock()
+	blkMVCC := blk.getOrCreateMVCC().GetOrCreateDeleteChainLocked(blkID)
+	if err = blkMVCC.CheckNotDeleted(start, end, txn.GetStartTS()); err != nil {
+		return
+	}
+	node = blkMVCC.CreateDeleteNode(txn, dt)
+	node.RangeDeleteLocked(start, end, pk, common.MutMemAllocator)
+	return
+}
+
+func (blk *baseObject) TryDeleteByDeltaloc(
+	txn txnif.AsyncTxn,
+	blkID uint16,
+	deltaLoc objectio.Location) (node txnif.TxnEntry, ok bool, err error) {
+	if blk.meta.IsAppendable() {
+		return
+	}
+	blk.Lock()
+	defer blk.Unlock()
+	blkMVCC := blk.getOrCreateMVCC().GetOrCreateDeleteChainLocked(blkID)
+	return blkMVCC.TryDeleteByDeltalocLocked(txn, deltaLoc, true)
+}
+
+func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
 	rows, err := blk.Rows()
 	if err != nil {
 		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)

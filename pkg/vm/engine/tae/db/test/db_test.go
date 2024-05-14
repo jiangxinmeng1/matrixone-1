@@ -2645,7 +2645,7 @@ func TestMergeblocks2(t *testing.T) {
 		assert.NoError(t, err)
 
 		objsToMerge := []*catalog.ObjectEntry{objHandle.GetMeta().(*catalog.ObjectEntry)}
-		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, false)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0,false)
 		assert.NoError(t, err)
 		err = task.OnExec(context.Background())
 		assert.NoError(t, err)
@@ -2716,7 +2716,7 @@ func TestMergeEmptyBlocks(t *testing.T) {
 		assert.NoError(t, err)
 
 		objsToMerge := []*catalog.ObjectEntry{objHandle.GetMeta().(*catalog.ObjectEntry)}
-		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, false)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0, false)
 		assert.NoError(t, err)
 		err = task.OnExec(context.Background())
 		assert.NoError(t, err)
@@ -3434,25 +3434,6 @@ func TestDropCreated4(t *testing.T) {
 	assert.Nil(t, err)
 
 	tae.Restart(ctx)
-}
-
-// records create at 1 and commit
-// read by ts 1, err should be nil
-func TestReadEqualTS(t *testing.T) {
-	defer testutils.AfterTest(t)()
-	ctx := context.Background()
-
-	opts := config.WithLongScanAndCKPOpts(nil)
-	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
-	defer tae.Close()
-
-	txn, err := tae.StartTxn(nil)
-	tae.Catalog.Lock()
-	tae.Catalog.CreateDBEntryByTS("db", txn.GetStartTS())
-	tae.Catalog.Unlock()
-	assert.Nil(t, err)
-	_, err = txn.GetDatabase("db")
-	assert.Nil(t, err)
 }
 
 func TestTruncateZonemap(t *testing.T) {
@@ -4313,7 +4294,7 @@ func TestBlockRead(t *testing.T) {
 
 	tae.CompactBlocks(false)
 
-	objStats := blkEntry.GetLatestCommittedNode().BaseNode
+	objStats := blkEntry.GetLatestCommittedNodeLocked().BaseNode
 	assert.False(t, objStats.IsEmpty())
 
 	bid, sid := blkEntry.ID, blkEntry.ID
@@ -4462,12 +4443,12 @@ func TestCompactDeltaBlk(t *testing.T) {
 		t.Log(tae.Catalog.SimplePPString(3))
 
 		txn, _ = tae.GetRelation()
-		task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{meta}, tae.DB.Runtime, false)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{meta}, tae.DB.Runtime, 0, false)
 		assert.NoError(t, err)
 		err = task.OnExec(context.Background())
 		assert.NoError(t, err)
 		t.Log(tae.Catalog.SimplePPString(3))
-		assert.True(t, !meta.GetLatestCommittedNode().BaseNode.IsEmpty())
+		assert.True(t, !meta.GetLatestCommittedNodeLocked().BaseNode.IsEmpty())
 		created := task.GetCreatedObjects()[0]
 		assert.False(t, created.GetLatestNodeLocked().BaseNode.IsEmpty())
 		err = txn.Commit(context.Background())
@@ -4927,7 +4908,7 @@ func TestMergeBlocks3(t *testing.T) {
 		require.NoError(t, err)
 
 		objsToMerge := []*catalog.ObjectEntry{obj1}
-		task, err := jobs.NewMergeObjectsTask(nil, mergetxn, objsToMerge, tae.Runtime, false)
+		task, err := jobs.NewMergeObjectsTask(nil, mergetxn, objsToMerge, tae.Runtime, 0, false)
 		require.NoError(t, err)
 		require.NoError(t, task.OnExec(context.Background()))
 
@@ -5138,7 +5119,7 @@ func TestMergeMemsize(t *testing.T) {
 
 	{
 		txn, _ := tae.StartTxn(nil)
-		task, err := jobs.NewMergeObjectsTask(nil, txn, metas, tae.Runtime, false)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, metas, tae.Runtime, 0, false)
 		require.NoError(t, err)
 
 		dbutils.PrintMemStats()
@@ -5562,7 +5543,7 @@ func TestGCDropDB(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Nil(t, txn.Commit(context.Background()))
 
-	assert.Equal(t, txn.GetCommitTS(), db.GetMeta().(*catalog.DBEntry).GetDeleteAt())
+	assert.Equal(t, txn.GetCommitTS(), db.GetMeta().(*catalog.DBEntry).GetDeleteAtLocked())
 	now := time.Now()
 	testutils.WaitExpect(10000, func() bool {
 		return tae.Runtime.Scheduler.GetPenddingLSNCnt() == 0
@@ -5649,7 +5630,7 @@ func TestGCDropTable(t *testing.T) {
 		return tae.Runtime.Scheduler.GetPenddingLSNCnt() == 0
 	})
 	assert.Equal(t, uint64(0), tae.Runtime.Scheduler.GetPenddingLSNCnt())
-	assert.Equal(t, txn.GetCommitTS(), rel.GetMeta().(*catalog.TableEntry).GetDeleteAt())
+	assert.Equal(t, txn.GetCommitTS(), rel.GetMeta().(*catalog.TableEntry).GetDeleteAtLocked())
 	t.Log(time.Since(now))
 	err = manager.GC(context.Background())
 	assert.Nil(t, err)

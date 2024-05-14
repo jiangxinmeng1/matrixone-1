@@ -448,7 +448,7 @@ func (store *txnStore) CreateDatabaseWithID(name, createSql, datTyp string, id u
 }
 
 func (store *txnStore) DropDatabase(name string) (h handle.Database, err error) {
-	hasNewEntry, meta, err := store.catalog.DropDBEntry(name, store.txn)
+	hasNewEntry, meta, err := store.catalog.DropDBEntryByName(name, store.txn)
 	if err != nil {
 		return
 	}

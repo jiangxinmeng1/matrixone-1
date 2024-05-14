@@ -174,12 +174,13 @@ func NewFlushTableTailTask(
 		if obj.IsTombstone {
 			panic(fmt.Sprintf("logic err, obj %v is tombstone", obj.ID.String()))
 		}
-		if !hdl.IsAppendable() {
+		if !hdl.IsAppendable()&& !obj.HasDropCommitted()  {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
 		}
 		task.aObjMetas = append(task.aObjMetas, obj)
 		task.aObjHandles = append(task.aObjHandles, hdl)
 		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
+			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID.String())
 			return nil, txnif.ErrTxnNeedRetry
 		}
 	}
@@ -196,12 +197,13 @@ func NewFlushTableTailTask(
 		if !obj.IsTombstone {
 			panic(fmt.Sprintf("logic err, obj %v is not tombstone", obj.ID.String()))
 		}
-		if !hdl.IsAppendable() {
+		if !hdl.IsAppendable()&&!obj.HasDropCommitted()  {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
 		}
 		task.aTombstoneMetas = append(task.aTombstoneMetas, obj)
 		task.aTombstoneHandles = append(task.aTombstoneHandles, hdl)
 		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
+			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID.String())
 			return nil, txnif.ErrTxnNeedRetry
 		}
 	}
@@ -378,20 +380,12 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	readset := make([]*common.ID, 0, len(task.aObjMetas))
-	for _, obj := range task.aObjMetas {
-		readset = append(readset, obj.AsCommonID())
-	}
-	tombstoneReadset := make([]*common.ID, 0, len(task.aTombstoneMetas))
-	for _, obj := range task.aTombstoneMetas {
-		tombstoneReadset = append(readset, obj.AsCommonID())
-	}
 	if err = task.txn.LogTxnEntry(
 		task.dbid,
 		task.rel.ID(),
 		txnEntry,
-		readset,
-		tombstoneReadset,
+		nil,
+		nil,
 	); err != nil {
 		return
 	}
@@ -602,7 +596,10 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	var releaseF func()
 	var mapping []uint32
 	if schema.HasSortKey() {
-		writtenBatches, releaseF, mapping = mergesort.MergeAObj(task, readedBats, sortKeyPos, schema.BlockMaxRows, len(toLayout))
+		writtenBatches, releaseF, mapping, err = mergesort.MergeAObj(ctx, task, readedBats, sortKeyPos, schema.BlockMaxRows, len(toLayout))
+		if err != nil {
+			return
+		}
 	} else {
 		cnBatches := make([]*batch.Batch, len(readedBats))
 		for i := range readedBats {

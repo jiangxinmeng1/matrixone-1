@@ -17,6 +17,7 @@ package tables
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -343,11 +344,15 @@ func (obj *aobject) GetDuplicatedRows(
 	}()
 	node := obj.PinNode()
 	defer node.Unref()
+	maxRow := uint32(math.MaxUint32)
+	if !precommit {
+		maxRow, err = obj.GetMaxRowByTSLocked(txn.GetStartTS())
+	}
 	if !node.IsPersisted() {
 		return node.GetDuplicatedRows(
 			ctx,
 			txn,
-			precommit,
+			maxRow,
 			keys,
 			keysZM,
 			rowIDs,
@@ -363,12 +368,32 @@ func (obj *aobject) GetDuplicatedRows(
 			keysZM,
 			rowIDs,
 			true,
+			maxRow,
 			bf,
 			mp,
 		)
 	}
 }
 
+func (obj *aobject) GetMaxRowByTSLocked(ts types.TS) (uint32, error) {
+	node := obj.PinNode()
+	defer node.Unref()
+	if !node.IsPersisted() {
+		return obj.appendMVCC.GetMaxRowByTSLocked(ts), nil
+	} else {
+		vec, err := obj.LoadPersistedCommitTS(0)
+		if err != nil {
+			return 0, err
+		}
+		for i := uint32(0); i < uint32(vec.Length()); i++ {
+			commitTS := vec.Get(int(i)).(types.TS)
+			if commitTS.Greater(&ts) {
+				return i, nil
+			}
+		}
+		return uint32(vec.Length()), nil
+	}
+}
 func (obj *aobject) Contains(
 	ctx context.Context,
 	txn txnif.TxnReader,

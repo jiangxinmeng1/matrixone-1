@@ -131,10 +131,11 @@ func (node *memoryNode) getDuplicatedRows(
 	keysZM index.ZM,
 	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
+	maxRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), mp)
+	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, mp)
 }
 
 func (node *memoryNode) ContainsKey(ctx context.Context, key any, _ uint32) (ok bool, err error) {
@@ -435,7 +436,7 @@ func (node *memoryNode) BatchDedup(
 func (node *memoryNode) GetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
-	isCommitting bool,
+	maxVisibleRow uint32,
 	keys containers.Vector,
 	keysZM index.ZM,
 	rowIDs containers.Vector,
@@ -444,7 +445,7 @@ func (node *memoryNode) GetDuplicatedRows(
 ) (err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	err = node.getDuplicatedRows(ctx, keys, keysZM, bf, rowIDs, mp)
+	err = node.getDuplicatedRows(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, mp)
 
 	return
 }
@@ -682,7 +683,9 @@ func (node *memoryNode) getInMemoryValue(
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 	rowID := objectio.NewRowid(blkID, uint32(row))
+	node.object.RUnlock()
 	deleted, err := node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)
+	node.object.RLock()
 	if err != nil {
 		return
 	}

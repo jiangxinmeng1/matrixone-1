@@ -5383,7 +5383,7 @@ func TestUpdatePerf(t *testing.T) {
 	ctx := context.Background()
 
 	totalCnt := 4000
-	poolSize := 4
+	poolSize := 2
 	cnt := totalCnt / poolSize
 
 	opts := config.WithLongScanAndCKPOpts(nil)

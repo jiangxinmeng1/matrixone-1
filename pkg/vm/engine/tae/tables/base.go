@@ -187,7 +187,7 @@ func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) 
 
 func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector, err error) {
 	if !blk.meta.IsAppendable() {
-		return
+		panic("not support")
 	}
 	location, err := blk.buildMetalocation(bid)
 	if err != nil {
@@ -353,6 +353,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	blkOffset uint16,
 	isAblk bool,
 	isCommitting bool,
+	maxVisibleRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
 	schema := blk.meta.GetSchema()
@@ -367,15 +368,15 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		isCommitting,
 		mp,
 	)
-	defer view.Close()
 	if err != nil {
 		return
 	}
+	defer view.Close()
 	blkID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkOffset)
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID,
+			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID, maxVisibleRow,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
@@ -433,6 +434,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 	keysZM index.ZM,
 	rowIDs containers.Vector,
 	isAblk bool,
+	maxVisibleRow uint32,
 	bf objectio.BloomFilter,
 	mp *mpool.MPool,
 ) (err error) {
@@ -456,7 +458,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 			continue
 		}
-		err = blk.getDuplicateRowsWithLoad(ctx, txn, keys, sels, rowIDs, uint16(i), isAblk, isCommitting, mp)
+		err = blk.getDuplicateRowsWithLoad(ctx, txn, keys, sels, rowIDs, uint16(i), isAblk, isCommitting, maxVisibleRow, mp)
 		if err != nil {
 			return err
 		}

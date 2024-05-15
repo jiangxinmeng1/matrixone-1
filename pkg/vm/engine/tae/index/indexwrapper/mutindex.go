@@ -149,6 +149,7 @@ func (idx *MutIndex) GetDuplicatedRows(
 	_ objectio.BloomFilter,
 	blkID *types.Blockid,
 	rowIDs *vector.Vector,
+	maxVisibleRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
 	if keysZM.Valid() {
@@ -166,12 +167,17 @@ func (idx *MutIndex) GetDuplicatedRows(
 		if err == index.ErrNotFound {
 			return nil
 		}
-		maxRow := rows[len(rows)-1]
-		for _, row := range rows {
-			// TODO: remove
-			if row > maxRow {
-				panic("logic err")
+		var maxRow uint32
+		exist := false
+		for i := len(rows) - 1; i >= 0; i-- {
+			if rows[i] < maxVisibleRow {
+				maxRow = rows[i]
+				exist = true
+				break
 			}
+		}
+		if !exist {
+			return nil
 		}
 		rowID := objectio.NewRowid(blkID, maxRow)
 		containers.UpdateValue(rowIDs, uint32(offset), *rowID, false, mp)

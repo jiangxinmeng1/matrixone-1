@@ -149,9 +149,13 @@ func (obj *object) GetDuplicatedRows(
 		keysZM,
 		rowIDs,
 		false,
+		0,
 		bf,
 		mp,
 	)
+}
+func (obj *object) GetMaxRowByTSLocked(ts types.TS) (uint32, error) {
+	panic("not support")
 }
 func (obj *object) Contains(
 	ctx context.Context,

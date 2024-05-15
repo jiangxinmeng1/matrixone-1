@@ -825,7 +825,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		}
 		obj := h.GetMeta().(*catalog.ObjectEntry)
 		obj.RLock()
-		shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAborted()
+		shouldSkip := obj.IsCreatingOrAborted()
 		obj.RUnlock()
 		if shouldSkip {
 			continue
@@ -836,7 +836,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 			tbl.store.txn,
 			pks,
 			pksZM,
-			true,
+			false,
 			objectio.BloomFilter{},
 			rowIDs,
 			common.WorkspaceAllocator,
@@ -854,14 +854,14 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 			if err != nil {
 				return nil, 0, err
 			}
-			if !deleted {
+			if deleted {
 				break
 			}
 			return
 		}
 		blockIt.Next()
 	}
-	if err == nil && id == nil {
+	if err == nil {
 		err = moerr.NewNotFoundNoCtx()
 	}
 	return

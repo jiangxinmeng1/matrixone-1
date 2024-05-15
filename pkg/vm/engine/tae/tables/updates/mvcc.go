@@ -98,6 +98,14 @@ func (n *AppendMVCCHandle) GetAppendNodeByRow(row uint32) (an *AppendNode) {
 	return
 }
 
+func (n *AppendMVCCHandle) GetMaxRowByTSLocked(ts types.TS) uint32 {
+	_, node := n.appends.GetNodeToReadByPrepareTS(ts)
+	if node == nil {
+		return 0
+	}
+	return node.maxRow
+}
+
 // it collects all append nodes in the range [start, end]
 // minRow: is the min row
 // maxRow: is the max row

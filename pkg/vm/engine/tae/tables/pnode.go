@@ -80,7 +80,7 @@ func (node *persistedNode) BatchDedup(
 func (node *persistedNode) GetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
-	isCommitting bool,
+	maxVisibleRow uint32,
 	keys containers.Vector,
 	keysZM index.ZM,
 	rowIDs containers.Vector,

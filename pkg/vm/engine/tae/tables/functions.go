@@ -198,7 +198,7 @@ func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vec
 }
 
 func parseAGetDuplicateRowIDsArgs(args ...any) (
-	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid,
+	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid, maxRow uint32,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -206,6 +206,9 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 	}
 	if args[2] != nil {
 		blkID = args[2].(*types.Blockid)
+	}
+	if args[3] != nil {
+		maxRow = args[3].(uint32)
 	}
 	return
 }
@@ -340,7 +343,7 @@ func containsValNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, in
 }
 
 func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, blkID := parseAGetDuplicateRowIDsArgs(args...)
+	vec, rowIDs, blkID, maxRow := parseAGetDuplicateRowIDsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if !rowIDs.IsNull(rowOffset) {
 			return nil
@@ -352,6 +355,9 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 			true,
 			func(v2 []byte, _ bool, row int) (err error) {
 				// logutil.Infof("row=%d,v1=%v,v2=%v", row, v1, v2)
+				if row > int(maxRow) {
+					return
+				}
 				if !rowIDs.IsNull(rowOffset) {
 					return nil
 				}
@@ -392,7 +398,7 @@ func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
 
 func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, blkID := parseAGetDuplicateRowIDsArgs(args...)
+		vec, rowIDs, blkID, maxVisibleRow := parseAGetDuplicateRowIDsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if !rowIDs.IsNull(rowOffset) {
 				return nil
@@ -403,6 +409,9 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 				vec.Length(),
 				true,
 				func(v2 T, _ bool, row int) (err error) {
+					if row > int(maxVisibleRow) {
+						return
+					}
 					if !rowIDs.IsNull(rowOffset) {
 						return nil
 					}

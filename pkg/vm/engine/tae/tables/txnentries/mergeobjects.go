@@ -64,20 +64,21 @@ func NewMergeObjectsEntry(
 		totalCreatedBlkCnt += obj.BlockCnt()
 	}
 	entry := &mergeObjectsEntry{
-		txn:                txn,
-		relation:           relation,
-		createdObjs:        createdObjs,
-		totalCreatedBlkCnt: totalCreatedBlkCnt,
-		createdBlkCnt:      createdBlkCnt,
-		droppedObjs:        droppedObjs,
-		transMappings:      transMappings,
-		skipTransfer:       transMappings == nil,
-		rt:                 rt,
-		isTombstone:        isTombstone,
+		txn:           txn,
+		relation:      relation,
+		createdObjs:   createdObjs,
+		droppedObjs:   droppedObjs,
+		transMappings: transMappings,
+		skipTransfer:  transMappings == nil,
+		rt:            rt,
+		isTombstone:   isTombstone,
 	}
 
 	if !entry.skipTransfer && totalCreatedBlkCnt > 0 {
-		entry.delTbls = make([]*model.TransDels, totalCreatedBlkCnt)
+		entry.delTbls = make([][]*model.TransDels, len(createdObjs))
+		for i := 0; i < len(createdObjs); i++ {
+			entry.delTbls[i] = make([]*model.TransDels, createdObjs[i].BlockCnt())
+		}
 		entry.collectTs = rt.Now()
 		var err error
 		// phase 1 transfer

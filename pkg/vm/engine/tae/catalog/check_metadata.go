@@ -19,7 +19,6 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
@@ -27,22 +26,11 @@ func (catalog *Catalog) CheckMetadata() {
 	logutil.Infof("[MetadataCheck] Start")
 	p := &LoopProcessor{}
 	p.ObjectFn = catalog.checkObject
-	p.TombstoneFn = catalog.checkTombstone
+	p.TombstoneFn = catalog.checkObject
 	catalog.RecurLoop(p)
 	logutil.Infof("[MetadataCheck] End")
 }
-func (catalog *Catalog) checkTombstone(t data.Tombstone) error {
-	obj := t.GetObject().(*ObjectEntry)
-	_, err := obj.GetTable().GetObjectByID(&obj.ID)
-	if err != nil {
-		logutil.Warnf("[MetadataCheck] tombstone and object doesn't match, err %v, obj %v, tombstone %v",
-			err,
-			obj.PPString(3, 0, ""),
-			t.String(3, 0, ""))
-	}
-	t.CheckTombstone()
-	return nil
-}
+
 func (catalog *Catalog) checkObject(o *ObjectEntry) error {
 	o.RLock()
 	defer o.RUnlock()
@@ -62,22 +50,6 @@ func (catalog *Catalog) checkObject(o *ObjectEntry) error {
 	if !o.IsAppendable() && !o.IsCreatingOrAborted() {
 		if o.GetLatestNodeLocked().BaseNode.IsEmpty() {
 			logutil.Warnf("[MetadataCheck] object should have stats, obj %v", o.PPStringLocked(3, 0, ""))
-		}
-	}
-	if !catalog.gcTS.IsEmpty() {
-		if o.HasDropCommittedLocked() && o.DeleteBeforeLocked(catalog.gcTS) && !o.InMemoryDeletesExistedLocked() {
-			logutil.Warnf("[MetadataCheck] object should not exist, gcTS %v, obj %v", catalog.gcTS.ToString(), o.PPStringLocked(3, 0, ""))
-		}
-	}
-
-	duration := time.Minute * 10
-	ts := types.BuildTS(time.Now().UTC().UnixNano()-duration.Nanoseconds(), 0)
-	if o.HasDropCommittedLocked() && o.DeleteBeforeLocked(ts) {
-		if o.InMemoryDeletesExistedLocked() {
-			logutil.Warnf("[MetadataCheck] object has in memory deletes %v after deleted, obj %v, tombstone %v",
-				duration,
-				o.PPStringLocked(3, 0, ""),
-				o.GetTable().TryGetTombstone(o.ID).StringLocked(3, 0, ""))
 		}
 	}
 

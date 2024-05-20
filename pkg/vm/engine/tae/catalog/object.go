@@ -83,16 +83,7 @@ func (entry *ObjectEntry) GetCompSize() int {
 	stats := entry.GetObjectStats()
 	return int(stats.Size())
 }
-func (entry *ObjectEntry) IsDeletesFlushedBefore(ts types.TS) bool {
-	entry.RLock()
-	defer entry.RUnlock()
-	tombstone := entry.GetTable().TryGetTombstone(entry.ID)
-	if tombstone == nil {
-		return true
-	}
-	persistedTS := tombstone.GetDeltaCommitedTSLocked()
-	return persistedTS.Less(&ts)
-}
+
 func (entry *ObjectEntry) StatsString(zonemapKind common.ZonemapPrintKind) string {
 	zonemapStr := "nil"
 	if z := entry.GetSortKeyZonemap(); z != nil {
@@ -116,19 +107,6 @@ func (entry *ObjectEntry) StatsString(zonemapKind common.ZonemapPrintKind) strin
 	)
 }
 
-func (entry *ObjectEntry) InMemoryDeletesExisted() bool {
-	entry.RLock()
-	defer entry.RUnlock()
-	return entry.InMemoryDeletesExistedLocked()
-}
-
-func (entry *ObjectEntry) InMemoryDeletesExistedLocked() bool {
-	tombstone := entry.GetTable().TryGetTombstone(entry.ID)
-	if tombstone != nil {
-		return tombstone.InMemoryDeletesExistedLocked()
-	}
-	return false
-}
 func NewObjectEntry(
 	table *TableEntry,
 	id *objectio.ObjectId,

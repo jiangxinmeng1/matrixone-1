@@ -2707,26 +2707,28 @@ func TestMergeBlocksIntoMultipleObjects(t *testing.T) {
 	// flush to nblk
 	{
 		txn, rel := tae.GetRelation()
-		blkMetas := testutil.GetAllBlockMetas(rel)
-		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, tae.DB.Runtime, types.MaxTs())
+		blkMetas := testutil.GetAllBlockMetas(rel, false)
+		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, blkMetas, nil, tae.DB.Runtime, types.MaxTs())
 		require.NoError(t, err)
 		require.NoError(t, task.OnExec(context.Background()))
 		require.NoError(t, txn.Commit(context.Background()))
 
+		txn, rel = tae.GetRelation()
 		testutil.CheckAllColRowsByScan(t, rel, 12, true)
+		require.NoError(t, txn.Commit(context.Background()))
 	}
 
 	{
 		t.Log("************split one object into two objects************")
 
 		txn, rel = tae.GetRelation()
-		objIt := rel.MakeObjectIt()
+		objIt := rel.MakeObjectIt(false, false)
 		obj := objIt.GetObject().GetMeta().(*catalog.ObjectEntry)
-		objHandle, err := rel.GetObject(&obj.ID)
+		objHandle, err := rel.GetObject(&obj.ID, false)
 		assert.NoError(t, err)
 
 		objsToMerge := []*catalog.ObjectEntry{objHandle.GetMeta().(*catalog.ObjectEntry)}
-		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0, false)
 		assert.NoError(t, err)
 		assert.NoError(t, task.OnExec(context.Background()))
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -2734,7 +2736,7 @@ func TestMergeBlocksIntoMultipleObjects(t *testing.T) {
 
 	{
 		t.Log("************check del map************")
-		it := rel.MakeObjectIt()
+		it := rel.MakeObjectIt(false, false)
 		for it.Valid() {
 			obj := it.GetObject()
 			assert.Nil(t, tae.Runtime.TransferDelsMap.GetDelsForBlk(*objectio.NewBlockidWithObjectID(obj.GetID(), 0)))
@@ -2747,13 +2749,13 @@ func TestMergeBlocksIntoMultipleObjects(t *testing.T) {
 		t.Log("************delete during merge************")
 
 		txn, rel = tae.GetRelation()
-		objIt := rel.MakeObjectIt()
+		objIt := rel.MakeObjectIt(false, false)
 		obj1 := objIt.GetObject().GetMeta().(*catalog.ObjectEntry)
-		objHandle1, err := rel.GetObject(&obj1.ID)
+		objHandle1, err := rel.GetObject(&obj1.ID, false)
 		assert.NoError(t, err)
 		objIt.Next()
 		obj2 := objIt.GetObject().GetMeta().(*catalog.ObjectEntry)
-		objHandle2, err := rel.GetObject(&obj2.ID)
+		objHandle2, err := rel.GetObject(&obj2.ID, false)
 		assert.NoError(t, err)
 
 		v := testutil.GetSingleSortKeyValue(bat, schema, 1)
@@ -2773,7 +2775,7 @@ func TestMergeBlocksIntoMultipleObjects(t *testing.T) {
 		testutil.CheckAllColRowsByScan(t, rel, 10, true)
 
 		objsToMerge := []*catalog.ObjectEntry{objHandle1.GetMeta().(*catalog.ObjectEntry), objHandle2.GetMeta().(*catalog.ObjectEntry)}
-		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, objsToMerge, tae.Runtime, 0, false)
 		assert.NoError(t, err)
 		assert.NoError(t, task.OnExec(context.Background()))
 		assert.NoError(t, txn.Commit(context.Background()))
@@ -2781,7 +2783,7 @@ func TestMergeBlocksIntoMultipleObjects(t *testing.T) {
 			t.Log("************check del map again************")
 			_, rel = tae.GetRelation()
 			objCnt := 0
-			for it := rel.MakeObjectIt(); it.Valid(); it.Next() {
+			for it := rel.MakeObjectIt(false, true); it.Valid(); it.Next() {
 				obj := it.GetObject()
 				if objCnt == 0 {
 					assert.NotNil(t, tae.Runtime.TransferDelsMap.GetDelsForBlk(*objectio.NewBlockidWithObjectID(obj.GetID(), 0)))
@@ -8675,53 +8677,4 @@ func TestFlushAndAppend2(t *testing.T) {
 		return nil
 	}
 	tae.Catalog.RecurLoop(p)
-}
-
-func TestVisitTombstone(t *testing.T) {
-	defer testutils.AfterTest(t)()
-	ctx := context.Background()
-	opts := config.WithLongScanAndCKPOpts(nil)
-	options.WithGlobalVersionInterval(time.Microsecond)(opts)
-	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
-	defer tae.Close()
-	schema := catalog.MockSchemaAll(2, 1)
-	schema.BlockMaxRows = 50
-	tae.BindSchema(schema)
-	bat := catalog.MockBatch(schema, 50)
-	defer bat.Close()
-
-	tae.CreateRelAndAppend(bat, true)
-
-	var metas []*catalog.ObjectEntry
-
-	txn, rel := tae.GetRelation()
-	it := rel.MakeObjectIt()
-	for it.Valid() {
-		blk := it.GetObject()
-		meta := blk.GetMeta().(*catalog.ObjectEntry)
-		metas = append(metas, meta)
-		it.Next()
-	}
-	_ = txn.Commit(context.Background())
-	if len(metas) == 0 {
-		return
-	}
-	txn, _ = tae.GetRelation()
-	task, err := jobs.NewFlushTableTailTask(nil, txn, metas, tae.Runtime, txn.GetStartTS())
-	assert.NoError(t, err)
-	err = task.OnExec(context.Background())
-	{
-		tae.DeleteAll(true)
-	}
-	assert.NoError(t, err)
-	assert.NoError(t, txn.Commit(context.Background()))
-	ts1 := tae.TxnMgr.Now()
-
-	tae.CompactBlocks(false)
-	t.Log(tae.Catalog.SimplePPString(3))
-	tae.ForceGlobalCheckpoint(ctx, ts1, time.Minute)
-
-	t.Log(tae.Catalog.SimplePPString(3))
-	tae.Restart(context.Background())
-	t.Log(tae.Catalog.SimplePPString(3))
 }

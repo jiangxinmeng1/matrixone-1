@@ -218,7 +218,7 @@ func (store *replayTxnStore) replayDataCmds(cmd *updates.UpdateCmd, observer wal
 func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, observer wal.ReplayObserver) {
 	appendNode := cmd.GetAppendNode()
 	if appendNode.Is1PC() {
-		if _, err := appendNode.TxnMVCCNode.ApplyCommit(); err != nil {
+		if _, err := appendNode.TxnMVCCNode.ApplyCommit(appendNode.TxnMVCCNode.Txn.GetID()); err != nil {
 			panic(err)
 		}
 	}

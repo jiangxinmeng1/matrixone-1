@@ -291,13 +291,14 @@ func (obj *aobject) GetValue(
 	readSchema any,
 	_ uint16,
 	row, col int,
+	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	node := obj.PinNode()
 	defer node.Unref()
 	schema := readSchema.(*catalog.Schema)
 	if !node.IsPersisted() {
-		return node.MustMNode().getInMemoryValue(txn, schema, row, col, mp)
+		return node.MustMNode().getInMemoryValue(txn, schema, row, col, skipCheckDelete, mp)
 	} else {
 		return obj.getPersistedValue(
 			ctx, txn, schema, 0, row, col, true, mp,

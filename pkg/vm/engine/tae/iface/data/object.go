@@ -116,7 +116,7 @@ type Object interface {
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
 
 	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
-	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, mp *mpool.MPool) (any, bool, error)
+	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
 	Foreach(
 		ctx context.Context,
 		readSchema any,

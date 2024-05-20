@@ -677,21 +677,25 @@ func (node *memoryNode) getInMemoryValue(
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
 	row, col int,
+	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 	rowID := objectio.NewRowid(blkID, uint32(row))
-	node.object.RUnlock()
-	deleted, err := node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)
-	node.object.RLock()
-	if err != nil {
-		return
-	}
-	if deleted {
-		err = moerr.NewNotFoundNoCtx()
-		return
+	if !skipCheckDelete {
+		var deleted bool
+		node.object.RUnlock()
+		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)
+		node.object.RLock()
+		if err != nil {
+			return
+		}
+		if deleted {
+			err = moerr.NewNotFoundNoCtx()
+			return
+		}
 	}
 	view, err := node.resolveInMemoryColumnDataLocked(txn, readSchema, col, true, mp)
 	if err != nil {

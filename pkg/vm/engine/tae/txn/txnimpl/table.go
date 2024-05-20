@@ -874,7 +874,7 @@ func (tbl *txnTable) GetLocalValue(row uint32, col uint16) (v any, isNull bool, 
 	return tbl.tableSpace.GetValue(row, col)
 }
 
-func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, col uint16) (v any, isNull bool, err error) {
+func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, col uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
 	if tbl.tableSpace != nil && id.ObjectID().Eq(tbl.tableSpace.entry.ID) {
 		return tbl.tableSpace.GetValue(row, col)
 	}
@@ -887,7 +887,7 @@ func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, co
 	}
 	block := meta.GetObjectData()
 	_, blkIdx := id.BlockID.Offsets()
-	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(false), blkIdx, int(row), int(col), common.WorkspaceAllocator)
+	return block.GetValue(ctx, tbl.store.txn, tbl.GetLocalSchema(false), blkIdx, int(row), int(col), skipCheckDelete, common.WorkspaceAllocator)
 }
 func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
 	meta, err := tbl.entry.GetObjectByID(id.ObjectID(), isTombstone)

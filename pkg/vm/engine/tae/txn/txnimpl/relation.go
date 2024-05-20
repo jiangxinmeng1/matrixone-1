@@ -230,7 +230,7 @@ func (h *txnRelation) UpdateByFilter(ctx context.Context, filter *handle.Filter,
 	pkDef := schema.GetPrimaryKey()
 	pkVec := makeWorkspaceVector(pkDef.Type)
 	defer pkVec.Close()
-	pkVal, _, err := h.table.GetValue(ctx, id, row, uint16(pkDef.Idx))
+	pkVal, _, err := h.table.GetValue(ctx, id, row, uint16(pkDef.Idx), true)
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func (h *txnRelation) UpdateByFilter(ctx context.Context, filter *handle.Filter,
 			colVal = v
 			colValIsNull = isNull
 		} else {
-			colVal, colValIsNull, err = h.table.GetValue(ctx, id, row, uint16(def.Idx))
+			colVal, colValIsNull, err = h.table.GetValue(ctx, id, row, uint16(def.Idx), true)
 			if err != nil {
 				return err
 			}
@@ -305,7 +305,7 @@ func (h *txnRelation) DeleteByPhyAddrKey(key any) error {
 	pkDef := schema.GetPrimaryKey()
 	pkVec := makeWorkspaceVector(pkDef.Type)
 	defer pkVec.Close()
-	val, _, err := h.table.GetValue(h.table.store.ctx, id, row, uint16(pkDef.Idx))
+	val, _, err := h.table.GetValue(h.table.store.ctx, id, row, uint16(pkDef.Idx), true)
 	if err != nil {
 		return err
 	}
@@ -319,7 +319,7 @@ func (h *txnRelation) RangeDelete(id *common.ID, start, end uint32, dt handle.De
 	pkVec := h.table.store.rt.VectorPool.Small.GetVector(&pkDef.Type)
 	defer pkVec.Close()
 	for row := start; row <= end; row++ {
-		pkVal, _, err := h.table.GetValue(h.table.store.GetContext(), id, row, uint16(pkDef.Idx))
+		pkVal, _, err := h.table.GetValue(h.table.store.GetContext(), id, row, uint16(pkDef.Idx), true)
 		if err != nil {
 			return err
 		}

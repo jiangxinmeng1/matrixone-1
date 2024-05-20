@@ -234,7 +234,7 @@ func (obj *txnObject) RangeDelete(blkID uint16, start, end uint32, dt handle.Del
 	defer pkVec.Close()
 	for row := start; row <= end; row++ {
 		pkVal, _, err := obj.entry.GetObjectData().GetValue(
-			obj.table.store.GetContext(), obj.Txn, schema, blkID, int(row), pkDef.Idx, mp,
+			obj.table.store.GetContext(), obj.Txn, schema, blkID, int(row), pkDef.Idx, true, mp,
 		)
 		if err != nil {
 			return err

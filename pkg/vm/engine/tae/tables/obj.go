@@ -191,6 +191,7 @@ func (obj *object) GetValue(
 	readSchema any,
 	blkID uint16,
 	row, col int,
+	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	node := obj.PinNode()

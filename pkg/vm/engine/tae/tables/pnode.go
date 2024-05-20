@@ -61,6 +61,8 @@ func (node *persistedNode) Contains(
 	keys containers.Vector,
 	keysZM index.ZM,
 	bf objectio.BloomFilter,
+	txn txnif.TxnReader,
+	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	panic("should not be called")
@@ -85,6 +87,7 @@ func (node *persistedNode) GetDuplicatedRows(
 	keysZM index.ZM,
 	rowIDs containers.Vector,
 	bf objectio.BloomFilter,
+	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	panic("should not be balled")

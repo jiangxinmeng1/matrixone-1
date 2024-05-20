@@ -197,6 +197,7 @@ func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) erro
 		//PrepareAppend: It is very important that appending a AppendNode into
 		// block's MVCCHandle before applying data into block.
 		anode, created, toAppend, err := appender.PrepareAppend(
+			node.isMergeCompact,
 			node.Rows()-appended,
 			space.table.store.txn)
 		if err != nil {

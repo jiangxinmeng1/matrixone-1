@@ -35,6 +35,8 @@ type anode struct {
 	rows        uint32
 	appends     []*appendInfo
 	isTombstone bool
+
+	isMergeCompact bool
 }
 
 // NewANode creates a InsertNode with data in memory.

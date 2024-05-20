@@ -60,6 +60,8 @@ type NodeT interface {
 		keys containers.Vector,
 		keysZM index.ZM,
 		bf objectio.BloomFilter,
+		txn txnif.TxnReader,
+		isCommitting bool,
 		mp *mpool.MPool,
 	) (err error)
 	GetDuplicatedRows(
@@ -70,6 +72,7 @@ type NodeT interface {
 		keysZM index.ZM,
 		rowIDs containers.Vector,
 		bf objectio.BloomFilter,
+		isCommitting bool,
 		mp *mpool.MPool,
 	) (err error)
 	ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error)

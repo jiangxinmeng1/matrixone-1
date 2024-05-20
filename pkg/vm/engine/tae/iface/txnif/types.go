@@ -227,6 +227,8 @@ type AppendNode interface {
 	GetStartRow() uint32
 	GetMaxRow() uint32
 	IsTombstone() bool
+	SetIsMergeCompact()
+	IsMergeCompact()bool
 }
 
 type DeleteNode interface {

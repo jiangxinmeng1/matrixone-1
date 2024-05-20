@@ -358,6 +358,7 @@ func (obj *aobject) GetDuplicatedRows(
 			keysZM,
 			rowIDs,
 			bf,
+			precommit,
 			mp,
 		)
 	} else {
@@ -417,6 +418,8 @@ func (obj *aobject) Contains(
 			keys,
 			keysZM,
 			bf,
+			txn,
+			precommit,
 			mp,
 		)
 	} else {

@@ -200,6 +200,7 @@ func (idx *MutIndex) Contains(
 	keysZM index.ZM,
 	_ objectio.BloomFilter,
 	blkID *types.Blockid,
+	skipFn func(row uint32) error,
 	mp *mpool.MPool,
 ) (err error) {
 	if keysZM.Valid() {
@@ -220,11 +221,15 @@ func (idx *MutIndex) Contains(
 		if len(rows) != 1 {
 			panic("logic err: tombstones doesn't have duplicate rows")
 		}
+		err = skipFn(rows[0])
+		if err != nil {
+			return err
+		}
 		containers.UpdateValue(keys, uint32(offset), nil, true, mp)
 		return nil
 	}
 	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {
-		panic(err)
+		return err
 	}
 	return
 }

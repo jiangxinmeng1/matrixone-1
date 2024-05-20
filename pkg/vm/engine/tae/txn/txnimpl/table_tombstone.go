@@ -151,6 +151,7 @@ func (tbl *txnTable) RangeDelete(
 	}
 	if dt == handle.DT_MergeCompact {
 		anode := tbl.tombstoneTableSpace.nodes[0].(*anode)
+		anode.isMergeCompact = true
 		startOffset := anode.data.Length() - deleteBatch.Length()
 		tbl.tombstoneTableSpace.prepareApplyANode(anode, uint32(startOffset))
 	}

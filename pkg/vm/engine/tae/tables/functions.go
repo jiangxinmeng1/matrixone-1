@@ -222,10 +222,17 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 
 func parseAContainsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector,
+	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
 		rowIDs = args[1].(containers.Vector)
+	}
+	if args[2] != nil {
+		scanFn = args[2].(func(bid uint16) (vec containers.Vector, err error))
+	}
+	if args[3] != nil {
+		txn = args[3].(txnif.TxnReader)
 	}
 	return
 }
@@ -397,7 +404,7 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 }
 
 func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs := parseAContainsArgs(args...)
+	vec, rowIDs, scanFn, txn := parseAContainsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if rowIDs.IsNull(rowOffset) {
 			return nil
@@ -421,6 +428,17 @@ func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
 				}
 				if compute.CompareBytes(v1, v2) != 0 {
 					return
+				}
+				if tsVec == nil {
+					tsVec, err = scanFn(0)
+					if err != nil {
+						return err
+					}
+				}
+				commitTS := tsVec.Get(row).(types.TS)
+				startTS := txn.GetStartTS()
+				if commitTS.Greater(&startTS) {
+					return txnif.ErrTxnWWConflict
 				}
 				rowIDs.Update(row, nil, true)
 				return nil
@@ -478,11 +496,18 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 
 func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs := parseAContainsArgs(args...)
+		vec, rowIDs, scanFn, txn := parseAContainsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if rowIDs.IsNull(rowOffset) {
 				return nil
 			}
+			var tsVec containers.Vector
+			defer func() {
+				if tsVec != nil {
+					tsVec.Close()
+					tsVec = nil
+				}
+			}()
 			return containers.ForeachWindowFixed(
 				vec.GetDownstreamVector(),
 				0,
@@ -494,6 +519,17 @@ func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args 
 					}
 					if comp(v1, v2) != 0 {
 						return
+					}
+					if tsVec == nil {
+						tsVec, err = scanFn(0)
+						if err != nil {
+							return err
+						}
+					}
+					commitTS := tsVec.Get(row).(types.TS)
+					startTS := txn.GetStartTS()
+					if commitTS.Greater(&startTS) {
+						return txnif.ErrTxnWWConflict
 					}
 					rowIDs.Update(row, nil, true)
 					return nil

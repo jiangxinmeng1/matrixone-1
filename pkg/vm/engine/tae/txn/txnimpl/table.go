@@ -843,7 +843,10 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		); err != nil {
 			return
 		}
-		tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+		err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, false)
+		if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+			return
+		}
 		if !rowIDs.IsNull(0) {
 			rowID := rowIDs.Get(0).(types.Rowid)
 			id = obj.AsCommonID()
@@ -1147,7 +1150,10 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		it.Next()
 	}
 	if !isTombstone {
-		tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, true)
+		err = tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, false)
+		if err != nil {
+			return
+		}
 	}
 	for i := 0; i < rowIDs.Length(); i++ {
 		var colName string
@@ -1289,7 +1295,10 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 				return
 			}
 			if !isTombstone {
-				tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, true)
+				err = tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, false)
+				if err != nil {
+					return
+				}
 			}
 			for i := 0; i < rowIDs.Length(); i++ {
 				var colName string
@@ -1364,7 +1373,10 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM,
 				return
 			}
 			if !isTombstone {
-				tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+				err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+				if err != nil {
+					return
+				}
 			}
 			for i := 0; i < rowIDs.Length(); i++ {
 				var colName string

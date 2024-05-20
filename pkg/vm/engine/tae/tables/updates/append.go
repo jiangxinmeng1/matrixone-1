@@ -21,6 +21,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 )
@@ -31,6 +32,7 @@ type AppendNode struct {
 	maxRow   uint32
 	mvcc     *AppendMVCCHandle
 	id       *common.ID
+	NodeType handle.DeleteType
 }
 
 func CompareAppendNode(e, o *AppendNode) int {
@@ -129,6 +131,8 @@ func (node *AppendNode) GetStartRow() uint32 { return node.startRow }
 func (node *AppendNode) GetMaxRow() uint32 {
 	return node.maxRow
 }
+func (node *AppendNode) SetIsMergeCompact()   { node.NodeType = handle.DT_MergeCompact }
+func (node *AppendNode) IsMergeCompact() bool { return node.NodeType == handle.DT_MergeCompact }
 func (node *AppendNode) SetMaxRow(row uint32) {
 	node.maxRow = row
 }

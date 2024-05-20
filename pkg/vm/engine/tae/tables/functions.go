@@ -199,6 +199,7 @@ func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vec
 
 func parseAGetDuplicateRowIDsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid, maxRow uint32,
+	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -209,6 +210,12 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 	}
 	if args[3] != nil {
 		maxRow = args[3].(uint32)
+	}
+	if args[4] != nil {
+		scanFn = args[4].(func(bid uint16) (vec containers.Vector, err error))
+	}
+	if args[5] != nil {
+		txn = args[5].(txnif.TxnReader)
 	}
 	return
 }
@@ -343,11 +350,18 @@ func containsValNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, in
 }
 
 func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, blkID, maxRow := parseAGetDuplicateRowIDsArgs(args...)
+	vec, rowIDs, blkID, maxRow, scanFn, txn := parseAGetDuplicateRowIDsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if !rowIDs.IsNull(rowOffset) {
 			return nil
 		}
+		var tsVec containers.Vector
+		defer func() {
+			if tsVec != nil {
+				tsVec.Close()
+				tsVec = nil
+			}
+		}()
 		return containers.ForeachWindowVarlen(
 			vec.GetDownstreamVector(),
 			0,
@@ -364,6 +378,17 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 				if compute.CompareBytes(v1, v2) != 0 {
 					return
 				}
+				if tsVec == nil {
+					tsVec, err = scanFn(0)
+					if err != nil {
+						return err
+					}
+				}
+				commitTS := tsVec.Get(row).(types.TS)
+				startTS := txn.GetStartTS()
+				if commitTS.Greater(&startTS) {
+					return txnif.ErrTxnWWConflict
+				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
 				rowIDs.Update(row, *rowID, false)
 				return nil
@@ -377,6 +402,13 @@ func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
 		if rowIDs.IsNull(rowOffset) {
 			return nil
 		}
+		var tsVec containers.Vector
+		defer func() {
+			if tsVec != nil {
+				tsVec.Close()
+				tsVec = nil
+			}
+		}()
 		return containers.ForeachWindowVarlen(
 			vec.GetDownstreamVector(),
 			0,
@@ -398,11 +430,18 @@ func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
 
 func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, blkID, maxVisibleRow := parseAGetDuplicateRowIDsArgs(args...)
+		vec, rowIDs, blkID, maxVisibleRow, scanFn, txn := parseAGetDuplicateRowIDsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if !rowIDs.IsNull(rowOffset) {
 				return nil
 			}
+			var tsVec containers.Vector
+			defer func() {
+				if tsVec != nil {
+					tsVec.Close()
+					tsVec = nil
+				}
+			}()
 			return containers.ForeachWindowFixed(
 				vec.GetDownstreamVector(),
 				0,
@@ -417,6 +456,17 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 					}
 					if comp(v1, v2) != 0 {
 						return
+					}
+					if tsVec == nil {
+						tsVec, err = scanFn(0)
+						if err != nil {
+							return err
+						}
+					}
+					commitTS := tsVec.Get(row).(types.TS)
+					startTS := txn.GetStartTS()
+					if commitTS.Greater(&startTS) {
+						return txnif.ErrTxnWWConflict
 					}
 					rowID := objectio.NewRowid(blkID, uint32(row))
 					rowIDs.Update(row, *rowID, false)

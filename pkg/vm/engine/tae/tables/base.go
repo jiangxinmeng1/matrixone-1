@@ -376,7 +376,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID, maxVisibleRow,
+			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(

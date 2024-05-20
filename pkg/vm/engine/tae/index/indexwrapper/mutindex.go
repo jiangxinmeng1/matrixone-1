@@ -150,6 +150,7 @@ func (idx *MutIndex) GetDuplicatedRows(
 	blkID *types.Blockid,
 	rowIDs *vector.Vector,
 	maxVisibleRow uint32,
+	skipFn func(row uint32) error,
 	mp *mpool.MPool,
 ) (err error) {
 	if keysZM.Valid() {
@@ -179,12 +180,16 @@ func (idx *MutIndex) GetDuplicatedRows(
 		if !exist {
 			return nil
 		}
+		err = skipFn(maxRow)
+		if err != nil {
+			return err
+		}
 		rowID := objectio.NewRowid(blkID, maxRow)
 		containers.UpdateValue(rowIDs, uint32(offset), *rowID, false, mp)
 		return nil
 	}
 	if err = containers.ForeachWindowBytes(keys, 0, keys.Length(), op, nil); err != nil {
-		panic(err)
+		return
 	}
 	return
 }

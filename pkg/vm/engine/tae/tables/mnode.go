@@ -132,10 +132,11 @@ func (node *memoryNode) getDuplicatedRows(
 	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
 	maxRow uint32,
+	skipFn func(uint32) error,
 	mp *mpool.MPool,
 ) (err error) {
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, mp)
+	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
 }
 
 func (node *memoryNode) ContainsKey(ctx context.Context, key any, _ uint32) (ok bool, err error) {
@@ -445,9 +446,26 @@ func (node *memoryNode) GetDuplicatedRows(
 ) (err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	err = node.getDuplicatedRows(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, mp)
+	err = node.getDuplicatedRows(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, node.checkConflict(txn), mp)
 
 	return
+}
+
+func (node *memoryNode) checkConflict(
+	txn txnif.TxnReader,
+) func(row uint32) error {
+	return func(row uint32) error {
+		appendnode := node.object.appendMVCC.GetAppendNodeByRow(row)
+		if appendnode.IsActive() {
+			panic("logic error")
+		}
+		if !appendnode.IsCommitted() {
+			node.object.RUnlock()
+			appendnode.Txn.GetTxnState(true)
+			node.object.RLock()
+		}
+		return appendnode.CheckConflict(txn)
+	}
 }
 
 func (node *memoryNode) checkConflictAndDupClosure(

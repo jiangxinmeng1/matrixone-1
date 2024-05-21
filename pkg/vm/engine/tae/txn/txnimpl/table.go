@@ -1545,6 +1545,9 @@ func (tbl *txnTable) ApplyAppend() (err error) {
 	if tbl.tableSpace != nil {
 		err = tbl.tableSpace.ApplyAppend()
 	}
+	if err != nil {
+		return
+	}
 	if tbl.tombstoneTableSpace != nil {
 		err = tbl.tombstoneTableSpace.ApplyAppend()
 	}
@@ -1554,6 +1557,9 @@ func (tbl *txnTable) ApplyAppend() (err error) {
 func (tbl *txnTable) PrePrepare() (err error) {
 	if tbl.tableSpace != nil {
 		err = tbl.tableSpace.PrepareApply()
+	}
+	if err != nil {
+		return
 	}
 	if tbl.tombstoneTableSpace != nil {
 		err = tbl.tombstoneTableSpace.PrepareApply()

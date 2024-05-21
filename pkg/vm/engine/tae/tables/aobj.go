@@ -349,7 +349,9 @@ func (obj *aobject) GetDuplicatedRows(
 	defer node.Unref()
 	maxRow := uint32(math.MaxUint32)
 	if !precommit {
+		obj.RLock()
 		maxRow, err = obj.GetMaxRowByTSLocked(txn.GetStartTS())
+		obj.RUnlock()
 	}
 	if !node.IsPersisted() {
 		return node.GetDuplicatedRows(
@@ -519,7 +521,7 @@ func (obj *aobject) EstimateMemSize() (int, int) {
 	defer obj.RUnlock()
 	asize := obj.appendMVCC.EstimateMemSizeLocked()
 	if !node.IsPersisted() {
-		asize += node.MustMNode().EstimateMemSize()
+		asize += node.MustMNode().EstimateMemSizeLocked()
 	}
 	return asize, 0
 }

@@ -164,6 +164,7 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 	processor.TombstoneFn = func(obj *ObjectEntry) error {
 		obj.RLock()
 		needGC := obj.DeleteBeforeLocked(ts)
+		obj.RUnlock()
 		if needGC {
 			tbl := obj.table
 			tbl.RemoveEntry(obj)

@@ -825,7 +825,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		}
 		obj := h.GetMeta().(*catalog.ObjectEntry)
 		obj.RLock()
-		shouldSkip := obj.IsCreatingOrAborted()
+		shouldSkip := obj.IsCreatingOrAbortedLocked()
 		obj.RUnlock()
 		if shouldSkip {
 			continue
@@ -1183,7 +1183,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	)
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
 	it := tbl.entry.MakeObjectIt(false, true)
-	for it.Valid() {
+	for ; it.Valid(); it.Next() {
 		obj := it.Get().GetPayload()
 		ObjectHint := obj.SortHint
 		if ObjectHint > maxObjectHint {
@@ -1191,11 +1191,15 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		}
 		objData := obj.GetObjectData()
 		if objData == nil {
-			it.Next()
 			continue
 		}
 		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
-			it.Next()
+			continue
+		}
+		obj.RLock()
+		skip := obj.IsCreatingOrAbortedLocked()
+		obj.RUnlock()
+		if skip {
 			continue
 		}
 		stats := obj.GetObjectStats()
@@ -1204,7 +1208,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 			if skip, err = tbl.quickSkipThisObject(ctx, keysZM, obj); err != nil {
 				return
 			} else if skip {
-				it.Next()
 				continue
 			}
 		}
@@ -1221,7 +1224,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
 			return
 		}
-		it.Next()
 	}
 	return
 }
@@ -1352,7 +1354,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM,
 				//	txnToWait.GetTxnState(true)
 				//	obj.RLock()
 				//}
-				shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAborted()
+				shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
 				obj.RUnlock()
 				if shouldSkip {
 					objIt.Next()
@@ -1434,7 +1436,7 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 			//	txnToWait.GetTxnState(true)
 			//	obj.RLock()
 			//}
-			shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAborted()
+			shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
 			obj.RUnlock()
 			if shouldSkip {
 				objIt.Next()

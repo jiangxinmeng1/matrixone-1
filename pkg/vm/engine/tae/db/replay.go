@@ -69,7 +69,7 @@ func (replayer *Replayer) PreReplayWal() {
 		if entry.GetTable().IsVirtual() {
 			return moerr.GetOkStopCurrRecur()
 		}
-		dropCommit := entry.TreeMaxDropCommitEntry()
+		dropCommit := entry.TreeMaxDropCommitEntryLocked()
 		if dropCommit != nil && dropCommit.DeleteBeforeLocked(replayer.ckpedTS) {
 			return moerr.GetOkStopCurrRecur()
 		}

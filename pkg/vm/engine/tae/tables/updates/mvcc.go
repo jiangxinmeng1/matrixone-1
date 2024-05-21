@@ -85,7 +85,7 @@ func (n *AppendMVCCHandle) ReleaseAppends() {
 
 // only for internal usage
 // given a row, it returns the append node which contains the row
-func (n *AppendMVCCHandle) GetAppendNodeByRow(row uint32) (an *AppendNode) {
+func (n *AppendMVCCHandle) GetAppendNodeByRowLocked(row uint32) (an *AppendNode) {
 	_, an = n.appends.SearchNodeByCompareFn(func(node *AppendNode) int {
 		if node.maxRow <= row {
 			return -1
@@ -266,7 +266,7 @@ func (n *AppendMVCCHandle) GetVisibleRowLocked(
 
 // it collects all append nodes that are prepared before the given ts
 // foreachFn is called for each append node that is prepared before the given ts
-func (n *AppendMVCCHandle) CollectUncommittedANodesPreparedBefore(
+func (n *AppendMVCCHandle) CollectUncommittedANodesPreparedBeforeLocked(
 	ts types.TS,
 	foreachFn func(*AppendNode),
 ) (anyWaitable bool) {
@@ -355,7 +355,7 @@ func (n *AppendMVCCHandle) GetAppendListener() func(txnif.AppendNode) error {
 }
 
 // AllAppendsCommittedBefore returns true if all appendnode is committed before ts.
-func (n *AppendMVCCHandle) AllAppendsCommittedBefore(ts types.TS) bool {
+func (n *AppendMVCCHandle) AllAppendsCommittedBeforeLocked(ts types.TS) bool {
 	// get the latest appendnode
 	anode := n.appends.GetUpdateNodeLocked()
 	if anode == nil {
@@ -814,7 +814,7 @@ func (n *MVCCHandle) StringLocked(level common.PPLevel, depth int, prefix string
 			s = fmt.Sprintf("%s%s", s, imemChain)
 		}
 	}
-	if n.deltaloc.Depth() > 0 {
+	if n.deltaloc.DepthLocked() > 0 {
 		s = fmt.Sprintf("%s%s", s, n.deltaloc.StringLocked())
 	}
 	s = s + "\n"
@@ -1151,7 +1151,7 @@ func (n *MVCCHandle) GetDeltaLocAndCommitTSByTxn(txn txnif.TxnReader) (objectio.
 	return str, ts
 }
 func (n *MVCCHandle) isEmptyLocked() bool {
-	if n.deltaloc.Depth() != 0 {
+	if n.deltaloc.DepthLocked() != 0 {
 		return false
 	}
 	if !n.deletes.IsEmpty() {
@@ -1222,11 +1222,11 @@ func (n *MVCCHandle) UpdateDeltaLocLocked(txn txnif.TxnReader, deltaloc objectio
 		BaseNode:      baseNode,
 	}
 	node.TxnMVCCNode = txnbase.NewTxnMVCCNodeWithTxn(txn)
-	n.deltaloc.Insert(node)
+	n.deltaloc.InsertLocked(node)
 	isNewNode = true
 	return
 }
 
 func (n *MVCCHandle) ReplayDeltaLoc(mvcc *catalog.MVCCNode[*catalog.MetadataMVCCNode]) {
-	n.deltaloc.Insert(mvcc)
+	n.deltaloc.InsertLocked(mvcc)
 }

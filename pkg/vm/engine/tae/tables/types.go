@@ -21,7 +21,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
+	// "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
@@ -34,18 +34,18 @@ type NodeT interface {
 
 	IsPersisted() bool
 
-	PrepareAppend(rows uint32) (n uint32, err error)
-	ApplyAppend(
-		bat *containers.Batch,
-		txn txnif.AsyncTxn,
-	) (from int, err error)
+	// PrepareAppend(rows uint32) (n uint32, err error)
+	// ApplyAppend(
+	// 	bat *containers.Batch,
+	// 	txn txnif.AsyncTxn,
+	// ) (from int, err error)
 
-	GetDataWindow(
-		readSchema *catalog.Schema, colIdxes []int, from, to uint32, mp *mpool.MPool,
-	) (bat *containers.Batch, err error)
+	// GetDataWindow(
+	// 	readSchema *catalog.Schema, colIdxes []int, from, to uint32, mp *mpool.MPool,
+	// ) (bat *containers.Batch, err error)
 
-	GetValueByRow(readSchema *catalog.Schema, row, col int) (v any, isNull bool)
-	GetRowsByKey(key any) (rows []uint32, err error)
+	// GetValueByRow(readSchema *catalog.Schema, row, col int) (v any, isNull bool)
+	// GetRowsByKey(key any) (rows []uint32, err error)
 	BatchDedup(
 		ctx context.Context,
 		txn txnif.TxnReader,

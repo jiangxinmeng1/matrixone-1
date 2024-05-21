@@ -34,20 +34,20 @@ func (catalog *Catalog) CheckMetadata() {
 func (catalog *Catalog) checkObject(o *ObjectEntry) error {
 	o.RLock()
 	defer o.RUnlock()
-	if o.Depth() > 2 {
-		logutil.Warnf("[MetadataCheck] object mvcc link is too long, depth %d, obj %v", o.Depth(), o.PPStringLocked(3, 0, ""))
+	if o.DepthLocked() > 2 {
+		logutil.Warnf("[MetadataCheck] object mvcc link is too long, depth %d, obj %v", o.DepthLocked(), o.PPStringLocked(3, 0, ""))
 	}
 	if o.IsAppendable() && o.HasDropCommittedLocked() {
 		if o.GetLatestNodeLocked().BaseNode.IsEmpty() {
 			logutil.Warnf("[MetadataCheck] object should have stats, obj %v", o.PPStringLocked(3, 0, ""))
 		}
 	}
-	if !o.IsAppendable() && !o.IsCreatingOrAborted() {
+	if !o.IsAppendable() && !o.IsCreatingOrAbortedLocked() {
 		if o.GetLatestNodeLocked().BaseNode.IsEmpty() {
 			logutil.Warnf("[MetadataCheck] object should have stats, obj %v", o.PPStringLocked(3, 0, ""))
 		}
 	}
-	if !o.IsAppendable() && !o.IsCreatingOrAborted() {
+	if !o.IsAppendable() && !o.IsCreatingOrAbortedLocked() {
 		if o.GetLatestNodeLocked().BaseNode.IsEmpty() {
 			logutil.Warnf("[MetadataCheck] object should have stats, obj %v", o.PPStringLocked(3, 0, ""))
 		}

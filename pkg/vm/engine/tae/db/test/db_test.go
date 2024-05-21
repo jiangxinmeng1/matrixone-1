@@ -5500,7 +5500,7 @@ func TestInsertPerf(t *testing.T) {
 }
 
 func TestUpdatePerf(t *testing.T) {
-	// t.Skip(any("for debug"))
+	t.Skip(any("for debug"))
 	ctx := context.Background()
 
 	totalCnt := 4000

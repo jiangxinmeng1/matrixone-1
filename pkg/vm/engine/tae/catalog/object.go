@@ -126,7 +126,7 @@ func NewObjectEntry(
 			IsTombstone: isTombstone,
 		},
 	}
-	e.CreateWithTxn(txn, NewObjectInfoWithObjectID(id))
+	e.CreateWithTxnLocked(txn, NewObjectInfoWithObjectID(id))
 	if dataFactory != nil {
 		e.objData = dataFactory(e)
 	}
@@ -152,7 +152,7 @@ func NewObjectEntryByMetaLocation(
 			SortHint: table.GetDB().catalog.NextObject(),
 		},
 	}
-	e.CreateWithStartAndEnd(start, end, NewObjectInfoWithMetaLocation(metalocation, id))
+	e.CreateWithStartAndEndLocked(start, end, NewObjectInfoWithMetaLocation(metalocation, id))
 	if dataFactory != nil {
 		e.objData = dataFactory(e)
 	}
@@ -179,7 +179,7 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 			IsTombstone: isTombstone,
 		},
 	}
-	e.CreateWithTS(ts, &ObjectMVCCNode{*objectio.NewObjectStats()})
+	e.CreateWithTSLocked(ts, &ObjectMVCCNode{*objectio.NewObjectStats()})
 	return e
 }
 
@@ -192,7 +192,7 @@ func NewSysObjectEntry(table *TableEntry, id types.Uuid) *ObjectEntry {
 			state: ES_Appendable,
 		},
 	}
-	e.CreateWithTS(types.SystemDBTS, &ObjectMVCCNode{*objectio.NewObjectStats()})
+	e.CreateWithTSLocked(types.SystemDBTS, &ObjectMVCCNode{*objectio.NewObjectStats()})
 	var bid types.Blockid
 	schema := table.GetLastestSchemaLocked(false)
 	if schema.Name == SystemTableSchema.Name {
@@ -354,7 +354,7 @@ func (entry *ObjectEntry) LoadObjectInfoForLastNode() (stats objectio.ObjectStat
 }
 
 // for test
-func (entry *ObjectEntry) GetInMemoryObjectInfo() *ObjectMVCCNode {
+func (entry *ObjectEntry) GetInMemoryObjectInfoLocked() *ObjectMVCCNode {
 	return entry.BaseEntryImpl.GetLatestCommittedNodeLocked().BaseNode
 }
 
@@ -542,7 +542,7 @@ func (entry *ObjectEntry) IsActive() bool {
 	return !entry.HasDropCommitted()
 }
 
-func (entry *ObjectEntry) TreeMaxDropCommitEntry() BaseEntry {
+func (entry *ObjectEntry) TreeMaxDropCommitEntryLocked() BaseEntry {
 	table := entry.GetTable()
 	db := table.GetDB()
 	if db.HasDropCommittedLocked() {
@@ -661,6 +661,6 @@ func MockObjEntryWithTbl(tbl *TableEntry, size uint64) *ObjectEntry {
 		table:      tbl,
 		ObjectNode: &ObjectNode{},
 	}
-	e.CreateWithTS(types.BuildTS(time.Now().UnixNano(), 0), &ObjectMVCCNode{*stats})
+	e.CreateWithTSLocked(types.BuildTS(time.Now().UnixNano(), 0), &ObjectMVCCNode{*stats})
 	return e
 }

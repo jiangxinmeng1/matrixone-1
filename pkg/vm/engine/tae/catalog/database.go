@@ -99,7 +99,7 @@ func NewDBEntryWithID(catalog *Catalog, name string, createSql, datTyp string, i
 		e.acInfo.TenantID = txn.GetTenantID()
 		e.acInfo.UserID, e.acInfo.RoleID = txn.GetUserAndRoleID()
 	}
-	e.CreateWithTxn(txn, &EmptyMVCCNode{})
+	e.CreateWithTxnLocked(txn, &EmptyMVCCNode{})
 	e.acInfo.CreateAt = types.CurrentTimestamp()
 	return e
 }
@@ -121,7 +121,7 @@ func NewSystemDBEntry(catalog *Catalog) *DBEntry {
 		link:      common.NewGenericSortedDList((*TableEntry).Less),
 		isSys:     true,
 	}
-	entry.CreateWithTS(types.SystemDBTS, &EmptyMVCCNode{})
+	entry.CreateWithTSLocked(types.SystemDBTS, &EmptyMVCCNode{})
 	return entry
 }
 

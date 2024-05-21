@@ -148,7 +148,7 @@ func (entry *TableEntry) FillCommittedDeletes(
 		node := it.Get()
 		tombstone := node.GetPayload()
 		tombstone.RLock()
-		shouldSkip := tombstone.HasDropCommittedLocked() || tombstone.IsCreatingOrAborted()
+		shouldSkip := tombstone.HasDropCommittedLocked() || tombstone.IsCreatingOrAbortedLocked()
 		tombstone.RUnlock()
 		if shouldSkip {
 			continue

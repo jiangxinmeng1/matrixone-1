@@ -15,11 +15,11 @@
 package catalog
 
 func ActiveWithNoTxnFilter(be *BaseEntryImpl[*ObjectMVCCNode]) bool {
-	return !be.HasDropCommittedLocked() && !be.IsCreatingOrAborted()
+	return !be.HasDropCommittedLocked() && !be.IsCreatingOrAbortedLocked()
 }
 
 func ActiveObjectWithNoTxnFilter(be *BaseEntryImpl[*ObjectMVCCNode]) bool {
-	return !be.HasDropCommittedLocked() && !be.IsCreatingOrAborted()
+	return !be.HasDropCommittedLocked() && !be.IsCreatingOrAbortedLocked()
 }
 
 func AppendableBlkFilter(be *ObjectEntry) bool {

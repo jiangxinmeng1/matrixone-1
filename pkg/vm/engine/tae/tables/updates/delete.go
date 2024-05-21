@@ -141,7 +141,7 @@ func (node *DeleteNode) Close() {
 func (node *DeleteNode) IsMerged() bool { return node.nt == NT_Merge }
 func (node *DeleteNode) AttachTo(chain *DeleteChain) {
 	node.chain.Store(chain)
-	node.GenericDLNode = chain.Insert(node)
+	node.GenericDLNode = chain.InsertLocked(node)
 }
 
 func (node *DeleteNode) GetChain() txnif.DeleteChain          { return node.chain.Load() }

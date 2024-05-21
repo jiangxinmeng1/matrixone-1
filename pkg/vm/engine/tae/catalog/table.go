@@ -125,7 +125,7 @@ func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 		Stats:            common.NewTableCompactStat(),
 	}
 	e.TableNode.schema.Store(schema)
-	e.CreateWithTS(types.SystemDBTS, &TableMVCCNode{Schema: schema})
+	e.CreateWithTSLocked(types.SystemDBTS, &TableMVCCNode{Schema: schema})
 	var sid types.Uuid
 	if schema.Name == SystemTableSchema.Name {
 		sid = SystemObject_Table_ID
@@ -741,7 +741,7 @@ func (entry *TableEntry) CreateWithTxnAndSchema(txn txnif.AsyncTxn, schema *Sche
 			Schema: schema,
 		},
 	}
-	entry.Insert(node)
+	entry.InsertLocked(node)
 }
 
 func (entry *TableEntry) GetVisibilityAndName(txn txnif.TxnReader) (visible, dropped bool, name string) {

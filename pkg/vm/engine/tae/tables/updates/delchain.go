@@ -99,7 +99,7 @@ func (chain *DeleteChain) EstimateMemSizeLocked() int {
 		size += chain.persistedMask.GetBitmap().Size()
 	}
 	size += int(float32(len(chain.links)*(4+8)) * 1.1) /*map size*/
-	size += chain.MVCCChain.Depth() * (DeleteNodeApproxSize + 16 /* link node overhead */)
+	size += chain.MVCCChain.DepthLocked() * (DeleteNodeApproxSize + 16 /* link node overhead */)
 
 	return size + DeleteChainApproxSize
 }

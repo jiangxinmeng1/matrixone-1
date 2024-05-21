@@ -74,7 +74,7 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand[*EmptyMVCCNode,
 		db.ID = cmd.ID.DbID
 		db.catalog = catalog
 		db.DBNode = cmd.node
-		db.Insert(un)
+		db.InsertLocked(un)
 		err = catalog.AddEntryLocked(db, un.GetTxn(), false)
 		if err != nil {
 			panic(err)
@@ -84,7 +84,7 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand[*EmptyMVCCNode,
 
 	dbun := db.SearchNodeLocked(un)
 	if dbun == nil {
-		db.Insert(un)
+		db.InsertLocked(un)
 	} else {
 		return
 		// panic(fmt.Sprintf("logic err: duplicate node %v and %v", dbun.String(), un.String()))
@@ -145,7 +145,7 @@ func (catalog *Catalog) onReplayCreateDB(
 		},
 		TxnMVCCNode: txnNode,
 	}
-	db.Insert(un)
+	db.InsertLocked(un)
 }
 func (catalog *Catalog) onReplayDeleteDB(dbid uint64, txnNode *txnbase.TxnMVCCNode) {
 	catalog.OnReplayDBID(dbid)
@@ -170,7 +170,7 @@ func (catalog *Catalog) onReplayDeleteDB(dbid uint64, txnNode *txnbase.TxnMVCCNo
 		TxnMVCCNode: txnNode,
 		BaseNode:    prev.BaseNode.CloneAll(),
 	}
-	db.Insert(un)
+	db.InsertLocked(un)
 }
 func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand[*TableMVCCNode, *TableNode], dataFactory DataFactory, observer wal.ReplayObserver) {
 	catalog.OnReplayTableID(cmd.ID.TableID)
@@ -201,7 +201,7 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand[*TableMVCCNode, *T
 		tbl.tableData = dataFactory.MakeTableFactory()(tbl)
 		tbl.TableNode = cmd.node
 		tbl.TableNode.schema.Store(un.BaseNode.Schema)
-		tbl.Insert(un)
+		tbl.InsertLocked(un)
 		err = db.AddEntryLocked(tbl, un.GetTxn(), true)
 		if err != nil {
 			logutil.Warn(catalog.SimplePPString(common.PPL3))
@@ -211,7 +211,7 @@ func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand[*TableMVCCNode, *T
 	}
 	tblun := tbl.SearchNodeLocked(un)
 	if tblun == nil {
-		tbl.Insert(un) //TODO isvalid
+		tbl.InsertLocked(un) //TODO isvalid
 		if tbl.isColumnChangedInSchema() {
 			tbl.FreezeAppend()
 		}
@@ -290,7 +290,7 @@ func (catalog *Catalog) onReplayCreateTable(dbid, tid uint64, schema *Schema, tx
 				Schema: schema,
 			},
 		}
-		tbl.Insert(un)
+		tbl.InsertLocked(un)
 		if tbl.isColumnChangedInSchema() {
 			tbl.FreezeAppend()
 		}
@@ -322,7 +322,7 @@ func (catalog *Catalog) onReplayCreateTable(dbid, tid uint64, schema *Schema, tx
 			Schema: schema,
 		},
 	}
-	tbl.Insert(un)
+	tbl.InsertLocked(un)
 }
 func (catalog *Catalog) onReplayDeleteTable(dbid, tid uint64, txnNode *txnbase.TxnMVCCNode) {
 	catalog.OnReplayTableID(tid)
@@ -352,7 +352,7 @@ func (catalog *Catalog) onReplayDeleteTable(dbid, tid uint64, txnNode *txnbase.T
 		TxnMVCCNode: txnNode,
 		BaseNode:    prev.BaseNode.CloneAll(),
 	}
-	tbl.Insert(un)
+	tbl.InsertLocked(un)
 
 }
 func (catalog *Catalog) onReplayUpdateObject(
@@ -382,13 +382,13 @@ func (catalog *Catalog) onReplayUpdateObject(
 		obj = NewReplayObjectEntry()
 		obj.ID = *cmd.ID.ObjectID()
 		obj.table = tbl
-		obj.Insert(un)
+		obj.InsertLocked(un)
 		obj.ObjectNode = cmd.node
 		tbl.AddEntryLocked(obj)
 	} else {
 		node := obj.SearchNodeLocked(un)
 		if node == nil {
-			obj.Insert(un)
+			obj.InsertLocked(un)
 		} else {
 			node.BaseNode.Update(un.BaseNode)
 		}
@@ -459,7 +459,7 @@ func (catalog *Catalog) onReplayCheckpointObject(
 	}
 	node := obj.SearchNodeLocked(un)
 	if node == nil {
-		obj.Insert(un)
+		obj.InsertLocked(un)
 	} else {
 		node.BaseNode.Update(un.BaseNode)
 	}

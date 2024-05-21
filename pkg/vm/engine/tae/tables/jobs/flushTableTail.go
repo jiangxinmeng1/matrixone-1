@@ -174,8 +174,11 @@ func NewFlushTableTailTask(
 		if obj.IsTombstone {
 			panic(fmt.Sprintf("logic err, obj %v is tombstone", obj.ID.String()))
 		}
-		if !hdl.IsAppendable() && !obj.HasDropCommitted() {
+		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
+		}
+		if obj.HasDropCommitted() {
+			continue
 		}
 		task.aObjMetas = append(task.aObjMetas, obj)
 		task.aObjHandles = append(task.aObjHandles, hdl)
@@ -197,8 +200,11 @@ func NewFlushTableTailTask(
 		if !obj.IsTombstone {
 			panic(fmt.Sprintf("logic err, obj %v is not tombstone", obj.ID.String()))
 		}
-		if !hdl.IsAppendable() && !obj.HasDropCommitted() {
+		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
+		}
+		if obj.HasDropCommitted() {
+			continue
 		}
 		task.aTombstoneMetas = append(task.aTombstoneMetas, obj)
 		task.aTombstoneHandles = append(task.aTombstoneHandles, hdl)

@@ -132,8 +132,6 @@ func (blk *baseObject) Foreach(
 	defer node.Unref()
 	schema := readSchema.(*catalog.Schema)
 	if !node.IsPersisted() {
-		blk.RLock()
-		defer blk.RUnlock()
 		return node.MustMNode().Foreach(schema, blkID, colIdx, op, sels, mp)
 	} else {
 		return node.MustPNode().Foreach(ctx, schema, blkID, colIdx, op, sels, mp)

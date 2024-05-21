@@ -91,6 +91,7 @@ type Object interface {
 	MakeAppender() (ObjectAppender, error)
 
 	GetTotalChanges() int
+	TryUpgrade() error
 
 	// check if all rows are committed before ts
 	// NOTE: here we assume that the object is visible to the ts

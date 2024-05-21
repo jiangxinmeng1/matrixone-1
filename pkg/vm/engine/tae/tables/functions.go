@@ -397,7 +397,7 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 					return txnif.ErrTxnWWConflict
 				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
-				rowIDs.Update(row, *rowID, false)
+				rowIDs.Update(rowOffset, *rowID, false)
 				return nil
 			}, nil, nil)
 	}
@@ -487,7 +487,7 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 						return txnif.ErrTxnWWConflict
 					}
 					rowID := objectio.NewRowid(blkID, uint32(row))
-					rowIDs.Update(row, *rowID, false)
+					rowIDs.Update(rowOffset, *rowID, false)
 					return nil
 				}, nil, nil)
 		}

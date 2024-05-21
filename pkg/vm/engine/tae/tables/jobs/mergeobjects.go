@@ -282,6 +282,25 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	if task.isTombstone {
+		rowIDs := view.GetColumnData(0)
+		tbl := task.rel.GetMeta().(*catalog.TableEntry)
+		rowIDs.Foreach(func(v any, isNull bool, row int) error {
+			rowID := v.(types.Rowid)
+			objectID := rowID.BorrowObjectID()
+			obj, err := tbl.GetObjectByID(objectID, false)
+			if err != nil {
+				panic(err)
+			}
+			if obj.HasDropCommitted() {
+				if view.DeleteMask == nil {
+					view.DeleteMask = &nulls.Nulls{}
+				}
+				view.DeleteMask.Add(uint64(row))
+			}
+			return nil
+		}, nil)
+	}
 	if len(task.attrs) != len(view.Columns) {
 		panic(fmt.Sprintf("mismatch %v, %v, %v", task.attrs, len(task.attrs), len(view.Columns)))
 	}

@@ -5550,10 +5550,10 @@ func TestUpdatePerf(t *testing.T) {
 }
 
 func TestDeletePerf(t *testing.T) {
-	// t.Skip(any("for debug"))
+	t.Skip(any("for debug"))
 	ctx := context.Background()
 
-	opts := config.WithLongScanAndCKPOpts(nil)
+	opts := config.WithQuickScanAndCKPAndGCOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 	schema := catalog.MockSchemaAll(10, 2)
@@ -5561,7 +5561,7 @@ func TestDeletePerf(t *testing.T) {
 	schema.ObjectMaxBlocks = 5
 	tae.BindSchema(schema)
 
-	totalCount := 40
+	totalCount := 50000
 	poolSize := 20
 	cnt := totalCount / poolSize
 
@@ -5588,7 +5588,7 @@ func TestDeletePerf(t *testing.T) {
 	p, _ := ants.NewPool(poolSize)
 	defer p.Release()
 	now := time.Now()
-	for i := 1; i <= poolSize; i++ {
+	for i := 0; i < poolSize; i++ {
 		wg.Add(1)
 		_ = p.Submit(run(i))
 	}

@@ -58,7 +58,7 @@ func newMergeTaskBuilder(db *DB) *MergeTaskBuilder {
 	op.DatabaseFn = op.onDataBase
 	op.TableFn = op.onTable
 	op.ObjectFn = op.onObject
-	op.TombstoneFn = op.OnTombstone
+	op.TombstoneFn = op.onTombstone
 	op.PostObjectFn = op.onPostObject
 	op.PostTableFn = op.onPostTable
 	return op

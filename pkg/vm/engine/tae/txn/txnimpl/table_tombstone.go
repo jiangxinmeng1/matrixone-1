@@ -152,8 +152,10 @@ func (tbl *txnTable) RangeDelete(
 	if dt == handle.DT_MergeCompact {
 		anode := tbl.tombstoneTableSpace.nodes[0].(*anode)
 		anode.isMergeCompact = true
-		startOffset := anode.data.Length() - deleteBatch.Length()
-		tbl.tombstoneTableSpace.prepareApplyANode(anode, uint32(startOffset))
+		if tbl.store.txn.GetTxnState(false) != txnif.TxnStateActive {
+			startOffset := anode.data.Length() - deleteBatch.Length()
+			tbl.tombstoneTableSpace.prepareApplyANode(anode, uint32(startOffset))
+		}
 	}
 	obj, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,

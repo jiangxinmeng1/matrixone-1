@@ -5561,10 +5561,11 @@ func TestDeletePerf(t *testing.T) {
 	schema.ObjectMaxBlocks = 5
 	tae.BindSchema(schema)
 
-	cnt := 1
+	totalCount := 40
 	poolSize := 20
+	cnt := totalCount / poolSize
 
-	bat := catalog.MockBatch(schema, cnt*poolSize)
+	bat := catalog.MockBatch(schema, totalCount)
 	defer bat.Close()
 
 	tae.CreateRelAndAppend(bat, true)
@@ -5572,7 +5573,7 @@ func TestDeletePerf(t *testing.T) {
 	run := func(start int) func() {
 		return func() {
 			defer wg.Done()
-			for i := start; i < start+cnt; i++ {
+			for i := start * cnt; i < start*cnt+cnt; i++ {
 				v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(i)
 				filter := handle.NewEQFilter(v)
 				txn, rel := tae.GetRelation()
@@ -5589,7 +5590,7 @@ func TestDeletePerf(t *testing.T) {
 	now := time.Now()
 	for i := 1; i <= poolSize; i++ {
 		wg.Add(1)
-		_ = p.Submit(run(i * cnt))
+		_ = p.Submit(run(i))
 	}
 	wg.Wait()
 	t.Log(time.Since(now))

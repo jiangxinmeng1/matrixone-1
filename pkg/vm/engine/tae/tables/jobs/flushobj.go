@@ -109,6 +109,19 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	if task.delta != nil {
+		cnBatch := containers.ToCNBatch(task.delta)
+		for _, vec := range cnBatch.Vecs {
+			if vec == nil {
+				// this task has been canceled
+				return nil
+			}
+		}
+		_, err := writer.WriteTombstoneBatch(cnBatch)
+		if err != nil {
+			return err
+		}
+	}
 	task.blocks, _, err = writer.Sync(ctx)
 	if err != nil {
 		return err

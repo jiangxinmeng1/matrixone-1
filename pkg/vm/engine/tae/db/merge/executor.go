@@ -217,7 +217,7 @@ func (e *MergeExecutor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalo
 	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
 		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes, isTombstone)
 	}
-	task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory)
+	task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTaskWithObserver(nil, tasks.DataCompactionTask, scopes, factory, e)
 	if err != nil {
 		if err != tasks.ErrScheduleScopeConflict {
 			logutil.Infof("[Mergeblocks] Schedule error info=%v", err)

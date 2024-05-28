@@ -151,7 +151,7 @@ var RecordStatement = func(ctx context.Context, ses *Session, proc *process.Proc
 			text = SubStringFromBegin(bb.String(), int(getGlobalPu().SV.LengthOfQueryPrinted))
 		} else {
 			// ignore envStmt == ""
-			// case: exec `set @ t= 2;` will trigger an internal query with the same session.
+			// case: exec `set @t = 2;` will trigger an internal query with the same session.
 			// If you need real sql, can try:
 			//	+ fmtCtx := tree.NewFmtCtx(dialect.MYSQL, tree.WithQuoteString(true))
 			//	+ cw.GetAst().Format(fmtCtx)
@@ -187,6 +187,7 @@ var RecordStatement = func(ctx context.Context, ses *Session, proc *process.Proc
 		// ignore internal EMPTY query.
 		return ctx, nil
 	}
+
 	tenant := ses.GetTenantInfo()
 	if tenant == nil {
 		tenant, _ = GetTenantInfo(ctx, "internal") // pls task care of mce.GetDoQueryFunc() call case.
@@ -195,6 +196,7 @@ var RecordStatement = func(ctx context.Context, ses *Session, proc *process.Proc
 	// set TransactionID
 	var txn TxnOperator
 	var err error
+	// fixme: use ses.GetTxnId to simple.
 	if handler := ses.GetTxnHandler(); handler.InActiveTxn() {
 		txn = handler.GetTxn()
 		if err != nil {
@@ -204,13 +206,12 @@ var RecordStatement = func(ctx context.Context, ses *Session, proc *process.Proc
 	}
 	// set SessionID
 	copy(stm.SessionID[:], ses.GetUUID())
+	copy(stm.StatementID[:], stmID[:])
 	requestAt := envBegin
 	if !useEnv {
 		requestAt = time.Now()
 	}
 
-	copy(stm.StatementID[:], stmID[:])
-	// END> set StatementID
 	stm.Account = tenant.GetTenant()
 	stm.RoleId = proc.SessionInfo.RoleId
 	stm.User = tenant.GetUser()
@@ -229,7 +230,7 @@ var RecordStatement = func(ctx context.Context, ses *Session, proc *process.Proc
 		stm.User = ""
 	}
 	if stm.IsMoLogger() && stm.StatementType == "Load" && len(stm.Statement) > 128 {
-		stm.Statement = envStmt[:40] + "..." + envStmt[len(envStmt)-45:]
+		stm.Statement = envStmt[:40] + "..." + envStmt[len(envStmt)-70:]
 	}
 	stm.Report(ctx) // pls keep it simple: Only call Report twice at most.
 	ses.SetTStmt(stm)
@@ -1823,7 +1824,7 @@ func handleEmptyStmt(ses FeSession, execCtx *ExecCtx, stmt *tree.EmptyStmt) erro
 	return err
 }
 
-func GetExplainColumns(ctx context.Context, explainColName string) ([]interface{}, error) {
+func GetExplainColumns(ctx context.Context, explainColName string) ([]*plan2.ColDef, []interface{}, error) {
 	cols := []*plan2.ColDef{
 		{Typ: plan2.Type{Id: int32(types.T_varchar)}, Name: explainColName},
 	}
@@ -1834,11 +1835,11 @@ func GetExplainColumns(ctx context.Context, explainColName string) ([]interface{
 		c.SetName(col.Name)
 		err = convertEngineTypeToMysqlType(ctx, types.T(col.Typ.Id), c)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		columns[i] = c
 	}
-	return columns, err
+	return cols, columns, err
 }
 
 func getExplainOption(reqCtx context.Context, options []tree.OptionElem) (*explain.ExplainOptions, error) {
@@ -2474,6 +2475,9 @@ func executeStmtWithWorkspace(ses FeSession,
 
 	txnOp := ses.GetTxnHandler().GetTxn()
 
+	//refresh txn id
+	ses.SetTxnId(txnOp.Txn().ID)
+
 	//refresh proc txnOp
 	execCtx.proc.TxnOperator = txnOp
 
@@ -2836,6 +2840,8 @@ func doComQuery(ses *Session, execCtx *ExecCtx, input *UserInput) (retErr error)
 
 	defer func() {
 		ses.SetMysqlResultSet(nil)
+		ses.rs = nil
+		ses.p = nil
 	}()
 
 	canCache := true

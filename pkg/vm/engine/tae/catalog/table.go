@@ -112,25 +112,21 @@ func NewTableEntryWithTableId(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn
 }
 
 func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
-	e := &TableEntry{
-		ID: id,
-		BaseEntryImpl: NewBaseEntry(
-			func() *TableMVCCNode { return &TableMVCCNode{} }),
-		db:               db,
-		TableNode:        &TableNode{},
-		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
-		entries:          make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
-		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
-		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
-		Stats:            common.NewTableCompactStat(),
-	}
+	e := NewReplayTableEntry()
+	e.ID = id
+	e.db = db
+
 	e.TableNode.schema.Store(schema)
-	e.CreateWithTSLocked(types.SystemDBTS, &TableMVCCNode{Schema: schema})
+	e.CreateWithTS(types.SystemDBTS, &TableMVCCNode{Schema: schema})
+
 	var sid types.Uuid
-	if schema.Name == SystemTableSchema.Name {
-		sid = SystemObject_Table_ID
-	} else if schema.Name == SystemDBSchema.Name {
+	if schema.Name == SystemDBSchema.Name {
+		if DefaultTableDataFactory != nil {
+			e.tableData = DefaultTableDataFactory(e) // TODO(aptend): add data handle
+		}
 		sid = SystemObject_DB_ID
+	} else if schema.Name == SystemTableSchema.Name {
+		sid = SystemObject_Table_ID
 	} else if schema.Name == SystemColumnSchema.Name {
 		sid = SystemObject_Columns_ID
 	} else {
@@ -150,6 +146,8 @@ func NewReplayTableEntry() *TableEntry {
 		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
 		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
 		Stats:            common.NewTableCompactStat(),
+		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
+		TableNode:        &TableNode{},
 	}
 	return e
 }

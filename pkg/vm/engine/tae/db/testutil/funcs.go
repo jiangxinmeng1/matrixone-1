@@ -163,6 +163,11 @@ func GetOneBlockMeta(rel handle.Relation) *catalog.ObjectEntry {
 	return it.GetObject().GetMeta().(*catalog.ObjectEntry)
 }
 
+func GetOneTombstoneMeta(rel handle.Relation) *catalog.ObjectEntry {
+	it := rel.MakeObjectIt(true, true)
+	return it.GetObject().GetMeta().(*catalog.ObjectEntry)
+}
+
 func GetAllBlockMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.ObjectEntry) {
 	it := rel.MakeObjectIt(isTombstone, true)
 	for ; it.Valid(); it.Next() {

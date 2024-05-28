@@ -172,10 +172,8 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 	from, to types.TS,
 	blkOffsetBase int) (transCnt int, collect, transfer time.Duration, err error) {
 
-	dataBlock := dropped.GetObjectData()
-
 	inst := time.Now()
-	bat, _, err := dataBlock.CollectDeleteInRange(
+	bat, _, err := dropped.CollectDeleteInRange(
 		entry.txn.GetContext(),
 		from.Next(),
 		to,

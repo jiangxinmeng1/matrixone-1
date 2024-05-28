@@ -182,15 +182,15 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 }
 
 // for each tombstone in range [start,end]
-func (entry *ObjectEntry) foreachTombstoneInRangeWithBlockID(
+func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	ctx context.Context,
-	blkID types.Blockid,
+	blkID types.Objectid,
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
 	entry.foreachTombstoneInRange(ctx, start, end, true, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			if *rowID.BorrowBlockID() != blkID {
+			if *rowID.BorrowObjectID() != blkID {
 				return true, nil
 			}
 			return op(rowID, commitTS, aborted, pk)

@@ -5346,8 +5346,8 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	updateFn(1, 100, 110)
 	{
 		txn, rel := tae.GetRelation()
-		meta := testutil.GetOneBlockMeta(rel)
-		bat, _, err := meta.GetObjectData().CollectDeleteInRange(ctx, types.TS{}, types.MaxTs(), common.DefaultAllocator)
+		meta := testutil.GetOneTombstoneMeta(rel)
+		bat, err := meta.GetObjectData().CollectAppendInRange(types.TS{}, types.MaxTs(), false, common.DefaultAllocator)
 		require.NoError(t, err)
 		require.Equal(t, 10, bat.Length())
 		require.NoError(t, txn.Commit(ctx))
@@ -5356,10 +5356,8 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	tae.ForceLongCheckpoint()
 	{
 		txn, rel := tae.GetRelation()
-		meta := testutil.GetOneBlockMeta(rel)
-		bat, _, err := meta.GetObjectData().CollectDeleteInRange(ctx, types.TS{}, types.MaxTs(), common.DefaultAllocator)
-		require.NoError(t, err)
-		require.Equal(t, 10, bat.Length())
+		meta := testutil.GetOneTombstoneMeta(rel)
+		require.Equal(t, 10, meta.GetRows())
 		require.NoError(t, txn.Commit(ctx))
 	}
 	logutil.Infof(tae.Catalog.SimplePPString(3))
@@ -5367,10 +5365,8 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	logutil.Infof(tae.Catalog.SimplePPString(3))
 	{
 		txn, rel := tae.GetRelation()
-		meta := testutil.GetOneBlockMeta(rel)
-		bat, _, err := meta.GetObjectData().CollectDeleteInRange(ctx, types.TS{}, types.MaxTs(), common.DefaultAllocator)
-		require.NoError(t, err)
-		require.Equal(t, 10, bat.Length())
+		meta := testutil.GetOneTombstoneMeta(rel)
+		require.Equal(t, 10, meta.GetRows())
 		require.NoError(t, txn.Commit(ctx))
 	}
 }
@@ -8546,7 +8542,7 @@ func TestCollectDeletesInRange2(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().CollectDeleteInRange(
+	deletes, _, err := blk.GetMeta().(*catalog.ObjectEntry).CollectDeleteInRange(
 		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
 	)
 	assert.NoError(t, err)
@@ -8562,7 +8558,7 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err = blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().CollectDeleteInRange(
+	deletes, _, err = blk.GetMeta().(*catalog.ObjectEntry).CollectDeleteInRange(
 		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
 	)
 	assert.NoError(t, err)

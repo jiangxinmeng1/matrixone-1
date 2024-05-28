@@ -15,6 +15,7 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -29,14 +30,32 @@ import (
 func (entry *TableEntry) CollectDeleteInRange(
 	ctx context.Context,
 	start, end types.TS,
-	blockID objectio.Blockid,
+	objectID objectio.ObjectId,
 	mp *mpool.MPool,
 ) (bat *containers.Batch, err error) {
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
 		tombstone := node.GetPayload()
-		err := tombstone.foreachTombstoneInRangeWithBlockID(ctx, blockID, start, end, mp,
+		tombstone.RLock()
+		skip := tombstone.IsCreatingOrAbortedLocked() || tombstone.HasDropCommittedLocked()
+		tombstone.RUnlock()
+		if skip {
+			continue
+		}
+		if tombstone.HasCommittedPersistedData() {
+			zm := tombstone.GetSortKeyZonemap()
+			maxObjectID := zm.GetMax().(types.Rowid).GetObject()
+			if bytes.Compare(maxObjectID[:], objectID[:]) < 0 {
+				continue
+			}
+			minObjectID := zm.GetMin().(types.Rowid).GetObject()
+			if bytes.Compare(minObjectID[:], objectID[:]) > 0 {
+				continue
+			}
+			// TODO bf
+		}
+		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objectID, start, end, mp,
 			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 				if bat == nil {
 					pkType := entry.GetLastestSchema(false).GetPrimaryKey().Type

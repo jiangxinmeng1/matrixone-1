@@ -23,7 +23,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 
-	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
@@ -531,33 +530,6 @@ func (blk *baseObject) getPersistedValue(
 	}
 	defer view2.Close()
 	v, isNull = view2.GetValue(row)
-	return
-}
-
-func (blk *baseObject) CollectDeleteInRange(
-	ctx context.Context,
-	start, end types.TS,
-	mp *mpool.MPool,
-) (bat *containers.Batch, emtpyDelBlkIdx *bitmap.Bitmap, err error) {
-	emtpyDelBlkIdx = &bitmap.Bitmap{}
-	emtpyDelBlkIdx.InitWithSize(int64(blk.meta.BlockCnt()))
-	for blkID := uint16(0); blkID < uint16(blk.meta.BlockCnt()); blkID++ {
-		blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-		deletes, err := blk.meta.GetTable().CollectDeleteInRange(ctx, start, end, *blkid, mp)
-		if err != nil {
-			return nil, nil, err
-		}
-		if deletes == nil || deletes.Length() == 0 {
-			emtpyDelBlkIdx.Add(uint64(blkID))
-		} else {
-			if bat == nil {
-				pkType := deletes.GetVectorByName(catalog.AttrPKVal).GetType()
-				bat = catalog.NewTombstoneBatch(*pkType, mp)
-			}
-			bat.Extend(deletes)
-			deletes.Close()
-		}
-	}
 	return
 }
 

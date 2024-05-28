@@ -155,9 +155,8 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			// empty frozen aobjects, it can not has any more deletes
 			continue
 		}
-		dataBlock := blk.GetObjectData()
 		var bat *containers.Batch
-		bat, _, err = dataBlock.CollectDeleteInRange(
+		bat, _, err = blk.CollectDeleteInRange(
 			entry.txn.GetContext(),
 			from.Next(), // NOTE HERE
 			to,

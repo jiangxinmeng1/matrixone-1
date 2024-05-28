@@ -21,12 +21,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
@@ -649,6 +652,29 @@ func (entry *ObjectEntry) GetPKZoneMap(
 		return
 	}
 	return stats.SortKeyZoneMap(), nil
+}
+
+func (entry *ObjectEntry) CollectDeleteInRange(
+	ctx context.Context,
+	start, end types.TS,
+	mp *mpool.MPool,
+) (bat *containers.Batch, emtpyDelBlkIdx *bitmap.Bitmap, err error) {
+	emtpyDelBlkIdx = &bitmap.Bitmap{}
+	emtpyDelBlkIdx.InitWithSize(int64(entry.BlockCnt()))
+	deletes, err := entry.GetTable().CollectDeleteInRange(ctx, start, end, entry.ID, mp)
+	if deletes == nil {
+		return nil, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if bat == nil {
+		pkType := deletes.GetVectorByName(AttrPKVal).GetType()
+		bat = NewTombstoneBatch(*pkType, mp)
+	}
+	bat.Extend(deletes)
+	deletes.Close()
+	return
 }
 func MockObjEntryWithTbl(tbl *TableEntry, size uint64) *ObjectEntry {
 	stats := objectio.NewObjectStats()

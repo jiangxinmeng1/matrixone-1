@@ -17,7 +17,6 @@ package data
 import (
 	"context"
 
-	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 
@@ -133,7 +132,6 @@ type Object interface {
 
 	Init() error
 	CollectAppendInRange(start, end types.TS, withAborted bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
-	CollectDeleteInRange(ctx context.Context, start, end types.TS, mp *mpool.MPool) (*containers.Batch, *bitmap.Bitmap, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 

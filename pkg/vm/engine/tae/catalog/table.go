@@ -117,7 +117,7 @@ func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 	e.db = db
 
 	e.TableNode.schema.Store(schema)
-	e.CreateWithTS(types.SystemDBTS, &TableMVCCNode{Schema: schema})
+	e.CreateWithTSLocked(types.SystemDBTS, &TableMVCCNode{Schema: schema})
 
 	var sid types.Uuid
 	if schema.Name == SystemDBSchema.Name {
@@ -139,14 +139,13 @@ func NewSystemTableEntry(db *DBEntry, id uint64, schema *Schema) *TableEntry {
 
 func NewReplayTableEntry() *TableEntry {
 	e := &TableEntry{
-		BaseEntryImpl: NewReplayBaseEntry(
+		BaseEntryImpl: NewBaseEntry(
 			func() *TableMVCCNode { return &TableMVCCNode{} }),
 		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
 		entries:          make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
 		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
 		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
 		Stats:            common.NewTableCompactStat(),
-		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
 		TableNode:        &TableNode{},
 	}
 	return e

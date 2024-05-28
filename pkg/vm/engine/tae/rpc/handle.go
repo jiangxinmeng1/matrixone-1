@@ -615,7 +615,7 @@ func (h *Handle) HandleWrite(
 		// TODO: debug for #13342, remove me later
 		if h.IsInterceptTable(tb.Schema(false).(*catalog.Schema).Name) {
 			if tb.Schema(false).(*catalog.Schema).HasPK() {
-				idx := tb.Schema().(*catalog.Schema).GetSingleSortKeyIdx()
+				idx := tb.Schema(false).(*catalog.Schema).GetSingleSortKeyIdx()
 				for i := 0; i < req.Batch.Vecs[0].Length(); i++ {
 					logutil.Infof("op1 %v, %v", txn.GetStartTS().ToString(), common.MoVectorToString(req.Batch.Vecs[idx], i))
 				}

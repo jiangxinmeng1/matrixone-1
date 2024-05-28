@@ -349,7 +349,7 @@ func (h *Handle) HandleCommitMerge(
 		}
 	}
 
-	_, err = jobs.HandleMergeEntryInTxn(txn, req, h.db.Runtime)
+	_, err = jobs.HandleMergeEntryInTxn(txn, req, h.db.Runtime, false)
 	if err != nil {
 		return
 	}

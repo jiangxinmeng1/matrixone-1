@@ -450,7 +450,7 @@ func (m *TNUsageMemo) checkSpecial(usage UsageData, tbl *catalog.TableEntry) tri
 		return yeah
 	}
 
-	schema := tbl.GetLastestSchema()
+	schema := tbl.GetLastestSchema(false)
 	if strings.ToLower(schema.Relkind) == cluster {
 		return yeah
 	}

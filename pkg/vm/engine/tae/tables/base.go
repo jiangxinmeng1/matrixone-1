@@ -507,20 +507,23 @@ func (blk *baseObject) getPersistedValue(
 	blkID uint16,
 	row, col int,
 	skipMemory bool,
+	skipCheckDeletes bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
 	view := containers.NewColumnView(col)
 	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
-	if err != nil {
-		return
-	}
-	id := blk.meta.AsCommonID()
-	id.SetBlockOffset(blkID)
-	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
-	if view.DeleteMask.Contains(uint64(row)) {
-		err = moerr.NewNotFoundNoCtx()
-		return
+	if !skipCheckDeletes {
+		err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
+		if err != nil {
+			return
+		}
+		id := blk.meta.AsCommonID()
+		id.SetBlockOffset(blkID)
+		err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+		if view.DeleteMask.Contains(uint64(row)) {
+			err = moerr.NewNotFoundNoCtx()
+			return
+		}
 	}
 	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, false, mp)
 	if err != nil {

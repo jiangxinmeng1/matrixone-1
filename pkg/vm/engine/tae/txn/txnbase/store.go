@@ -138,7 +138,7 @@ func (store *NoopTxnStore) GetByFilter(
 	return
 }
 func (store *NoopTxnStore) GetValue(
-	*common.ID, uint32, uint16,
+	*common.ID, uint32, uint16, bool,
 ) (v any, isNull bool, err error) {
 	return
 }

@@ -247,6 +247,23 @@ func ForEachObject(rel handle.Relation, fn func(obj handle.Object) error) {
 	}
 }
 
+func ForEachTombstone(rel handle.Relation, fn func(obj handle.Object) error) {
+	it := rel.MakeObjectIt(true, true)
+	var err error
+	for it.Valid() {
+		obj := it.GetObject()
+		defer obj.Close()
+		if err = fn(obj); err != nil {
+			if errors.Is(err, handle.ErrIteratorEnd) {
+				return
+			} else {
+				panic(err)
+			}
+		}
+		it.Next()
+	}
+}
+
 func AppendFailClosure(t *testing.T, data *containers.Batch, name string, e *db.DB, wg *sync.WaitGroup) func() {
 	return func() {
 		if wg != nil {

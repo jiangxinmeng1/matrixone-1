@@ -470,7 +470,7 @@ func TestReplay2(t *testing.T) {
 	val, _, err := rel.GetValueByFilter(context.Background(), filter, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, int32(33), val)
-	_, _, err = rel.GetValue(id, row, 0)
+	_, _, err = rel.GetValue(id, row, 0, false)
 	assert.NotNil(t, err)
 	assert.Nil(t, txn.Commit(context.Background()))
 
@@ -507,7 +507,7 @@ func TestReplay2(t *testing.T) {
 	val, _, err = rel.GetValueByFilter(context.Background(), filter, 0)
 	assert.Nil(t, err)
 	assert.Equal(t, int32(33), val)
-	_, _, err = rel.GetValue(id, row, 0)
+	_, _, err = rel.GetValue(id, row, 0, false)
 	assert.NotNil(t, err)
 	assert.Nil(t, txn.Commit(context.Background()))
 

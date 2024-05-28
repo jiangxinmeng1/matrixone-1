@@ -217,7 +217,7 @@ func (h *txnRelation) GetValueByFilter(
 	if err != nil {
 		return
 	}
-	v, isNull, err = h.GetValue(id, row, uint16(col))
+	v, isNull, err = h.GetValue(id, row, uint16(col), false)
 	return
 }
 
@@ -337,11 +337,11 @@ func (h *txnRelation) GetValueByPhyAddrKey(key any, col int) (any, bool, error) 
 	bid, row := rid.Decode()
 	id := h.table.entry.AsCommonID()
 	id.BlockID = bid
-	return h.Txn.GetStore().GetValue(id, row, uint16(col))
+	return h.Txn.GetStore().GetValue(id, row, uint16(col), false)
 }
 
-func (h *txnRelation) GetValue(id *common.ID, row uint32, col uint16) (any, bool, error) {
-	return h.Txn.GetStore().GetValue(id, row, col)
+func (h *txnRelation) GetValue(id *common.ID, row uint32, col uint16, skipCheckDelete bool) (any, bool, error) {
+	return h.Txn.GetStore().GetValue(id, row, col, skipCheckDelete)
 }
 
 func (h *txnRelation) LogTxnEntry(entry txnif.TxnEntry, readedObject, readedTombstone []*common.ID) (err error) {

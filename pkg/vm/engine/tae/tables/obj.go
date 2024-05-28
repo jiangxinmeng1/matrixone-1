@@ -198,7 +198,7 @@ func (obj *object) GetValue(
 	defer node.Unref()
 	schema := readSchema.(*catalog.Schema)
 	return obj.getPersistedValue(
-		ctx, txn, schema, blkID, row, col, false, mp,
+		ctx, txn, schema, blkID, row, col, false, skipCheckDelete, mp,
 	)
 }
 

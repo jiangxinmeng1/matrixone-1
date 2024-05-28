@@ -44,7 +44,7 @@ type Relation interface {
 	TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Location) (ok bool, err error)
 	Update(id *common.ID, row uint32, col uint16, v any, isNull bool) error
 	GetByFilter(ctx context.Context, filter *Filter) (id *common.ID, offset uint32, err error)
-	GetValue(id *common.ID, row uint32, col uint16) (any, bool, error)
+	GetValue(id *common.ID, row uint32, col uint16, skipCheckDelete bool) (any, bool, error)
 	GetValueByFilter(ctx context.Context, filter *Filter, col int) (any, bool, error)
 	UpdateByFilter(ctx context.Context, filter *Filter, col uint16, v any, isNull bool) error
 	DeleteByFilter(ctx context.Context, filter *Filter) error

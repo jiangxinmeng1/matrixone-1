@@ -292,7 +292,7 @@ func (c *APP1Client) GetGoodEntry(goodId uint64) (id *common.ID, offset uint32, 
 
 	entry = new(APP1Goods)
 	entry.ID = goodId
-	price, _, _ := goodRel.GetValue(id, offset, 2)
+	price, _, _ := goodRel.GetValue(id, offset, 2, false)
 	entry.Price = price.(float64)
 	return
 }

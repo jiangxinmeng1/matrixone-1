@@ -303,7 +303,7 @@ func (obj *aobject) GetValue(
 		return node.MustMNode().getInMemoryValue(txn, schema, row, col, skipCheckDelete, mp)
 	} else {
 		return obj.getPersistedValue(
-			ctx, txn, schema, 0, row, col, true, mp,
+			ctx, txn, schema, 0, row, col, true, skipCheckDelete, mp,
 		)
 	}
 }
@@ -527,11 +527,9 @@ func (obj *aobject) EstimateMemSize() (int, int) {
 }
 
 func (obj *aobject) GetRowsOnReplay() uint64 {
-	rows := uint64(obj.appendMVCC.GetTotalRow())
-	fileRows := uint64(obj.meta.GetLatestCommittedNodeLocked().
-		BaseNode.ObjectStats.Rows())
-	if rows > fileRows {
-		return rows
+	if obj.meta.HasDropCommitted() {
+		return uint64(obj.meta.GetLatestCommittedNodeLocked().
+			BaseNode.ObjectStats.Rows())
 	}
-	return fileRows
+	return uint64(obj.appendMVCC.GetTotalRow())
 }

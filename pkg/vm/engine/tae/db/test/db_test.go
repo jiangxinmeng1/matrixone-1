@@ -2093,7 +2093,7 @@ func TestUpdateByFilter(t *testing.T) {
 
 	id, row, err := rel.GetByFilter(context.Background(), filter)
 	assert.NoError(t, err)
-	cv, _, err := rel.GetValue(id, row, 2)
+	cv, _, err := rel.GetValue(id, row, 2, false)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(2222), cv.(int32))
 
@@ -4785,7 +4785,7 @@ func TestDelete4(t *testing.T) {
 			txn.Rollback(context.Background())
 			return
 		}
-		v, _, err := rel.GetValue(id, offset, 1)
+		v, _, err := rel.GetValue(id, offset, 1, false)
 		if err != nil {
 			txn.Rollback(context.Background())
 			return
@@ -5162,7 +5162,7 @@ func TestUpdate(t *testing.T) {
 		txn, rel := tae.GetRelation()
 		id, offset, err := rel.GetByFilter(context.Background(), filter)
 		assert.NoError(t, err)
-		v, _, err := rel.GetValue(id, offset, 2)
+		v, _, err := rel.GetValue(id, offset, 2, false)
 		assert.NoError(t, err)
 		err = rel.RangeDelete(id, offset, offset, handle.DT_Normal)
 		if err != nil {
@@ -5328,7 +5328,7 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 			filter := handle.NewEQFilter(int64(x))
 			id, offset, err := rel.GetByFilter(context.Background(), filter)
 			assert.NoError(t, err)
-			_, _, err = rel.GetValue(id, offset, 2)
+			_, _, err = rel.GetValue(id, offset, 2, false)
 			assert.NoError(t, err)
 			err = rel.RangeDelete(id, offset, offset, handle.DT_Normal)
 			if err != nil {
@@ -5438,7 +5438,7 @@ func TestAlwaysUpdate(t *testing.T) {
 			filter := handle.NewEQFilter(int64(x))
 			id, offset, err := rel.GetByFilter(context.Background(), filter)
 			assert.NoError(t, err)
-			_, _, err = rel.GetValue(id, offset, 2)
+			_, _, err = rel.GetValue(id, offset, 2, false)
 			assert.NoError(t, err)
 			err = rel.RangeDelete(id, offset, offset, handle.DT_Normal)
 			if err != nil {
@@ -6419,7 +6419,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, col := range rel0.Schema(false).(*catalog.Schema).ColDefs {
-		val, null, err := rel0.GetValue(id, 2, uint16(col.Idx))
+		val, null, err := rel0.GetValue(id, 2, uint16(col.Idx), false)
 		require.NoError(t, err)
 		require.False(t, null)
 		if col.IsPrimary() {
@@ -6452,7 +6452,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	require.Equal(t, 2, cnt) // 2 blocks because the first is freezed
 
 	for _, col := range rel.Schema(false).(*catalog.Schema).ColDefs {
-		val, null, err := rel.GetValue(id, 3, uint16(col.Idx)) // get first blk
+		val, null, err := rel.GetValue(id, 3, uint16(col.Idx), false) // get first blk
 		require.NoError(t, err)
 		if col.Name == "xyz" {
 			require.True(t, null) // fill null for the new column
@@ -6463,7 +6463,7 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 			require.Equal(t, uint16(3), val.(uint16))
 		}
 
-		val, null, err = rel.GetValue(id2, 3, uint16(col.Idx)) // get second blk
+		val, null, err = rel.GetValue(id2, 3, uint16(col.Idx), false) // get second blk
 		require.NoError(t, err)
 		require.False(t, null)
 		if col.IsPrimary() {

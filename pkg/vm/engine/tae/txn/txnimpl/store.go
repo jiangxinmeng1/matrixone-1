@@ -345,7 +345,7 @@ func (store *txnStore) GetByFilter(ctx context.Context, dbId, tid uint64, filter
 	return db.GetByFilter(ctx, tid, filter)
 }
 
-func (store *txnStore) GetValue(id *common.ID, row uint32, colIdx uint16) (v any, isNull bool, err error) {
+func (store *txnStore) GetValue(id *common.ID, row uint32, colIdx uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
 	db, err := store.getOrSetDB(id.DbID)
 	if err != nil {
 		return
@@ -354,7 +354,7 @@ func (store *txnStore) GetValue(id *common.ID, row uint32, colIdx uint16) (v any
 	// 	err = txnbase.ErrNotFound
 	// 	return
 	// }
-	return db.GetValue(id, row, colIdx)
+	return db.GetValue(id, row, colIdx, skipCheckDelete)
 }
 
 func (store *txnStore) DatabaseNames() (names []string) {

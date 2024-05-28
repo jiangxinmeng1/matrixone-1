@@ -177,7 +177,7 @@ func (db *txnDB) GetByFilter(ctx context.Context, tid uint64, filter *handle.Fil
 	return table.GetByFilter(ctx, filter)
 }
 
-func (db *txnDB) GetValue(id *common.ID, row uint32, colIdx uint16) (v any, isNull bool, err error) {
+func (db *txnDB) GetValue(id *common.ID, row uint32, colIdx uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
 	table, err := db.getOrSetTable(id.TableID)
 	if err != nil {
 		return
@@ -186,7 +186,7 @@ func (db *txnDB) GetValue(id *common.ID, row uint32, colIdx uint16) (v any, isNu
 		err = moerr.NewNotFoundNoCtx()
 		return
 	}
-	return table.GetValue(context.Background(), id, row, colIdx, false)
+	return table.GetValue(context.Background(), id, row, colIdx, skipCheckDelete)
 }
 
 func (db *txnDB) CreateRelation(def any) (relation handle.Relation, err error) {

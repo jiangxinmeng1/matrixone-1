@@ -746,31 +746,27 @@ func (e *TestEngine) CheckReadCNCheckpoint() {
 
 func (e *TestEngine) CheckCollectDeleteInRange() {
 	txn, rel := e.GetRelation()
-	ForEachObject(rel, func(obj handle.Object) error {
+	ForEachTombstone(rel, func(obj handle.Object) error {
 		meta := obj.GetMeta().(*catalog.ObjectEntry)
-		deleteBat, _, err := meta.GetObjectData().CollectDeleteInRange(
-			context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
-		)
-		assert.NoError(e.t, err)
-		pkDef := e.schema.GetPrimaryKey()
-		deleteRowIDs := deleteBat.GetVectorByName(catalog.AttrRowID)
-		deletePKs := deleteBat.GetVectorByName(catalog.AttrPKVal)
 		blkCnt := obj.BlkCnt()
-		pkVectors := make([]*containers.ColumnView, blkCnt)
-		rowIDVectors := make([]*containers.ColumnView, blkCnt)
-		for i := uint16(0); i < uint16(blkCnt); i++ {
-			pkVectors[i], err = meta.GetObjectData().GetColumnDataById(context.Background(), txn, e.schema, i, pkDef.Idx, common.DefaultAllocator)
+		for i := 0; i < blkCnt; i++ {
+			deleteBat, err := meta.GetObjectData().GetColumnDataByIds(
+				context.Background(), txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
+			)
 			assert.NoError(e.t, err)
-			rowIDVectors[i], err = meta.GetObjectData().GetColumnDataById(context.Background(), txn, e.schema, i, e.schema.PhyAddrKey.Idx, common.DefaultAllocator)
-			assert.NoError(e.t, err)
-		}
-		for i := 0; i < deleteBat.Length(); i++ {
-			rowID := deleteRowIDs.Get(i).(types.Rowid)
-			offset := rowID.GetRowOffset()
-			_, blkOffset := rowID.BorrowBlockID().Offsets()
-			appendRowID := rowIDVectors[blkOffset].GetData().Get(int(offset)).(types.Rowid)
-			e.t.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), appendRowID.String(), pkVectors[blkOffset].GetData().Get(int(offset)))
-			assert.Equal(e.t, pkVectors[blkOffset].GetData().Get(int(offset)), deletePKs.Get(i))
+			pkDef := e.schema.GetPrimaryKey()
+			deleteRowIDs := deleteBat.GetColumnData(0)
+			deletePKs := deleteBat.GetColumnData(1)
+			for i := 0; i < deleteRowIDs.Length(); i++ {
+				rowID := deleteRowIDs.Get(i).(types.Rowid)
+				offset := rowID.GetRowOffset()
+				id := obj.Fingerprint()
+				id.BlockID = *rowID.BorrowBlockID()
+				val, _, err := rel.GetValue(id, offset, uint16(pkDef.Idx), true)
+				assert.NoError(e.t, err)
+				e.t.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), rowID.String(), val)
+				assert.Equal(e.t, val, deletePKs.Get(i))
+			}
 		}
 		return nil
 	})

@@ -85,7 +85,7 @@ func (rel *TxnRelation) CreateObject(bool, bool) (obj handle.Object, err error) 
 func (rel *TxnRelation) CreateNonAppendableObject(bool, bool, *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	return
 }
-func (rel *TxnRelation) GetValue(*common.ID, uint32, uint16) (v any, isNull bool, err error) {
+func (rel *TxnRelation) GetValue(*common.ID, uint32, uint16, bool) (v any, isNull bool, err error) {
 	return
 }
 func (rel *TxnRelation) GetValueByPhyAddrKey(any, int) (v any, isNull bool, err error) {

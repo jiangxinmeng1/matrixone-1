@@ -275,7 +275,7 @@ type TxnStore interface {
 	GetByFilter(
 		ctx context.Context, dbId uint64, id uint64, filter *handle.Filter,
 	) (*common.ID, uint32, error)
-	GetValue(id *common.ID, row uint32, col uint16) (any, bool, error)
+	GetValue(id *common.ID, row uint32, col uint16, skipCheckDelete bool) (any, bool, error)
 
 	CreateRelation(dbId uint64, def any) (handle.Relation, error)
 	CreateRelationWithTableId(dbId uint64, tableId uint64, def any) (handle.Relation, error)

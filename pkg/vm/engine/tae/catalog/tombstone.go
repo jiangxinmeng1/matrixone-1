@@ -198,24 +198,6 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	return nil
 }
 
-func (entry *ObjectEntry) tryGetTombstone(
-	ctx context.Context,
-	rowID types.Rowid,
-	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	entry.foreachTombstoneInRange(ctx, types.TS{}, types.MaxTs(), true, mp,
-		func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
-			if row != rowID {
-				return true, nil
-			}
-			ok = true
-			commitTS = ts
-			aborted = abort
-			pk = pkVal
-			return false, nil
-		})
-	return
-}
-
 func (entry *ObjectEntry) tryGetTombstoneVisible(
 	ctx context.Context,
 	txn txnif.TxnReader,

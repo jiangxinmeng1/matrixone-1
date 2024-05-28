@@ -22,7 +22,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
@@ -208,31 +207,6 @@ func (entry *TableEntry) OnApplyDelete(
 	ts types.TS) (err error) {
 	entry.RemoveRows(deleted)
 	return
-}
-
-func (entry *TableEntry) tryGetTombstone(
-	ctx context.Context,
-	rowID types.Rowid,
-	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		ok, commitTS, aborted, pk, err = tombstone.tryGetTombstone(ctx, rowID, mp)
-		if err != nil {
-			return
-		}
-		if ok {
-			return
-		}
-	}
-	return
-}
-func (entry *TableEntry) IsDeletedLocked(
-	row types.Rowid, txn txnif.TxnReader,
-) (bool, error) {
-	ok, _, _, _, err := entry.tryGetTombstone(txn.GetContext(), row, common.WorkspaceAllocator)
-	return ok, err
 }
 
 // func (entry *TableEntry) ReplayDeltaLoc(vMVCCNode any, blkID uint16) {

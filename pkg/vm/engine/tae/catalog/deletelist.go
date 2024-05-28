@@ -20,7 +20,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
-	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -215,31 +214,6 @@ func (entry *TableEntry) IsDeletedLocked(
 ) (bool, error) {
 	ok, _, _, _, err := entry.tryGetTombstone(txn.GetContext(), row, common.WorkspaceAllocator)
 	return ok, err
-}
-
-func (entry *TableEntry) EstimateMemSize(objID types.Objectid) int {
-	it := entry.MakeObjectIt(false, true)
-	size := 0
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		if tombstone.HasPersistedData() {
-			continue
-		}
-		err := tombstone.foreachTombstoneInRangeWithObjectID(
-			context.Background(),
-			objID, types.TS{},
-			types.MaxTs(),
-			common.MergeAllocator,
-			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-				size += AppendNodeApproxSize
-				return true, nil
-			})
-		if err != nil {
-			logutil.Errorf("estimate mem size failed, tombstone %v, objectID %v, err %v", tombstone.ID.String(), objID.String(), err)
-		}
-	}
-	return size
 }
 
 // func (entry *TableEntry) ReplayDeltaLoc(vMVCCNode any, blkID uint16) {

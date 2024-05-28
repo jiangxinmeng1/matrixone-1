@@ -182,23 +182,6 @@ func (entry *ObjectEntry) foreachTombstoneVisible(
 }
 
 // for each tombstone in range [start,end]
-func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
-	ctx context.Context,
-	objID types.Objectid,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.foreachTombstoneInRange(ctx, start, end, true, mp,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			if *rowID.BorrowObjectID() != objID {
-				return true, nil
-			}
-			return op(rowID, commitTS, aborted, pk)
-		})
-	return nil
-}
-
-// for each tombstone in range [start,end]
 func (entry *ObjectEntry) foreachTombstoneInRangeWithBlockID(
 	ctx context.Context,
 	blkID types.Blockid,

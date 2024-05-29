@@ -22,6 +22,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
 func (entry *ObjectEntry) foreachTombstoneInRange(
@@ -203,6 +204,16 @@ func (entry *ObjectEntry) tryGetTombstoneVisible(
 	txn txnif.TxnReader,
 	rowID types.Rowid,
 	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
+	if entry.HasCommittedPersistedData() {
+		var zm index.ZM
+		zm, err = entry.GetPKZoneMap(ctx)
+		if err != nil {
+			return
+		}
+		if !zm.Contains(rowID) {
+			return
+		}
+	}
 	blkCount := entry.BlockCnt()
 	for i := 0; i < blkCount; i++ {
 		entry.foreachTombstoneVisible(ctx, txn, uint16(i), mp,

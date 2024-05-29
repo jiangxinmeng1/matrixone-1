@@ -702,7 +702,7 @@ func (c *infoArg) Run() error {
 
 		schema := c.obj.GetSchema()
 		if schema.HasSortKey() {
-			zm, err := c.obj.GetPKZoneMap(context.Background(), c.obj.GetObjectData().GetFs().Service)
+			zm, err := c.obj.GetPKZoneMap(context.Background())
 			var zmstr string
 			if err != nil {
 				zmstr = err.Error()

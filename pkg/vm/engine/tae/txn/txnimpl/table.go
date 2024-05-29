@@ -1039,7 +1039,7 @@ func (tbl *txnTable) quickSkipThisObject(
 	keysZM index.ZM,
 	meta *catalog.ObjectEntry,
 ) (ok bool, err error) {
-	zm, err := meta.GetPKZoneMap(ctx, tbl.store.rt.Fs.Service)
+	zm, err := meta.GetPKZoneMap(ctx)
 	if err != nil {
 		return
 	}

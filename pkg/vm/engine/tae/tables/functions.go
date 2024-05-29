@@ -103,79 +103,11 @@ var getRowIDAlkFunctions = map[types.T]any{
 	types.T_array_float64: getDuplicatedRowIDABlkBytesFunc,
 }
 var containsNABlkFunctions = map[types.T]any{
-	types.T_bool:       containsNABlkFuncFactory(compute.CompareBool),
-	types.T_bit:        containsValNABlkOrderedFunc[uint64],
-	types.T_int8:       containsValNABlkOrderedFunc[int8],
-	types.T_int16:      containsValNABlkOrderedFunc[int16],
-	types.T_int32:      containsValNABlkOrderedFunc[int32],
-	types.T_int64:      containsValNABlkOrderedFunc[int64],
-	types.T_uint8:      containsValNABlkOrderedFunc[uint8],
-	types.T_uint16:     containsValNABlkOrderedFunc[uint16],
-	types.T_uint32:     containsValNABlkOrderedFunc[uint32],
-	types.T_uint64:     containsValNABlkOrderedFunc[uint64],
-	types.T_float32:    containsValNABlkOrderedFunc[float32],
-	types.T_float64:    containsValNABlkOrderedFunc[float64],
-	types.T_timestamp:  containsValNABlkOrderedFunc[types.Timestamp],
-	types.T_date:       containsValNABlkOrderedFunc[types.Date],
-	types.T_time:       containsValNABlkOrderedFunc[types.Time],
-	types.T_datetime:   containsValNABlkOrderedFunc[types.Datetime],
-	types.T_enum:       containsValNABlkOrderedFunc[types.Enum],
-	types.T_decimal64:  containsNABlkFuncFactory(types.CompareDecimal64),
-	types.T_decimal128: containsNABlkFuncFactory(types.CompareDecimal128),
-	types.T_decimal256: containsNABlkFuncFactory(types.CompareDecimal256),
-	types.T_TS:         containsNABlkFuncFactory(types.CompareTSTSAligned),
-	types.T_Rowid:      containsNABlkFuncFactory(types.CompareRowidRowidAligned),
-	types.T_Blockid:    containsNABlkFuncFactory(types.CompareBlockidBlockidAligned),
-	types.T_uuid:       containsNABlkFuncFactory(types.CompareUuid),
-
-	types.T_char:      containsNABlkBytesFunc,
-	types.T_varchar:   containsNABlkBytesFunc,
-	types.T_blob:      containsNABlkBytesFunc,
-	types.T_binary:    containsNABlkBytesFunc,
-	types.T_varbinary: containsNABlkBytesFunc,
-	types.T_json:      containsNABlkBytesFunc,
-	types.T_text:      containsNABlkBytesFunc,
-
-	types.T_array_float32: containsNABlkBytesFunc,
-	types.T_array_float64: containsNABlkBytesFunc,
+	types.T_Rowid: containsNABlkFuncFactory(types.CompareRowidRowidAligned),
 }
 
 var containsAlkFunctions = map[types.T]any{
-	types.T_bool:       containsABlkFuncFactory(compute.CompareBool),
-	types.T_bit:        containsABlkFuncFactory(compute.CompareOrdered[uint64]),
-	types.T_int8:       containsABlkFuncFactory(compute.CompareOrdered[int8]),
-	types.T_int16:      containsABlkFuncFactory(compute.CompareOrdered[int16]),
-	types.T_int32:      containsABlkFuncFactory(compute.CompareOrdered[int32]),
-	types.T_int64:      containsABlkFuncFactory(compute.CompareOrdered[int64]),
-	types.T_uint8:      containsABlkFuncFactory(compute.CompareOrdered[uint8]),
-	types.T_uint16:     containsABlkFuncFactory(compute.CompareOrdered[uint16]),
-	types.T_uint32:     containsABlkFuncFactory(compute.CompareOrdered[uint32]),
-	types.T_uint64:     containsABlkFuncFactory(compute.CompareOrdered[uint64]),
-	types.T_float32:    containsABlkFuncFactory(compute.CompareOrdered[float32]),
-	types.T_float64:    containsABlkFuncFactory(compute.CompareOrdered[float64]),
-	types.T_timestamp:  containsABlkFuncFactory(compute.CompareOrdered[types.Timestamp]),
-	types.T_date:       containsABlkFuncFactory(compute.CompareOrdered[types.Date]),
-	types.T_time:       containsABlkFuncFactory(compute.CompareOrdered[types.Time]),
-	types.T_datetime:   containsABlkFuncFactory(compute.CompareOrdered[types.Datetime]),
-	types.T_enum:       containsABlkFuncFactory(compute.CompareOrdered[types.Enum]),
-	types.T_decimal64:  containsABlkFuncFactory(types.CompareDecimal64),
-	types.T_decimal128: containsABlkFuncFactory(types.CompareDecimal128),
-	types.T_decimal256: containsABlkFuncFactory(types.CompareDecimal256),
-	types.T_TS:         containsABlkFuncFactory(types.CompareTSTSAligned),
-	types.T_Rowid:      containsABlkFuncFactory(types.CompareRowidRowidAligned),
-	types.T_Blockid:    containsABlkFuncFactory(types.CompareBlockidBlockidAligned),
-	types.T_uuid:       containsABlkFuncFactory(types.CompareUuid),
-
-	types.T_char:      containsABlkBytesFunc,
-	types.T_varchar:   containsABlkBytesFunc,
-	types.T_blob:      containsABlkBytesFunc,
-	types.T_binary:    containsABlkBytesFunc,
-	types.T_varbinary: containsABlkBytesFunc,
-	types.T_json:      containsABlkBytesFunc,
-	types.T_text:      containsABlkBytesFunc,
-
-	types.T_array_float32: containsABlkBytesFunc,
-	types.T_array_float64: containsABlkBytesFunc,
+	types.T_Rowid: containsABlkFuncFactory(types.CompareRowidRowidAligned),
 }
 
 func parseNAGetDuplicatedArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vector, blkID *types.Blockid) {
@@ -300,23 +232,7 @@ func getDuplicatedRowIDsNABlkBytesFunc(args ...any) func([]byte, bool, int) erro
 		return
 	}
 }
-func containsNABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs := parseNAContainsArgs(args...)
-	return func(v []byte, _ bool, row int) (err error) {
-		// logutil.Infof("row=%d,v=%v", row, v)
-		if rowIDs.IsNull(row) {
-			return
-		}
-		if _, existed := compute.GetOffsetOfBytes(
-			vec,
-			v,
-			nil,
-		); existed {
-			rowIDs.Update(row, nil, true)
-		}
-		return
-	}
-}
+
 func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, int) error {
 	vec, rowIDs, blkID := parseNAGetDuplicatedArgs(args...)
 	vs := vector.MustFixedCol[T](vec)
@@ -332,25 +248,6 @@ func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, b
 		); existed {
 			rowID := objectio.NewRowid(blkID, uint32(offset))
 			rowIDs.Update(row, *rowID, false)
-		}
-		return
-	}
-}
-
-func containsValNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, bool, int) error {
-	vec, rowIDs := parseNAContainsArgs(args...)
-	vs := vector.MustFixedCol[T](vec)
-	return func(v T, _ bool, row int) (err error) {
-		// logutil.Infof("row=%d,v=%v", row, v)
-		if rowIDs.IsNull(row) {
-			return
-		}
-		if _, existed := compute.GetOffsetOfOrdered(
-			vs,
-			v,
-			nil,
-		); existed {
-			rowIDs.Update(row, nil, true)
 		}
 		return
 	}
@@ -398,49 +295,6 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
 				rowIDs.Update(rowOffset, *rowID, false)
-				return nil
-			}, nil, nil)
-	}
-}
-
-func containsABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, scanFn, txn := parseAContainsArgs(args...)
-	return func(v1 []byte, _ bool, rowOffset int) error {
-		if rowIDs.IsNull(rowOffset) {
-			return nil
-		}
-		var tsVec containers.Vector
-		defer func() {
-			if tsVec != nil {
-				tsVec.Close()
-				tsVec = nil
-			}
-		}()
-		return containers.ForeachWindowVarlen(
-			vec.GetDownstreamVector(),
-			0,
-			vec.Length(),
-			true,
-			func(v2 []byte, _ bool, row int) (err error) {
-				// logutil.Infof("row=%d,v1=%v,v2=%v", row, v1, v2)
-				if rowIDs.IsNull(rowOffset) {
-					return nil
-				}
-				if compute.CompareBytes(v1, v2) != 0 {
-					return
-				}
-				if tsVec == nil {
-					tsVec, err = scanFn(0)
-					if err != nil {
-						return err
-					}
-				}
-				commitTS := tsVec.Get(row).(types.TS)
-				startTS := txn.GetStartTS()
-				if commitTS.Greater(&startTS) {
-					return txnif.ErrTxnWWConflict
-				}
-				rowIDs.Update(row, nil, true)
 				return nil
 			}, nil, nil)
 	}

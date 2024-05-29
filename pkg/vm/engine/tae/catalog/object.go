@@ -24,7 +24,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
-	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 
@@ -645,7 +644,6 @@ func (entry *ObjectEntry) MustGetObjectStats() (objectio.ObjectStats, error) {
 
 func (entry *ObjectEntry) GetPKZoneMap(
 	ctx context.Context,
-	fs fileservice.FileService,
 ) (zm index.ZM, err error) {
 	stats, err := entry.MustGetObjectStats()
 	if err != nil {

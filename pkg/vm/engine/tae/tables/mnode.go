@@ -17,12 +17,10 @@ package tables
 import (
 	"context"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
-	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -106,16 +104,6 @@ func (node *memoryNode) close() {
 
 func (node *memoryNode) IsPersisted() bool { return false }
 
-func (node *memoryNode) doBatchDedupLocked(
-	ctx context.Context,
-	keys containers.Vector,
-	keysZM index.ZM,
-	skipFn func(row uint32) error,
-	bf objectio.BloomFilter,
-) (sels *roaring.Bitmap, err error) {
-	return node.pkIndex.BatchDedup(ctx, keys.GetDownstreamVector(), keysZM, skipFn, bf)
-}
-
 func (node *memoryNode) Contains(
 	ctx context.Context,
 	keys containers.Vector,
@@ -142,31 +130,6 @@ func (node *memoryNode) getDuplicatedRowsLocked(
 ) (err error) {
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
 	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
-}
-
-func (node *memoryNode) ContainsKey(ctx context.Context, key any, _ uint32) (ok bool, err error) {
-	panic("not used")
-	if err = node.pkIndex.Dedup(ctx, key, nil); err != nil {
-		return
-	}
-	if !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
-		return
-	}
-	ok = true
-	err = nil
-	return
-}
-
-func (node *memoryNode) GetValueByRowLocked(readSchema *catalog.Schema, row, col int) (v any, isNull bool) {
-	panic("not used")
-	idx, ok := node.writeSchema.SeqnumMap[readSchema.ColDefs[col].SeqNum]
-	if !ok {
-		// TODO(aptend): use default value
-		return nil, true
-	}
-	data := node.mustData()
-	vec := data.Vecs[idx]
-	return vec.Get(row), vec.IsNull(row)
 }
 
 func (node *memoryNode) Foreach(
@@ -310,45 +273,6 @@ func (node *memoryNode) getDataWindowLocked(
 	return
 }
 
-func (node *memoryNode) PrepareAppend(rows uint32) (n uint32, err error) {
-	panic("not used")
-	var length uint32
-	if node.data == nil {
-		length = 0
-	} else {
-		length = uint32(node.data.Length())
-	}
-
-	left := node.writeSchema.BlockMaxRows - length
-
-	if left == 0 {
-		err = moerr.NewInternalErrorNoCtx("not appendable")
-		return
-	}
-	if rows > left {
-		n = left
-	} else {
-		n = rows
-	}
-	return
-}
-
-func (node *memoryNode) FillPhyAddrColumn(startRow, length uint32) (err error) {
-	panic("not used")
-	var col *vector.Vector
-	if col, err = objectio.ConstructRowidColumn(
-		objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0),
-		startRow,
-		length,
-		common.MutMemAllocator,
-	); err != nil {
-		return
-	}
-	err = node.mustData().Vecs[node.writeSchema.PhyAddrKey.Idx].ExtendVec(col)
-	col.Free(common.MutMemAllocator)
-	return
-}
-
 func (node *memoryNode) ApplyAppendLocked(
 	bat *containers.Batch,
 	txn txnif.AsyncTxn) (from int, err error) {
@@ -413,38 +337,11 @@ func (node *memoryNode) GetRowByFilter(
 		if !deleted {
 			return
 		}
+		break
 	}
 	return 0, 0, moerr.NewNotFoundNoCtx()
 }
 
-func (node *memoryNode) BatchDedup(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	isCommitting bool,
-	keys containers.Vector,
-	keysZM index.ZM,
-	rowmask *roaring.Bitmap,
-	bf objectio.BloomFilter,
-) (err error) {
-	var dupRow uint32
-	node.object.RLock()
-	defer node.object.RUnlock()
-	_, err = node.doBatchDedupLocked(
-		ctx,
-		keys,
-		keysZM,
-		node.checkConflictAndDupClosure(txn, isCommitting, &dupRow, rowmask),
-		bf)
-
-	// definitely no duplicate
-	if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedDup) {
-		return
-	}
-	def := node.writeSchema.GetSingleSortKey()
-	v, isNull := node.GetValueByRowLocked(node.writeSchema, int(dupRow), def.Idx)
-	entry := common.TypeStringValue(*keys.GetType(), v, isNull)
-	return moerr.NewDuplicateEntryNoCtx(entry, def.Name)
-}
 func (node *memoryNode) GetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -482,73 +379,6 @@ func (node *memoryNode) checkConflictLocked(
 		}
 		return appendnode.CheckConflict(txn)
 	}
-}
-
-func (node *memoryNode) checkConflictAndDupClosure(
-	txn txnif.TxnReader,
-	isCommitting bool,
-	dupRow *uint32,
-	rowmask *roaring.Bitmap,
-) func(row uint32) error {
-	return func(row uint32) (err error) {
-		if rowmask != nil && rowmask.Contains(row) {
-			return nil
-		}
-		appendnode := node.object.appendMVCC.GetAppendNodeByRowLocked(row)
-		var visible bool
-		if visible, err = node.checkConflictAandVisibility(
-			appendnode,
-			isCommitting,
-			txn); err != nil {
-			return
-		}
-		if appendnode.IsAborted() || !visible {
-			return nil
-		}
-		fullBlockID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-		rowID := objectio.NewRowid(fullBlockID, row)
-		var deleted bool
-		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, common.WorkspaceAllocator)
-		if !deleted {
-			*dupRow = row
-			return moerr.GetOkExpectedDup()
-		}
-		return err
-	}
-}
-
-func (node *memoryNode) checkConflictAandVisibility(
-	n txnif.BaseMVCCNode,
-	isCommitting bool,
-	txn txnif.TxnReader,
-) (visible bool, err error) {
-	// if isCommitting check all nodes commit before txn.CommitTS(PrepareTS)
-	// if not isCommitting check nodes commit before txn.StartTS
-	if isCommitting {
-		needWait := n.IsCommitting()
-		if needWait {
-			txn := n.GetTxn()
-			node.object.RUnlock()
-			txn.GetTxnState(true)
-			node.object.RLock()
-		}
-	} else {
-		needWait, txn := n.NeedWaitCommitting(txn.GetStartTS())
-		if needWait {
-			node.object.RUnlock()
-			txn.GetTxnState(true)
-			node.object.RLock()
-		}
-	}
-	if err = n.CheckConflict(txn); err != nil {
-		return
-	}
-	if isCommitting {
-		visible = n.IsCommitted()
-	} else {
-		visible = n.IsVisible(txn)
-	}
-	return
 }
 
 func (node *memoryNode) CollectAppendInRange(

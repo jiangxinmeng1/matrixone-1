@@ -17,7 +17,6 @@ package tables
 import (
 	"context"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -34,27 +33,6 @@ type NodeT interface {
 
 	IsPersisted() bool
 
-	// PrepareAppend(rows uint32) (n uint32, err error)
-	// ApplyAppend(
-	// 	bat *containers.Batch,
-	// 	txn txnif.AsyncTxn,
-	// ) (from int, err error)
-
-	// GetDataWindow(
-	// 	readSchema *catalog.Schema, colIdxes []int, from, to uint32, mp *mpool.MPool,
-	// ) (bat *containers.Batch, err error)
-
-	// GetValueByRow(readSchema *catalog.Schema, row, col int) (v any, isNull bool)
-	// GetRowsByKey(key any) (rows []uint32, err error)
-	BatchDedup(
-		ctx context.Context,
-		txn txnif.TxnReader,
-		isCommitting bool,
-		keys containers.Vector,
-		keysZM index.ZM,
-		rowmask *roaring.Bitmap,
-		bf objectio.BloomFilter,
-	) (err error)
 	Contains(
 		ctx context.Context,
 		keys containers.Vector,
@@ -75,7 +53,6 @@ type NodeT interface {
 		isCommitting bool,
 		mp *mpool.MPool,
 	) (err error)
-	ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error)
 
 	Rows() (uint32, error)
 

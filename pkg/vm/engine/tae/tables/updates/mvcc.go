@@ -38,6 +38,18 @@ func init() {
 	catalog.AppendNodeApproxSize = int(unsafe.Sizeof(AppendNode{})) + txnNodeSize
 }
 
+func mockTxn() *txnbase.Txn {
+	txn := new(txnbase.Txn)
+	txn.TxnCtx = txnbase.NewTxnCtx(common.NewTxnIDAllocator().Alloc(), types.NextGlobalTsForTest(), types.TS{})
+	return txn
+}
+
+func MockTxnWithStartTS(ts types.TS) *txnbase.Txn {
+	txn := mockTxn()
+	txn.StartTS = ts
+	return txn
+}
+
 type AppendMVCCHandle struct {
 	*sync.RWMutex
 	meta           *catalog.ObjectEntry

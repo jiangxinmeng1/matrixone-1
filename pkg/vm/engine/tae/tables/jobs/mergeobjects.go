@@ -290,7 +290,8 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 			objectID := rowID.BorrowObjectID()
 			obj, err := tbl.GetObjectByID(objectID, false)
 			if err != nil {
-				panic(err)
+				view.DeleteMask.Add(uint64(row))
+				return nil
 			}
 			if obj.HasDropCommitted() {
 				if view.DeleteMask == nil {

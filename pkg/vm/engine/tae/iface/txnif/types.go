@@ -241,7 +241,6 @@ type DeleteNode interface {
 	DeletedPK() map[uint32]containers.Vector
 	RangeDeleteLocked(start, end uint32, pk containers.Vector, mp *mpool.MPool)
 	GetCardinalityLocked() uint32
-	IsDeletedLocked(row uint32) bool
 	GetRowMaskRefLocked() *roaring.Bitmap
 	OnApply() error
 }

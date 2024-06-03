@@ -45,10 +45,6 @@ type BlockT[T common.IRef] interface {
 	GetID() *common.ID
 }
 
-func DefaultTOmbstoneFactory(meta *catalog.ObjectEntry) data.Tombstone {
-	return updates.NewObjectMVCCHandle(meta)
-}
-
 type baseObject struct {
 	common.RefHelper
 	*sync.RWMutex

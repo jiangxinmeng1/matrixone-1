@@ -115,10 +115,10 @@ func (entry *TableEntry) FillDeletes(
 		tombstone := node.GetPayload()
 		tombstone.RLock()
 		visible, err := tombstone.IsVisibleWithLock(txn, tombstone.RWMutex)
+		tombstone.RUnlock()
 		if err != nil {
 			return err
 		}
-		tombstone.RUnlock()
 		if !visible {
 			continue
 		}

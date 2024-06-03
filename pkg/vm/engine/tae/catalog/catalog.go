@@ -56,7 +56,6 @@ const (
 type DataFactory interface {
 	MakeTableFactory() TableDataFactory
 	MakeObjectFactory() ObjectDataFactory
-	MakeTombstoneFactory() TombstoneFactory
 }
 
 type Catalog struct {

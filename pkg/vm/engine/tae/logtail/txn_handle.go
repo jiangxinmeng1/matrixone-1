@@ -34,7 +34,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/updates"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 )
 
@@ -130,20 +129,8 @@ func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 }
 
 func (b *TxnLogtailRespBuilder) visitDeltaloc(ideltalocChain any) {
-	deltalocChain := ideltalocChain.(*updates.DeltalocChain)
-	node := deltalocChain.GetLatestNodeLocked()
-	if node.BaseNode.DeltaLoc.IsEmpty() {
-		return
-	}
-	if b.batches[blkMetaInsBatch] == nil {
-		b.batches[blkMetaInsBatch] = makeRespBatchFromSchema(BlkMetaSchema, common.LogtailAllocator)
-	}
-	commitTS := b.txn.GetPrepareTS()
-	createAt := node.CreatedAt
-	if createAt.Equal(&txnif.UncommitTS) {
-		createAt = b.txn.GetPrepareTS()
-	}
-	updates.VisitDeltaloc(b.batches[blkMetaInsBatch], nil, deltalocChain.GetMeta(), deltalocChain.GetBlockID(), node, commitTS, createAt)
+	// TODO
+	return
 }
 
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any) {
@@ -183,58 +170,8 @@ func (b *TxnLogtailRespBuilder) visitAppend(ibat any) {
 }
 
 func (b *TxnLogtailRespBuilder) visitDelete(ctx context.Context, vnode txnif.DeleteNode) {
-	if vnode.IsPersistedDeletedNode() {
-		return
-	}
-	if b.batches[dataDelBatch] == nil {
-		b.batches[dataDelBatch] = makeRespBatchFromSchema(DelSchema, common.LogtailAllocator)
-	}
-	node := vnode.(*updates.DeleteNode)
-	meta := node.GetMeta()
-	schema := meta.GetSchema()
-	pkDef := schema.GetPrimaryKey()
-	deletes := node.GetRowMaskRefLocked()
-	blkID := node.GetBlockID()
-
-	batch := b.batches[dataDelBatch]
-	rowIDVec := batch.GetVectorByName(catalog.AttrRowID)
-	commitTSVec := batch.GetVectorByName(catalog.AttrCommitTs)
-	var pkVec containers.Vector
-	if len(batch.Vecs) == 2 {
-		pkVec = containers.MakeVector(pkDef.Type, common.LogtailAllocator)
-		batch.AddVector(catalog.AttrPKVal, pkVec)
-	} else {
-		pkVec = batch.GetVectorByName(catalog.AttrPKVal)
-	}
-
-	it := deletes.Iterator()
-	rowid2PK := node.DeletedPK()
-	for it.HasNext() {
-		del := it.Next()
-		rowid := objectio.NewRowid(blkID, del)
-		rowIDVec.Append(*rowid, false)
-		commitTSVec.Append(b.txn.GetPrepareTS(), false)
-
-		v, ok := rowid2PK[del]
-		if ok {
-			pkVec.Extend(v)
-		}
-		//if !ok {
-		//	panic(fmt.Sprintf("rowid %d 's pk not found in rowid2PK.\n", del))
-		//}
-		//pkVec.Extend(v)
-	}
-
-	//_ = meta.GetObjectData().Foreach(
-	//	ctx,
-	//	schema,
-	//	pkDef.Idx,
-	//	func(v any, isNull bool, row int) error {
-	//		pkVec.Append(v, false)
-	//		return nil
-	//	},
-	//	&dels,
-	//)
+	// TODO
+	return
 }
 
 func (b *TxnLogtailRespBuilder) visitTable(itbl any) {

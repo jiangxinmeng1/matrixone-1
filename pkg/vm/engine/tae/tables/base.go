@@ -306,7 +306,6 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	blkID uint16,
 	colIdx int,
 	skipDeletes bool,
-	collectAllDeletes bool,
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
 	view = containers.NewColumnView(colIdx)
@@ -327,11 +326,7 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	}()
 	// TODO workspace
 	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	if collectAllDeletes {
-		err = blk.meta.GetTable().FillCommittedDeletes(ctx, *blkid, view.BaseView, mp)
-	} else {
-		err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
-	}
+	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +357,6 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		blkOffset,
 		def.Idx,
 		true,
-		isCommitting,
 		mp,
 	)
 	if err != nil {
@@ -403,7 +397,6 @@ func (blk *baseObject) containsWithLoad(
 		blkOffset,
 		def.Idx,
 		true,
-		isCommitting,
 		mp,
 	)
 	if err != nil {
@@ -524,7 +517,7 @@ func (blk *baseObject) getPersistedValue(
 			return
 		}
 	}
-	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, false, mp)
+	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, mp)
 	if err != nil {
 		return
 	}

@@ -154,54 +154,6 @@ func (entry *TableEntry) FillDeletes(
 	return
 }
 
-func (entry *TableEntry) FillCommittedDeletes(
-	ctx context.Context,
-	blkID types.Blockid,
-	view *containers.BaseView,
-	mp *mpool.MPool) (err error) {
-
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		tombstone.RLock()
-		shouldSkip := tombstone.HasDropCommittedLocked() || tombstone.IsCreatingOrAbortedLocked()
-		tombstone.RUnlock()
-		if shouldSkip {
-			continue
-		}
-		blkCount := 1
-		if !tombstone.IsAppendable() {
-			stats, err := tombstone.MustGetObjectStats()
-			if err != nil {
-				return err
-			}
-			blkCount = int(stats.BlkCnt())
-		}
-		for i := 0; i < blkCount; i++ {
-			err = tombstone.foreachTombstoneInRange(
-				ctx,
-				types.TS{}, types.MaxTs(),
-				false,
-				mp,
-				func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-					if *rowID.BorrowBlockID() == blkID {
-						if view.DeleteMask == nil {
-							view.DeleteMask = &nulls.Nulls{}
-						}
-						_, rowOffset := rowID.Decode()
-						view.DeleteMask.Add(uint64(rowOffset))
-					}
-					return true, nil
-				})
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return
-}
-
 func (entry *TableEntry) OnApplyDelete(
 	deleted uint64,
 	ts types.TS) (err error) {

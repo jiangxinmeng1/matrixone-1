@@ -111,7 +111,6 @@ func (obj *object) GetColumnDataById(
 		blkID,
 		col,
 		false,
-		false,
 		mp,
 	)
 }

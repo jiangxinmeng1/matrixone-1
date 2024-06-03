@@ -144,6 +144,7 @@ const (
 
 	MO_SYSTEM    = "system"
 	MO_STATEMENT = "statement_info"
+	MO_RAWLOG    = "rawlog"
 
 	MO_SYSTEM_METRICS = "system_metrics"
 	MO_METRIC         = "metric"

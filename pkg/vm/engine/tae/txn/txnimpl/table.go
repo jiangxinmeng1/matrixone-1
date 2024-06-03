@@ -328,7 +328,8 @@ func (tbl *txnTable) recurTransferDelete(
 	//otherwise recursively transfer the deletes to the next target block.
 	err := tbl.store.warChecker.checkOne(newID, ts)
 	if err == nil {
-		pkVec := tbl.store.rt.VectorPool.Small.GetVector(tbl.schema.GetSingleSortKeyType())
+		pkType := tbl.schema.GetSingleSortKeyType()
+		pkVec := tbl.store.rt.VectorPool.Small.GetVector(&pkType)
 		pkVec.Append(pk, false)
 		defer pkVec.Close()
 		//transfer the deletes to the target block.
@@ -804,13 +805,13 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 		}
 		err = nil
 	}
-	pks := tbl.store.rt.VectorPool.Small.GetVector(tbl.schema.GetPrimaryKey().Type)
+	pkType := &tbl.schema.GetPrimaryKey().Type
+	pks := tbl.store.rt.VectorPool.Small.GetVector(pkType)
 	defer pks.Close()
 	pks.Append(filter.Val, false)
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(types.T_Rowid)
+	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	defer rowIDs.Close()
 	rowIDs.Append(nil, true)
-	pkType := pks.GetType()
 	pksZM := index.NewZM(pkType.Oid, pkType.Scale)
 	if err = index.BatchUpdateZM(pksZM, pks.GetDownstreamVector()); err != nil {
 		return
@@ -1089,7 +1090,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		name objectio.ObjectNameShort
 		bf   objectio.BloomFilter
 	)
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(types.T_Rowid)
+	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	defer rowIDs.Close()
 	if err = vector.AppendMultiFixed[types.Rowid](
 		rowIDs.GetDownstreamVector(),
@@ -1261,7 +1262,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 		}
 		defer closeFunc()
 		keys := vectors[0]
-		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(types.T_Rowid)
+		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 		defer rowIDs.Close()
 		if err = vector.AppendMultiFixed[types.Rowid](
 			rowIDs.GetDownstreamVector(),
@@ -1342,7 +1343,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 //     TODO::it would be used to do deduplication with the logtail.
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM, isTombstone bool) (err error) {
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
-		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(types.T_Rowid)
+		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 		defer rowIDs.Close()
 		if err = vector.AppendMultiFixed[types.Rowid](
 			rowIDs.GetDownstreamVector(),
@@ -1431,7 +1432,7 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 		pks = colV.Orphan()
 		defer pks.Close()
 	}
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(types.T_Rowid)
+	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	defer rowIDs.Close()
 	if err = vector.AppendMultiFixed[types.Rowid](
 		rowIDs.GetDownstreamVector(),

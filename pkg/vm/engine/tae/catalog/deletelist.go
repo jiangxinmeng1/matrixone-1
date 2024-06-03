@@ -42,6 +42,10 @@ func (entry *TableEntry) CollectDeleteInRange(
 		if skip {
 			continue
 		}
+		visible := tombstone.IsVisibleInRange(start, end)
+		if !visible {
+			continue
+		}
 		if tombstone.HasCommittedPersistedData() {
 			zm := tombstone.GetSortKeyZonemap()
 			maxObjectID := zm.GetMax().(types.Rowid).GetObject()

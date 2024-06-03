@@ -209,7 +209,24 @@ func NewSysObjectEntry(table *TableEntry, id types.Uuid) *ObjectEntry {
 	e.ID = *bid.Object()
 	return e
 }
-
+func (entry *ObjectEntry) IsVisibleInRange(start, end types.TS) bool {
+	entry.RLock()
+	defer entry.RUnlock()
+	if entry.IsAppendable() {
+		droppedTS := entry.GetDeleteAtLocked()
+		return droppedTS.IsEmpty() || droppedTS.GreaterEq(&end)
+	} else {
+		createTS := entry.GetCreatedAtLocked()
+		if createTS.Less(&start) || createTS.Greater(&end) {
+			return false
+		}
+		droppedTS := entry.GetDeleteAtLocked()
+		if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
+			return false
+		}
+		return true
+	}
+}
 func (entry *ObjectEntry) GetLocation() objectio.Location {
 	entry.RLock()
 	defer entry.RUnlock()

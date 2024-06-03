@@ -28,23 +28,10 @@ import (
 func (entry *ObjectEntry) foreachTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
-	checkTombstoneVisibility bool,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
 	if entry.IsAppendable() {
 		return entry.foreachATombstoneInRange(ctx, start, end, mp, op)
-	}
-	entry.RLock()
-	createTS := entry.GetCreatedAtLocked()
-	droppedTS := entry.GetDeleteAtLocked()
-	entry.RUnlock()
-	if checkTombstoneVisibility {
-		if createTS.Less(&start) || createTS.Greater(&end) {
-			return nil
-		}
-		if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
-			return nil
-		}
 	}
 	bat, err := entry.GetObjectData().GetAllColumns(ctx, entry.GetTable().GetLastestSchema(true), mp)
 	if err != nil {
@@ -52,37 +39,17 @@ func (entry *ObjectEntry) foreachTombstoneInRange(
 	}
 	rowIDVec := bat.GetVectorByName(AttrRowID).GetDownstreamVector()
 	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
-	var commitTSs []types.TS
-	if entry.IsAppendable() {
-		commitTSVec, err := entry.GetObjectData().GetCommitTSVector(uint32(bat.Length()), mp)
+	entry.RLock()
+	createTS := entry.GetCreatedAtLocked()
+	entry.RUnlock()
+	for i := 0; i < bat.Length(); i++ {
+		pk := bat.GetVectorByName(AttrPKVal).Get(i)
+		goNext, err := op(rowIDs[i], createTS, false, pk)
 		if err != nil {
 			return err
 		}
-		commitTSs = vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
-	}
-	for i := 0; i < bat.Length(); i++ {
-		if !entry.IsAppendable() {
-			pk := bat.GetVectorByName(AttrPKVal).Get(i)
-			goNext, err := op(rowIDs[i], createTS, false, pk)
-			if err != nil {
-				return err
-			}
-			if !goNext {
-				break
-			}
-		} else {
-			pk := bat.GetVectorByName(AttrPKVal).Get(i)
-			commitTS := commitTSs[i]
-			if commitTS.Less(&start) || commitTS.Greater(&end) {
-				return nil
-			}
-			goNext, err := op(rowIDs[i], commitTS, false, pk)
-			if err != nil {
-				return err
-			}
-			if !goNext {
-				break
-			}
+		if !goNext {
+			break
 		}
 	}
 	return nil
@@ -93,12 +60,6 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.RLock()
-	droppedTS := entry.GetDeleteAtLocked()
-	entry.RUnlock()
-	if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
-		return nil
-	}
 	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, mp)
 	if err != nil {
 		return err
@@ -189,7 +150,7 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	start, end types.TS,
 	mp *mpool.MPool,
 	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.foreachTombstoneInRange(ctx, start, end, true, mp,
+	entry.foreachTombstoneInRange(ctx, start, end, mp,
 		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
 			if *rowID.BorrowObjectID() != blkID {
 				return true, nil

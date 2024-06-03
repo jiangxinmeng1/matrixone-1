@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
@@ -42,25 +43,59 @@ func tableVisibilityFn[T *TableEntry](n *common.GenericDLNode[*TableEntry], txn 
 	return
 }
 
+type TableObjects struct {
+	objects   *common.GenericSortedDList[*ObjectEntry]
+	nameIndex map[types.Objectid]*common.GenericDLNode[*ObjectEntry]
+}
+
+func NewTableObjects() *TableObjects {
+	return &TableObjects{
+		objects:   common.NewGenericSortedDList((*ObjectEntry).Less),
+		nameIndex: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
+	}
+}
+
+func (objs *TableObjects) AddObject(obj *ObjectEntry) {
+	e := objs.objects.Insert(obj)
+	objs.nameIndex[obj.ID] = e
+}
+
+func (objs *TableObjects) RemoveObject(obj *ObjectEntry) error {
+	if e, ok := objs.nameIndex[obj.ID]; !ok {
+		return moerr.GetOkExpectedEOB()
+	} else {
+		objs.objects.Delete(e)
+		delete(objs.nameIndex, obj.ID)
+	}
+	return nil
+}
+
+func (objs *TableObjects) GetObjectByID(id *types.Objectid) (*ObjectEntry, error) {
+	entry := objs.nameIndex[*id]
+	if entry == nil {
+		return nil, moerr.GetOkExpectedEOB()
+	}
+	return entry.GetPayload(), nil
+}
+
+func (objs *TableObjects) MakeObjectIt(rwlocker *sync.RWMutex, reverse bool) *common.GenericSortedDListIt[*ObjectEntry] {
+	return common.NewGenericSortedDListIt(rwlocker, objs.objects, reverse)
+}
+
 type TableEntry struct {
 	*BaseEntryImpl[*TableMVCCNode]
 	*TableNode
-	Stats   *common.TableCompactStat
-	ID      uint64
-	db      *DBEntry
-	entries map[types.Objectid]*common.GenericDLNode[*ObjectEntry]
-	//link.head and link.tail is nil when create tableEntry object.
-	link      *common.GenericSortedDList[*ObjectEntry]
+	Stats     *common.TableCompactStat
+	ID        uint64
+	db        *DBEntry
 	tableData data.Table
 	rows      atomic.Uint64
-	// used for the next flush table tail.
-	DeletedDirties []*ObjectEntry
+
 	// fullname is format as 'tenantID-tableName', the tenantID prefix is only used 'mo_catalog' database
 	fullName string
 
-	tombstoneEntries map[types.Objectid]*common.GenericDLNode[*ObjectEntry]
-	//link.head and link.tail is nil when create tableEntry object.
-	tombstoneLink *common.GenericSortedDList[*ObjectEntry]
+	dataObjects      *TableObjects
+	tombstoneObjects *TableObjects
 }
 
 type DeleteEntry struct {
@@ -97,11 +132,9 @@ func NewTableEntryWithTableId(db *DBEntry, schema *Schema, txnCtx txnif.AsyncTxn
 			func() *TableMVCCNode { return &TableMVCCNode{} }),
 		db:               db,
 		TableNode:        &TableNode{},
-		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
-		entries:          make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
-		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
-		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
 		Stats:            common.NewTableCompactStat(),
+		dataObjects:      NewTableObjects(),
+		tombstoneObjects: NewTableObjects(),
 	}
 	e.TableNode.schema.Store(schema)
 	if dataFactory != nil {
@@ -141,10 +174,8 @@ func NewReplayTableEntry() *TableEntry {
 	e := &TableEntry{
 		BaseEntryImpl: NewBaseEntry(
 			func() *TableMVCCNode { return &TableMVCCNode{} }),
-		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
-		entries:          make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
-		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
-		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
+		dataObjects:      NewTableObjects(),
+		tombstoneObjects: NewTableObjects(),
 		Stats:            common.NewTableCompactStat(),
 		TableNode:        &TableNode{},
 	}
@@ -159,10 +190,8 @@ func MockStaloneTableEntry(id uint64, schema *Schema) *TableEntry {
 		BaseEntryImpl: NewBaseEntry(
 			func() *TableMVCCNode { return &TableMVCCNode{} }),
 		TableNode:        node,
-		link:             common.NewGenericSortedDList((*ObjectEntry).Less),
-		entries:          make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
-		tombstoneLink:    common.NewGenericSortedDList((*ObjectEntry).Less),
-		tombstoneEntries: make(map[types.Objectid]*common.GenericDLNode[*ObjectEntry]),
+		dataObjects:      NewTableObjects(),
+		tombstoneObjects: NewTableObjects(),
 		Stats:            common.NewTableCompactStat(),
 	}
 }
@@ -191,53 +220,29 @@ func (entry *TableEntry) RemoveRows(delta uint64) uint64 {
 }
 func (entry *TableEntry) GetObjectByID(id *types.Objectid, isTombstone bool) (obj *ObjectEntry, err error) {
 	if isTombstone {
-		return entry.getTombStoneByID(id)
+		return entry.getTombstoneObjectByID(id)
 	} else {
-		return entry.getObjectByID(id)
+		return entry.getDataObjectByID(id)
 	}
 }
-func (entry *TableEntry) getObjectByID(id *types.Objectid) (obj *ObjectEntry, err error) {
+func (entry *TableEntry) getDataObjectByID(id *types.Objectid) (obj *ObjectEntry, err error) {
 	entry.RLock()
 	defer entry.RUnlock()
-	node := entry.entries[*id]
-	if node == nil {
-		return nil, moerr.GetOkExpectedEOB()
-	}
-	return node.GetPayload(), nil
+	return entry.dataObjects.GetObjectByID(id)
 }
-func (entry *TableEntry) getTombStoneByID(id *types.Objectid) (obj *ObjectEntry, err error) {
+func (entry *TableEntry) getTombstoneObjectByID(id *types.Objectid) (obj *ObjectEntry, err error) {
 	entry.RLock()
 	defer entry.RUnlock()
-	node := entry.tombstoneEntries[*id]
-	if node == nil {
-		return nil, moerr.GetOkExpectedEOB()
-	}
-	return node.GetPayload(), nil
-}
-func (entry *TableEntry) GetObjectsByID(id *types.Segmentid, isTombstone bool) (obj []*ObjectEntry, err error) {
-	entry.RLock()
-	defer entry.RUnlock()
-	for nodeID, node := range entry.entries {
-		if nodeID.Segment().Eq(*id) {
-			if obj == nil {
-				obj = make([]*ObjectEntry, 0)
-			}
-			obj = append(obj, node.GetPayload())
-		}
-	}
-	if obj == nil {
-		return nil, moerr.GetOkExpectedEOB()
-	}
-	return obj, nil
+	return entry.tombstoneObjects.GetObjectByID(id)
 }
 
 func (entry *TableEntry) MakeObjectIt(reverse bool, isTombstone bool) *common.GenericSortedDListIt[*ObjectEntry] {
 	entry.RLock()
 	defer entry.RUnlock()
 	if isTombstone {
-		return common.NewGenericSortedDListIt(entry.RWMutex, entry.tombstoneLink, reverse)
+		return entry.tombstoneObjects.MakeObjectIt(entry.RWMutex, reverse)
 	}
-	return common.NewGenericSortedDListIt(entry.RWMutex, entry.link, reverse)
+	return entry.dataObjects.MakeObjectIt(entry.RWMutex, reverse)
 }
 
 func (entry *TableEntry) CreateObject(
@@ -275,31 +280,17 @@ func (entry *TableEntry) Is1PC() bool {
 }
 func (entry *TableEntry) AddEntryLocked(objectEntry *ObjectEntry) {
 	if objectEntry.IsTombstone {
-		n := entry.tombstoneLink.Insert(objectEntry)
-		entry.tombstoneEntries[objectEntry.ID] = n
+		entry.tombstoneObjects.AddObject(objectEntry)
 	} else {
-		n := entry.link.Insert(objectEntry)
-		entry.entries[objectEntry.ID] = n
+		entry.dataObjects.AddObject(objectEntry)
 	}
 }
 
 func (entry *TableEntry) deleteEntryLocked(objectEntry *ObjectEntry) error {
 	if objectEntry.IsTombstone {
-		if n, ok := entry.tombstoneEntries[objectEntry.ID]; !ok {
-			return moerr.GetOkExpectedEOB()
-		} else {
-			entry.tombstoneLink.Delete(n)
-			delete(entry.tombstoneEntries, objectEntry.ID)
-		}
-		return nil
+		return entry.tombstoneObjects.RemoveObject(objectEntry)
 	}
-	if n, ok := entry.entries[objectEntry.ID]; !ok {
-		return moerr.GetOkExpectedEOB()
-	} else {
-		entry.link.Delete(n)
-		delete(entry.entries, objectEntry.ID)
-	}
-	return nil
+	return entry.dataObjects.RemoveObject(objectEntry)
 }
 
 // GetLastestSchemaLocked returns the latest committed schema with entry Not locked

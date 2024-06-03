@@ -31,9 +31,7 @@ import (
 )
 
 type CheckpointUnit interface {
-	MutationInfo() string
 	RunCalibration() (int, error)
-	// EstimateScore(time.Duration, bool) int
 }
 
 type ObjectAppender interface {

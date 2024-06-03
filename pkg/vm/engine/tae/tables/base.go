@@ -544,21 +544,6 @@ func (blk *baseObject) GetTotalChanges() int {
 
 func (blk *baseObject) IsAppendable() bool { return false }
 
-func (blk *baseObject) MutationInfo() string {
-	rows, err := blk.Rows()
-	blk.RLock()
-	defer blk.RUnlock()
-	if err != nil {
-		logutil.Warnf("get object rows failed, obj: %v, err %v", blk.meta.ID.String(), err)
-	}
-	deleteCnt := blk.meta.GetDeleteCount()
-	s := fmt.Sprintf("Block %s Mutation Info: Changes=%d/%d",
-		blk.meta.AsCommonID().BlockString(),
-		deleteCnt,
-		rows)
-	return s
-}
-
 func (blk *baseObject) CollectAppendInRange(
 	start, end types.TS, withAborted bool, mp *mpool.MPool,
 ) (*containers.BatchWithVersion, error) {

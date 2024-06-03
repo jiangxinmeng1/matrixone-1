@@ -32,6 +32,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moprobe"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	apipb "github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -1090,8 +1091,14 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	)
 	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
 	defer rowIDs.Close()
-	for i := 0; i < keys.Length(); i++ {
-		rowIDs.Append(nil, true)
+	if err = vector.AppendMultiFixed[types.Rowid](
+		rowIDs.GetDownstreamVector(),
+		types.EmptyRowid,
+		true,
+		keys.Length(),
+		common.WorkspaceAllocator,
+	); err != nil {
+		return
 	}
 	maxBlockID := &types.Blockid{}
 	for it.Valid() {
@@ -1256,9 +1263,14 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 		keys := vectors[0]
 		rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
 		defer rowIDs.Close()
-		length := keys.Length()
-		for i := 0; i < length; i++ {
-			rowIDs.Append(nil, true)
+		if err = vector.AppendMultiFixed[types.Rowid](
+			rowIDs.GetDownstreamVector(),
+			types.EmptyRowid,
+			true,
+			keys.Length(),
+			common.WorkspaceAllocator,
+		); err != nil {
+			return
 		}
 		it := newObjectItOnSnap(tbl, isTombstone)
 		for it.Valid() {
@@ -1331,10 +1343,16 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM, isTombstone bool) (err error) {
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
-		for i := 0; i < pks.Length(); i++ {
-			rowIDs.Append(nil, true)
-		}
 		defer rowIDs.Close()
+		if err = vector.AppendMultiFixed[types.Rowid](
+			rowIDs.GetDownstreamVector(),
+			types.EmptyRowid,
+			true,
+			pks.Length(),
+			common.WorkspaceAllocator,
+		); err != nil {
+			return
+		}
 		objIt := tbl.entry.MakeObjectIt(false, isTombstone)
 		for objIt.Valid() {
 			obj := objIt.Get().GetPayload()
@@ -1415,8 +1433,14 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 	}
 	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.WorkspaceAllocator)
 	defer rowIDs.Close()
-	for i := 0; i < pks.Length(); i++ {
-		rowIDs.Append(nil, true)
+	if err = vector.AppendMultiFixed[types.Rowid](
+		rowIDs.GetDownstreamVector(),
+		types.EmptyRowid,
+		true,
+		pks.Length(),
+		common.WorkspaceAllocator,
+	); err != nil {
+		return
 	}
 	for objIt.Valid() {
 		obj := objIt.Get().GetPayload()

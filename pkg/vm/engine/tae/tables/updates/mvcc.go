@@ -576,11 +576,6 @@ func (n *ObjectMVCCHandle) HasInMemoryDeleteIntentsPreparedInByBlock(blkID uint1
 	return
 }
 
-func (n *ObjectMVCCHandle) ReplayDeltaLoc(vMVCCNode any, blkID uint16) {
-	mvccNode := vMVCCNode.(*catalog.MVCCNode[*catalog.MetadataMVCCNode])
-	mvcc := n.GetOrCreateDeleteChainLocked(blkID)
-	mvcc.ReplayDeltaLoc(mvccNode)
-}
 func (n *ObjectMVCCHandle) InMemoryDeletesExistedLocked() bool {
 	for _, deletes := range n.deletes {
 		if !deletes.deletes.mask.IsEmpty() {
@@ -1226,8 +1221,4 @@ func (n *MVCCHandle) UpdateDeltaLocLocked(txn txnif.TxnReader, deltaloc objectio
 	n.deltaloc.InsertLocked(node)
 	isNewNode = true
 	return
-}
-
-func (n *MVCCHandle) ReplayDeltaLoc(mvcc *catalog.MVCCNode[*catalog.MetadataMVCCNode]) {
-	n.deltaloc.InsertLocked(mvcc)
 }

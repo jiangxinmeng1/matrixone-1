@@ -22,6 +22,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
 func (entry *TableEntry) CollectDeleteInRange(
@@ -74,7 +75,16 @@ func (entry *TableEntry) IsDeleted(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	rowID types.Rowid,
+	vp *containers.VectorPool,
 	mp *mpool.MPool) (deleted bool, err error) {
+	rowIDs := vp.GetVector(&objectio.RowidType)
+	rowIDs.Append(rowID, false)
+	defer rowIDs.Close()
+	rowIDZM := index.NewZM(objectio.RowidType.Oid, objectio.RowidType.Scale)
+	if err = index.BatchUpdateZM(rowIDZM, rowIDs.GetDownstreamVector()); err != nil {
+		return
+	}
+
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
@@ -88,11 +98,11 @@ func (entry *TableEntry) IsDeleted(
 		if !visible {
 			continue
 		}
-		ok, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
+		err = tombstone.GetObjectData().Contains(ctx, txn, false, rowIDs, rowIDZM, nil, mp)
 		if err != nil {
 			return false, err
 		}
-		if ok {
+		if rowIDs.IsNull(0) {
 			return true, nil
 		}
 	}

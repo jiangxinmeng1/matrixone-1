@@ -21,10 +21,8 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
 func (entry *ObjectEntry) foreachTombstoneInRange(
@@ -104,45 +102,6 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 			return op(rowID, commitTS, aborted, pk)
 		})
 	return nil
-}
-
-func (entry *ObjectEntry) tryGetTombstoneVisible(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	rowID types.Rowid,
-	mp *mpool.MPool) (ok bool, err error) {
-	if entry.HasCommittedPersistedData() {
-		var zm index.ZM
-		zm, err = entry.GetPKZoneMap(ctx)
-		if err != nil {
-			return
-		}
-		if !zm.Contains(rowID) {
-			return
-		}
-	}
-	blkCount := entry.BlockCnt()
-	for i := 0; i < blkCount; i++ {
-
-		var bat *containers.BlockView
-		idx := []int{0, 1}
-		schema := entry.GetTable().GetLastestSchema(true)
-		bat, err = entry.GetObjectData().GetColumnDataByIds(ctx, txn, schema, uint16(i), idx, mp)
-		if err != nil {
-			return
-		}
-		if bat == nil || bat.Columns[0].Length() == 0 {
-			continue
-		}
-		defer bat.Close()
-		rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
-		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
-		_, ok = compute.GetOffsetWithFunc(rowIDs, rowID, types.CompareRowidRowidAligned, nil)
-		if ok {
-			break
-		}
-	}
-	return
 }
 
 func (entry *ObjectEntry) fillDeletes(

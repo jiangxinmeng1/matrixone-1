@@ -175,6 +175,7 @@ func (node *persistedNode) GetRowByFilter(
 	txn txnif.TxnReader,
 	filter *handle.Filter,
 	mp *mpool.MPool,
+	vpool *containers.VectorPool,
 ) (blkID uint16, row uint32, err error) {
 	for blkID = uint16(0); blkID < uint16(node.object.meta.BlockCnt()); blkID++ {
 		var ok bool

@@ -291,6 +291,7 @@ func (node *memoryNode) GetRowByFilter(
 	txn txnif.TxnReader,
 	filter *handle.Filter,
 	mp *mpool.MPool,
+	vpool *containers.VectorPool,
 ) (blkID uint16, row uint32, err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
@@ -332,7 +333,7 @@ func (node *memoryNode) GetRowByFilter(
 		rowID := objectio.NewRowid(fullBlockID, row)
 		var deleted bool
 		node.object.RUnlock()
-		deleted, err = node.object.meta.GetTable().IsDeleted(ctx, txn, *rowID, mp)
+		deleted, err = node.object.meta.GetTable().IsDeleted(ctx, txn, *rowID, vpool, mp)
 		node.object.RLock()
 		if !deleted {
 			return
@@ -563,7 +564,7 @@ func (node *memoryNode) getInMemoryValue(
 	if !skipCheckDelete {
 		var deleted bool
 		node.object.RUnlock()
-		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, mp)
+		deleted, err = node.object.meta.GetTable().IsDeleted(txn.GetContext(), txn, *rowID, node.object.rt.VectorPool.Small, mp)
 		node.object.RLock()
 		if err != nil {
 			return

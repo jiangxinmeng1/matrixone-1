@@ -732,6 +732,12 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 			continue
 		}
 		// do not close data, leave that to wait phase
+		if isTombstone {
+			_, err = mergesort.SortBlockColumns(data.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
+			if err != nil {
+				return
+			}
+		}
 
 		aobjectTask := NewFlushObjTask(
 			tasks.WaitableCtx,

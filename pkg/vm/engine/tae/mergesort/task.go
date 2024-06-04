@@ -45,7 +45,6 @@ type DisposableVecPool interface {
 type MergeTaskHost interface {
 	DisposableVecPool
 	HostHintName() string
-	PrepareData(context.Context) ([]*batch.Batch, []*nulls.Nulls, func(), error)
 	GetCommitEntry() *api.MergeCommitEntry
 	PrepareNewWriter() *blockio.BlockWriter
 	DoTransfer() bool
@@ -109,7 +108,6 @@ func GetNewWriter(
 func DoMergeAndWrite(
 	ctx context.Context,
 	sortkeyPos int,
-	blkMaxRow int,
 	mergehost MergeTaskHost,
 	isTombstone bool,
 ) (err error) {
@@ -148,6 +146,7 @@ func DoMergeAndWrite(
 		if err := mergeObjs(ctx, mergehost, sortkeyPos, isTombstone); err != nil {
 			return err
 		}
+<<<<<<< HEAD
 
 		toObjsDesc := ""
 		for _, o := range commitEntry.CreatedObjs {
@@ -240,14 +239,24 @@ func DoMergeAndWrite(
 			_, err = writer.WriteBatch(bat)
 		}
 		if err != nil {
+=======
+	} else {
+		if err = reshape(ctx, mergehost); err != nil {
+>>>>>>> main
 			return err
 		}
 	}
 
-	if _, _, err = writer.Sync(ctx); err != nil {
-		return err
+	toObjsDesc := ""
+	for _, o := range commitEntry.CreatedObjs {
+		obj := objectio.ObjectStats(o)
+		toObjsDesc += fmt.Sprintf("%s(%v)Rows(%v),",
+			common.ShortObjId(*obj.ObjectName().ObjectId()),
+			obj.BlkCnt(),
+			obj.Rows())
 	}
 
+<<<<<<< HEAD
 	// no tomestone actually
 	var cobjstats []objectio.ObjectStats
 	if isTombstone {
@@ -262,31 +271,16 @@ func DoMergeAndWrite(
 		common.ShortObjId(*cobjstats[0].ObjectName().ObjectId()),
 		cobjstats[0].BlkCnt(),
 		cobjstats[0].Rows())
+=======
+>>>>>>> main
 	logutil.Info("[Done] Mergeblocks",
 		zap.String("table", tableDesc),
 		zap.String("on", mergehost.HostHintName()),
 		zap.String("txn-start-ts", commitEntry.StartTs.DebugString()),
-		zap.String("to-objs", cobj),
+		zap.String("to-objs", toObjsDesc),
 		common.DurationField(time.Since(now)))
 
 	return nil
-
-}
-
-// layout [blkMaxRow, blkMaxRow, blkMaxRow,..., blkMaxRow, totalRowCount - blkMaxRow*N]
-func arrangeToLayout(totalRowCount int, blkMaxRow int) []uint32 {
-	toLayout := make([]uint32, 0, totalRowCount/blkMaxRow)
-	unconsumed := totalRowCount
-	for unconsumed > 0 {
-		if unconsumed > blkMaxRow {
-			toLayout = append(toLayout, uint32(blkMaxRow))
-			unconsumed -= blkMaxRow
-		} else {
-			toLayout = append(toLayout, uint32(unconsumed))
-			unconsumed = 0
-		}
-	}
-	return toLayout
 }
 
 // not defined in api.go to avoid import cycle

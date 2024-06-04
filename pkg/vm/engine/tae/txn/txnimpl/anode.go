@@ -19,7 +19,6 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
-	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -56,23 +55,6 @@ func (n *anode) Rows() uint32 {
 	return n.rows
 }
 
-// fill in commitTSVec and abortVec
-func (n *anode) prepareApply(startOffset int, commitTS types.TS) {
-	return
-	if !n.isTombstone {
-		return
-	}
-	length := n.data.Length() - startOffset
-	commitVec := containers.NewConstFixed[types.TS](types.T_TS.ToType(), commitTS, length)
-	abortVec := containers.NewConstFixed[bool](types.T_bool.ToType(), false, length)
-	if len(n.data.Vecs) == 5 {
-		n.data.GetVectorByName(catalog.AttrCommitTs).Extend(commitVec)
-		n.data.GetVectorByName(catalog.AttrAborted).Extend(abortVec)
-	} else {
-		n.data.AddVector(catalog.AttrCommitTs, commitVec)
-		n.data.AddVector(catalog.AttrAborted, abortVec)
-	}
-}
 func (n *anode) GetAppends() []*appendInfo {
 	return n.appends
 }
@@ -98,7 +80,7 @@ func (n *anode) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
 	if n.data == nil {
 		return
 	}
-	composedCmd := NewAppendCmd(id, n, n.data)
+	composedCmd := NewAppendCmd(id, n, n.data, n.isTombstone)
 	return composedCmd, nil
 }
 

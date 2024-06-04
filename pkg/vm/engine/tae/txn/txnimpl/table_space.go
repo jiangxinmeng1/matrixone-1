@@ -156,7 +156,6 @@ func (space *tableSpace) PrepareApply() (err error) {
 }
 
 func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) error {
-	node.prepareApply(int(startOffset), space.table.store.txn.GetPrepareTS())
 	node.Compact()
 	tableData := space.table.entry.GetTableData()
 	if space.tableHandle == nil {

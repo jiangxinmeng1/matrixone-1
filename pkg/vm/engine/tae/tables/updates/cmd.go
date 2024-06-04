@@ -112,7 +112,7 @@ func NewEmptyCmd(cmdType uint16, version uint16) *UpdateCmd {
 		// cmd.delete = NewDeleteNode(nil, 0, version)
 		panic(fmt.Sprintf("%d", cmdType))
 	} else if cmdType == IOET_WALTxnCommand_AppendNode {
-		cmd.append = NewAppendNode(nil, 0, 0, nil)
+		cmd.append = NewAppendNode(nil, 0, 0, false, nil)
 	} else if cmdType == IOET_WALTxnCommand_PersistedDeleteNode {
 		// cmd.delete = NewEmptyPersistedDeleteNode()
 		panic(fmt.Sprintf("%d", cmdType))

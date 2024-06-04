@@ -28,11 +28,12 @@ import (
 
 type AppendNode struct {
 	*txnbase.TxnMVCCNode
-	startRow uint32
-	maxRow   uint32
-	mvcc     *AppendMVCCHandle
-	id       *common.ID
-	NodeType handle.DeleteType
+	startRow    uint32
+	maxRow      uint32
+	mvcc        *AppendMVCCHandle
+	id          *common.ID
+	NodeType    handle.DeleteType
+	isTombstone bool
 }
 
 func CompareAppendNode(e, o *AppendNode) int {
@@ -53,6 +54,7 @@ func MockAppendNode(ts types.TS, startRow, maxRow uint32, mvcc *AppendMVCCHandle
 func NewCommittedAppendNode(
 	ts types.TS,
 	startRow, maxRow uint32,
+	isTombstone bool,
 	mvcc *AppendMVCCHandle) *AppendNode {
 	return &AppendNode{
 		TxnMVCCNode: &txnbase.TxnMVCCNode{
@@ -60,15 +62,17 @@ func NewCommittedAppendNode(
 			Prepare: ts,
 			End:     ts,
 		},
-		startRow: startRow,
-		maxRow:   maxRow,
-		mvcc:     mvcc,
+		startRow:    startRow,
+		maxRow:      maxRow,
+		mvcc:        mvcc,
+		isTombstone: isTombstone,
 	}
 }
 
 func NewAppendNode(
 	txn txnif.AsyncTxn,
 	startRow, maxRow uint32,
+	isTombstone bool,
 	mvcc *AppendMVCCHandle) *AppendNode {
 	var startTs, ts types.TS
 	if txn != nil {
@@ -82,9 +86,10 @@ func NewAppendNode(
 			End:     txnif.UncommitTS,
 			Txn:     txn,
 		},
-		startRow: startRow,
-		maxRow:   maxRow,
-		mvcc:     mvcc,
+		startRow:    startRow,
+		maxRow:      maxRow,
+		mvcc:        mvcc,
+		isTombstone: isTombstone,
 	}
 	return n
 }
@@ -96,7 +101,7 @@ func NewEmptyAppendNode() *AppendNode {
 	}
 }
 func (node *AppendNode) IsTombstone() bool {
-	return node.mvcc.meta.IsTombstone
+	return node.isTombstone
 }
 func (node *AppendNode) String() string {
 	return node.GeneralDesc()
@@ -186,6 +191,10 @@ func (node *AppendNode) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n += sn
+	if sn1, err = w.Write(types.EncodeBool(&node.isTombstone)); err != nil {
+		return
+	}
+	n += int64(sn1)
 	return
 }
 
@@ -212,6 +221,10 @@ func (node *AppendNode) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 	n += sn2
+	if sn, err = r.Read(types.EncodeBool(&node.isTombstone)); err != nil {
+		return
+	}
+	n += int64(sn)
 	return
 }
 

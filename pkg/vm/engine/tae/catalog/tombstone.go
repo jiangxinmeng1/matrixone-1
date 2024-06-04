@@ -21,7 +21,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
-	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
@@ -133,12 +132,15 @@ func (entry *ObjectEntry) tryGetTombstoneVisible(
 			return
 		}
 		if bat == nil || bat.Columns[0].Length() == 0 {
-			return
+			continue
 		}
 		defer bat.Close()
 		rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
 		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 		_, ok = compute.GetOffsetWithFunc(rowIDs, rowID, types.CompareRowidRowidAligned, nil)
+		if ok {
+			break
+		}
 	}
 	return
 }
@@ -167,17 +169,14 @@ func (entry *ObjectEntry) fillDeletes(
 		rowIDVec := rowIDsView.GetData().GetDownstreamVector()
 		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 
-		rowID := objectio.NewRowid(&blkID, 0)
-		offset, _ := compute.GetOffsetWithFunc(rowIDs, *rowID, types.CompareRowidRowidAligned, nil)
-		if types.PrefixCompare(rowIDs[offset][:], blkID[:]) < 0 {
-			offset++
-		}
-		for ; offset < len(rowIDs) && types.PrefixCompare(rowIDs[offset][:], blkID[:]) == 0; offset++ {
-			if view.DeleteMask == nil {
-				view.DeleteMask = &nulls.Nulls{}
+		for _, rowID := range rowIDs {
+			if types.PrefixCompare(rowID[:], blkID[:]) == 0 {
+				if view.DeleteMask == nil {
+					view.DeleteMask = &nulls.Nulls{}
+				}
+				_, rowOffset := rowID.Decode()
+				view.DeleteMask.Add(uint64(rowOffset))
 			}
-			_, rowOffset := rowID.Decode()
-			view.DeleteMask.Add(uint64(rowOffset))
 		}
 	}
 	return

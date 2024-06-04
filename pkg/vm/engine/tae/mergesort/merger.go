@@ -63,19 +63,9 @@ type merger[T any] struct {
 
 	mustColFunc func(*vector.Vector) []T
 
-<<<<<<< HEAD
 	isTombstone bool
-
-	totalRowCnt   uint32
-	totalSize     uint32
-	rowPerBlk     uint32
-	blkPerObj     uint16
-	rowSize       uint32
-	targetObjSize uint32
-=======
-	rowPerBlk uint32
-	stats     mergeStats
->>>>>>> main
+	rowPerBlk   uint32
+	stats       mergeStats
 }
 
 func newMerger[T any](host MergeTaskHost, lessFunc sort.LessFunc[T], sortKeyPos int, isTombstone bool, mustColFunc func(*vector.Vector) []T) Merger {

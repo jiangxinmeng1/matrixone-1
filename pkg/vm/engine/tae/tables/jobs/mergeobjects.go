@@ -377,10 +377,8 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *
 		return nil, err
 	}
 
-	if isTombstone {
-		if err = txn.LogTxnEntry(entry.DbId, entry.TblId, txnEntry, nil, ids); err != nil {
-			return nil, err
-			return nil, err
+	if err = txn.LogTxnEntry(entry.DbId, entry.TblId, txnEntry, nil, ids); err != nil {
+		return nil, err
 	}
 
 	return createdObjs, nil

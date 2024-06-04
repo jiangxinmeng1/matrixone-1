@@ -213,7 +213,10 @@ func (idx *MutIndex) Contains(
 			return
 		}
 	}
-	op := func(v []byte, _ bool, offset int) error {
+	op := func(v []byte, isNull bool, offset int) error {
+		if isNull {
+			return nil
+		}
 		rows, err := idx.art.Search(v)
 		if err == index.ErrNotFound {
 			return nil

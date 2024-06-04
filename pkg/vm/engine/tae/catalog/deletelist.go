@@ -89,7 +89,7 @@ func (entry *TableEntry) IsDeleted(
 		if !visible {
 			continue
 		}
-		ok, _, _, _, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
+		ok, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
 		if err != nil {
 			return false, err
 		}

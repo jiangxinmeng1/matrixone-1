@@ -15,7 +15,6 @@
 package catalog
 
 import (
-	"bytes"
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -48,15 +47,9 @@ func (entry *TableEntry) CollectDeleteInRange(
 		}
 		if tombstone.HasCommittedPersistedData() {
 			zm := tombstone.GetSortKeyZonemap()
-			maxObjectID := zm.GetMax().(types.Rowid).GetObject()
-			if bytes.Compare(maxObjectID[:], objectID[:]) < 0 {
+			if !zm.ContainsKey(objectID[:]) {
 				continue
 			}
-			minObjectID := zm.GetMin().(types.Rowid).GetObject()
-			if bytes.Compare(minObjectID[:], objectID[:]) > 0 {
-				continue
-			}
-			// TODO bf
 		}
 		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objectID, start, end, mp,
 			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {

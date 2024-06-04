@@ -107,12 +107,12 @@ type Object interface {
 		keys containers.Vector,
 		keysZM index.ZM,
 		precommit bool,
+		checkWWConflict bool,
 		bf objectio.BloomFilter,
 		rowIDs containers.Vector,
 		mp *mpool.MPool,
 	) (err error)
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
-
 	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
 	Foreach(

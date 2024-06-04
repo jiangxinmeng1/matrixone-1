@@ -88,6 +88,7 @@ func (node *persistedNode) GetDuplicatedRows(
 	rowIDs containers.Vector,
 	bf objectio.BloomFilter,
 	isCommitting bool,
+	_ bool,
 	mp *mpool.MPool,
 ) (err error) {
 	panic("should not be balled")

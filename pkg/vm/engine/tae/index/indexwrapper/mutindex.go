@@ -168,6 +168,12 @@ func (idx *MutIndex) GetDuplicatedRows(
 		if err == index.ErrNotFound {
 			return nil
 		}
+		if skipFn != nil {
+			err = skipFn(rows[len(rows)-1])
+			if err != nil {
+				return err
+			}
+		}
 		var maxRow uint32
 		exist := false
 		for i := len(rows) - 1; i >= 0; i-- {
@@ -179,10 +185,6 @@ func (idx *MutIndex) GetDuplicatedRows(
 		}
 		if !exist {
 			return nil
-		}
-		err = skipFn(maxRow)
-		if err != nil {
-			return err
 		}
 		rowID := objectio.NewRowid(blkID, maxRow)
 		containers.UpdateValue(rowIDs, uint32(offset), *rowID, false, mp)
@@ -213,7 +215,10 @@ func (idx *MutIndex) Contains(
 			return
 		}
 	}
-	op := func(v []byte, _ bool, offset int) error {
+	op := func(v []byte, isNull bool, offset int) error {
+		if isNull {
+			return nil
+		}
 		rows, err := idx.art.Search(v)
 		if err == index.ErrNotFound {
 			return nil

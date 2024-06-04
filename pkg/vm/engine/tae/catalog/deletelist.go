@@ -47,9 +47,10 @@ func (entry *TableEntry) CollectDeleteInRange(
 		}
 		if tombstone.HasCommittedPersistedData() {
 			zm := tombstone.GetSortKeyZonemap()
-			if !zm.ContainsKey(objectID[:]) {
+			if !zm.PrefixEq(objectID[:]) {
 				continue
 			}
+			// TODO: Bloomfilter
 		}
 		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objectID, start, end, mp,
 			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {

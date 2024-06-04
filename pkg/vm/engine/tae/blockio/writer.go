@@ -137,7 +137,7 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 			return nil, err
 		}
 
-		if err = w.writer.WriteBF(int(block.GetID()), seqnums[i], buf, false); err != nil {
+		if err = w.writer.WriteBF(int(block.GetID()), seqnums[i], buf); err != nil {
 			return nil, err
 		}
 	}

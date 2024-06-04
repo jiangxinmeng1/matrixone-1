@@ -547,13 +547,14 @@ func (tbl *txnTable) LoadDeletesForBlock(bid types.Blockid, offsets *[]int64) (e
 			if err != nil {
 				return err
 			}
-			rowIdBat, release, err := blockio.LoadTombstoneColumns(
+			rowIdBat, release, err := blockio.LoadColumns(
 				tbl.getTxn().proc.Ctx,
 				[]uint16{0},
 				nil,
 				tbl.getTxn().engine.fs,
 				location,
-				tbl.getTxn().proc.GetMPool())
+				tbl.getTxn().proc.GetMPool(),
+				fileservice.Policy(0))
 			if err != nil {
 				return err
 			}
@@ -588,13 +589,14 @@ func (tbl *txnTable) LoadDeletesForMemBlocksIn(
 				if err != nil {
 					return err
 				}
-				rowIdBat, release, err := blockio.LoadTombstoneColumns(
+				rowIdBat, release, err := blockio.LoadColumns(
 					tbl.getTxn().proc.Ctx,
 					[]uint16{0},
 					nil,
 					tbl.getTxn().engine.fs,
 					location,
-					tbl.getTxn().proc.GetMPool())
+					tbl.getTxn().proc.GetMPool(),
+					fileservice.Policy(0))
 				if err != nil {
 					return err
 				}

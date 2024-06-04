@@ -211,11 +211,7 @@ func (w *objectWriterV1) UpdateBlockZM(tye DataMetaType, blkIdx int, seqnum uint
 	w.blocks[tye][blkIdx].meta.ColumnMeta(seqnum).SetZoneMap(zm)
 }
 
-func (w *objectWriterV1) WriteBF(blkIdx int, seqnum uint16, buf []byte, isTombstone bool) (err error) {
-	if isTombstone {
-		w.blocks[SchemaTombstone][blkIdx].bloomFilter = buf
-		return
-	}
+func (w *objectWriterV1) WriteBF(blkIdx int, seqnum uint16, buf []byte) (err error) {
 	w.blocks[SchemaData][blkIdx].bloomFilter = buf
 	return
 }
@@ -475,8 +471,9 @@ func (w *objectWriterV1) WriteEnd(ctx context.Context, items ...WriteOptions) ([
 			metaHeader.SetDataMetaOffset(idxStart)
 			metaHeader.SetDataMetaCount(uint16(len(w.blocks[i])))
 		} else if i == int(SchemaTombstone) {
-			metaHeader.SetTombstoneMetaOffset(idxStart)
-			metaHeader.SetTombstoneMetaCount(uint16(len(w.blocks[SchemaTombstone])))
+			if len(w.blocks[i]) != 0 {
+				panic("invalid data meta type")
+			}
 		} else {
 			subMetachIndex.SetSchemaMeta(uint16(i-2), uint16(i-2), uint16(len(w.blocks[i])), idxStart)
 		}

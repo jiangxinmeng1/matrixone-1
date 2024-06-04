@@ -354,15 +354,6 @@ func Prefetch(idxes []uint16, ids []uint16, service fileservice.FileService, key
 	return pipeline.Prefetch(params)
 }
 
-func PrefetchTombstone(idxes []uint16, ids []uint16, service fileservice.FileService, key objectio.Location) error {
-	params, err := BuildPrefetchParams(service, key)
-	if err != nil {
-		return err
-	}
-	params.AddBlockWithType(idxes, ids, uint16(objectio.SchemaTombstone))
-	return pipeline.Prefetch(params)
-}
-
 func PrefetchMeta(service fileservice.FileService, key objectio.Location) error {
 	params, err := BuildPrefetchParams(service, key)
 	if err != nil {

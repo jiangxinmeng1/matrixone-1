@@ -139,17 +139,6 @@ func LoadColumns(
 	return LoadColumnsData(ctx, objectio.SchemaData, cols, typs, fs, location, m, policy)
 }
 
-func LoadTombstoneColumns(
-	ctx context.Context,
-	cols []uint16,
-	typs []types.Type,
-	fs fileservice.FileService,
-	location objectio.Location,
-	m *mpool.MPool,
-) (bat *batch.Batch, release func(), err error) {
-	return LoadColumnsData(ctx, objectio.SchemaTombstone, cols, typs, fs, location, m, fileservice.Policy(0))
-}
-
 // LoadColumns2 load columns data from file service for TN
 // need to copy data from vPool to avoid releasing cache
 func LoadColumns2(

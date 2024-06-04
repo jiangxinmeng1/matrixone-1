@@ -537,7 +537,7 @@ func ReadBlockDeleteBySchema(ctx context.Context, deltaloc objectio.Location, fs
 	} else {
 		cols = []uint16{0, 1, 2, 3}
 	}
-	bat, release, err = LoadTombstoneColumns(ctx, cols, nil, fs, deltaloc, nil)
+	bat, release, err = LoadColumns(ctx, cols, nil, fs, deltaloc, nil, fileservice.Policy(0))
 	return
 }
 
@@ -610,7 +610,7 @@ func BlockPrefetch(idxes []uint16, service fileservice.FileService, infos [][]*o
 			pref.AddBlock(idxes, []uint16{info.MetaLocation().ID()})
 			if !info.DeltaLocation().IsEmpty() {
 				// Need to read all delete
-				err = PrefetchTombstone([]uint16{0, 1, 2}, []uint16{info.DeltaLocation().ID()}, service, info.DeltaLocation())
+				err = Prefetch([]uint16{0, 1, 2}, []uint16{info.DeltaLocation().ID()}, service, info.DeltaLocation())
 				if err != nil {
 					return err
 				}

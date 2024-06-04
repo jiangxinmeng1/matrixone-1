@@ -25,6 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -313,7 +314,7 @@ func (h *Handle) HandleCommitMerge(
 			loc := objectio.Location(req.BookingLoc)
 			var bat *batch.Batch
 			var release func()
-			bat, release, err = blockio.LoadTombstoneColumns(ctx, []uint16{0}, nil, h.db.Runtime.Fs.Service, loc, nil)
+			bat, release, err = blockio.LoadColumns(ctx, []uint16{0}, nil, h.db.Runtime.Fs.Service, loc, nil, fileservice.Policy(0))
 			if err != nil {
 				return
 			}
@@ -335,7 +336,7 @@ func (h *Handle) HandleCommitMerge(
 				loc := objectio.Location(locations[idx : idx+objectio.LocationLen])
 				var bat *batch.Batch
 				var release func()
-				bat, release, err = blockio.LoadTombstoneColumns(ctx, []uint16{0}, nil, h.db.Runtime.Fs.Service, loc, nil)
+				bat, release, err = blockio.LoadColumns(ctx, []uint16{0}, nil, h.db.Runtime.Fs.Service, loc, nil, fileservice.Policy(0))
 				if err != nil {
 					return
 				}

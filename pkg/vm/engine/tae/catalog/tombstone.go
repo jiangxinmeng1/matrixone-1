@@ -18,8 +18,10 @@ import (
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
@@ -137,6 +139,46 @@ func (entry *ObjectEntry) tryGetTombstoneVisible(
 		rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
 		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
 		_, ok = compute.GetOffsetWithFunc(rowIDs, rowID, types.CompareRowidRowidAligned, nil)
+	}
+	return
+}
+
+func (entry *ObjectEntry) fillDeletes(
+	ctx context.Context,
+	blkID types.Blockid,
+	txn txnif.TxnReader,
+	view *containers.BaseView,
+	mp *mpool.MPool) (err error) {
+	blkCount := entry.BlockCnt()
+	for i := 0; i < blkCount; i++ {
+		schema := entry.GetTable().GetLastestSchema(true)
+		var rowIDsView *containers.ColumnView
+		rowIDsView, err = entry.GetObjectData().GetColumnDataById(ctx, txn, schema, uint16(i), 0, mp)
+		if err != nil {
+			return err
+		}
+		if rowIDsView == nil || rowIDsView.GetData() == nil {
+			return nil
+		}
+		defer rowIDsView.Close()
+		if rowIDsView.GetData().Length() == 0 {
+			return nil
+		}
+		rowIDVec := rowIDsView.GetData().GetDownstreamVector()
+		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
+
+		rowID := objectio.NewRowid(&blkID, 0)
+		offset, _ := compute.GetOffsetWithFunc(rowIDs, *rowID, types.CompareRowidRowidAligned, nil)
+		if types.PrefixCompare(rowIDs[offset][:], blkID[:]) < 0 {
+			offset++
+		}
+		for ; offset < len(rowIDs) && types.PrefixCompare(rowIDs[offset][:], blkID[:]) == 0; offset++ {
+			if view.DeleteMask == nil {
+				view.DeleteMask = &nulls.Nulls{}
+			}
+			_, rowOffset := rowID.Decode()
+			view.DeleteMask.Add(uint64(rowOffset))
+		}
 	}
 	return
 }

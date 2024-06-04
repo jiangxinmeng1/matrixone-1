@@ -2678,7 +2678,7 @@ func dumpTransferInfo(ctx context.Context, taskHost *cnMergeTask) (err error) {
 		batch := batch.New(true, []string{"payload"})
 		batch.SetRowCount(vectorRowCnt)
 		batch.Vecs[0] = v
-		_, err = writer.WriteTombstoneBatch(batch)
+		_, err = writer.WriteBatch(batch)
 		if err != nil {
 			releasev()
 			return

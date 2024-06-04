@@ -27,23 +27,20 @@ import (
 )
 
 type ImmutIndex struct {
-	zm          index.ZM
-	bf          objectio.BloomFilter
-	location    objectio.Location
-	isTombstone bool
+	zm       index.ZM
+	bf       objectio.BloomFilter
+	location objectio.Location
 }
 
 func NewImmutIndex(
 	zm index.ZM,
 	bf objectio.BloomFilter,
-	isTombstone bool,
 	location objectio.Location,
 ) ImmutIndex {
 	return ImmutIndex{
-		zm:          zm,
-		bf:          bf,
-		location:    location,
-		isTombstone: isTombstone,
+		zm:       zm,
+		bf:       bf,
+		location: location,
 	}
 }
 
@@ -78,7 +75,6 @@ func (idx ImmutIndex) BatchDedup(
 			ctx,
 			idx.location,
 			false,
-			idx.isTombstone,
 			rt.Fs.Service,
 		); err != nil {
 			return
@@ -121,7 +117,6 @@ func (idx ImmutIndex) Dedup(
 			ctx,
 			idx.location,
 			false,
-			idx.isTombstone,
 			rt.Fs.Service,
 		); err != nil {
 			return

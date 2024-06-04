@@ -187,7 +187,7 @@ func (m *merger[T]) merge(ctx context.Context) error {
 				m.writer = m.host.PrepareNewWriter()
 			}
 			if m.isTombstone {
-				if _, err := m.writer.WriteTombstoneBatch(m.buffer); err != nil {
+				if _, err := m.writer.WriteBatch(m.buffer); err != nil {
 					return err
 				}
 			} else {
@@ -225,7 +225,7 @@ func (m *merger[T]) merge(ctx context.Context) error {
 			m.writer = m.host.PrepareNewWriter()
 		}
 		if m.isTombstone {
-			if _, err := m.writer.WriteTombstoneBatch(m.buffer); err != nil {
+			if _, err := m.writer.WriteBatch(m.buffer); err != nil {
 				return err
 			}
 		} else {

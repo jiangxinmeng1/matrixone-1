@@ -770,7 +770,7 @@ func ReWriteCheckpointAndBlockFromKey(
 						return nil, nil, nil, err
 					}
 				} else if block.blockType == objectio.SchemaTombstone {
-					_, err = writer.WriteTombstoneBatch(block.data)
+					_, err = writer.WriteBatch(block.data)
 					if err != nil {
 						return nil, nil, nil, err
 					}

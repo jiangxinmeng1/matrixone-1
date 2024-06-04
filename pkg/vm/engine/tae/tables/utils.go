@@ -37,7 +37,6 @@ func LoadPersistedColumnData(
 	id *common.ID,
 	def *catalog.ColDef,
 	location objectio.Location,
-	isTombstone bool,
 	mp *mpool.MPool,
 ) (vec containers.Vector, err error) {
 	if def.IsPhyAddr() {
@@ -45,19 +44,6 @@ func LoadPersistedColumnData(
 	}
 	//Extend lifetime of vectors is without the function.
 	//need to copy. closeFunc will be nil.
-	if isTombstone {
-		vectors, _, err := blockio.LoadTombstoneColumns2(
-			ctx, []uint16{uint16(def.SeqNum)},
-			[]types.Type{def.Type},
-			rt.Fs.Service,
-			location,
-			true,
-			rt.VectorPool.Transient)
-		if err != nil {
-			return nil, err
-		}
-		return vectors[0], nil
-	}
 	vectors, _, err := blockio.LoadColumns2(
 		ctx, []uint16{uint16(def.SeqNum)},
 		[]types.Type{def.Type},
@@ -79,7 +65,6 @@ func LoadPersistedColumnDatas(
 	id *common.ID,
 	colIdxs []int,
 	location objectio.Location,
-	isTombstone bool,
 	mp *mpool.MPool,
 ) ([]containers.Vector, error) {
 	cols := make([]uint16, 0)
@@ -107,24 +92,14 @@ func LoadPersistedColumnDatas(
 	var err error
 	//Extend lifetime of vectors is without the function.
 	//need to copy. closeFunc will be nil.
-	if isTombstone {
-		vecs, _, err = blockio.LoadTombstoneColumns2(
-			ctx, cols,
-			typs,
-			rt.Fs.Service,
-			location,
-			true,
-			rt.VectorPool.Transient)
-	} else {
-		vecs, _, err = blockio.LoadColumns2(
-			ctx, cols,
-			typs,
-			rt.Fs.Service,
-			location,
-			fileservice.Policy(0),
-			true,
-			rt.VectorPool.Transient)
-	}
+	vecs, _, err = blockio.LoadColumns2(
+		ctx, cols,
+		typs,
+		rt.Fs.Service,
+		location,
+		fileservice.Policy(0),
+		true,
+		rt.VectorPool.Transient)
 	if err != nil {
 		return nil, err
 	}
@@ -140,47 +115,6 @@ func LoadPersistedColumnDatas(
 
 func ReadPersistedBlockRow(location objectio.Location) int {
 	return int(location.Rows())
-}
-
-func LoadPersistedDeletes(
-	ctx context.Context,
-	pkName string,
-	fs *objectio.ObjectFS,
-	location objectio.Location,
-	mp *mpool.MPool,
-) (bat *containers.Batch, isPersistedByCN bool, release func(), err error) {
-	if isPersistedByCN, err = blockio.IsPersistedByCN(ctx, location, fs.Service); err != nil {
-		return
-	}
-	bat, release, err = LoadPersistedDeletesBySchema(ctx, pkName, fs, location, isPersistedByCN, mp)
-	return
-}
-
-func LoadPersistedDeletesBySchema(
-	ctx context.Context,
-	pkName string,
-	fs *objectio.ObjectFS,
-	location objectio.Location,
-	isPersistedByCN bool,
-	mp *mpool.MPool,
-) (bat *containers.Batch, release func(), err error) {
-	movbat, release, err := blockio.ReadBlockDeleteBySchema(ctx, location, fs.Service, isPersistedByCN)
-	if err != nil {
-		return
-	}
-	bat = containers.NewBatch()
-	if isPersistedByCN {
-		colNames := []string{catalog.PhyAddrColumnName, catalog.AttrPKVal}
-		for i := 0; i < 2; i++ {
-			bat.AddVector(colNames[i], containers.ToTNVector(movbat.Vecs[i], mp))
-		}
-	} else {
-		colNames := []string{catalog.PhyAddrColumnName, catalog.AttrCommitTs, catalog.AttrPKVal, catalog.AttrAborted}
-		for i := 0; i < 4; i++ {
-			bat.AddVector(colNames[i], containers.ToTNVector(movbat.Vecs[i], mp))
-		}
-	}
-	return
 }
 
 // func MakeBFLoader(
@@ -212,7 +146,7 @@ func MakeImmuIndex(
 		return
 	}
 	idx = indexwrapper.NewImmutIndex(
-		stats.SortKeyZoneMap(), bf, meta.IsTombstone, stats.ObjectLocation(),
+		stats.SortKeyZoneMap(), bf, stats.ObjectLocation(),
 	)
 	return
 }

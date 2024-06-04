@@ -235,7 +235,7 @@ func DoMergeAndWrite(
 	writer := mergehost.PrepareNewWriter()
 	for _, bat := range retBatches {
 		if isTombstone {
-			_, err = writer.WriteTombstoneBatch(bat)
+			_, err = writer.WriteBatch(bat)
 		} else {
 			_, err = writer.WriteBatch(bat)
 		}

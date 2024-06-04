@@ -31,6 +31,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/defines"
+	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -647,12 +648,13 @@ func (h *Handle) HandleWrite(
 			//Extend lifetime of vectors is within the function.
 			//No NeedCopy. closeFunc is required after use.
 			//closeFunc is not nil.
-			vectors, closeFunc, err = blockio.LoadTombstoneColumns2(
+			vectors, closeFunc, err = blockio.LoadColumns2(
 				ctx,
 				[]uint16{uint16(rowidIdx), uint16(pkIdx)},
 				nil,
 				h.db.Runtime.Fs.Service,
 				location,
+				fileservice.Policy(0),
 				false,
 				nil,
 			)

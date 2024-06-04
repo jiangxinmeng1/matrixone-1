@@ -144,37 +144,6 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 	return block, nil
 }
 
-func (w *BlockWriter) WriteTombstoneBatch(batch *batch.Batch) (objectio.BlockObject, error) {
-	return w.WriteBatch(batch)
-	block, err := w.writer.WriteTombstone(batch)
-	if err != nil {
-		return nil, err
-	}
-	for i, vec := range batch.Vecs {
-		columnData := containers.ToTNVector(vec, common.DefaultAllocator)
-		// Build ZM
-		zm := index.NewZM(vec.GetType().Oid, vec.GetType().Scale)
-		if err = index.BatchUpdateZM(zm, columnData.GetDownstreamVector()); err != nil {
-			return nil, err
-		}
-		index.SetZMSum(zm, columnData.GetDownstreamVector())
-		// Update column meta zonemap
-		w.writer.UpdateBlockZM(objectio.SchemaTombstone, 0, uint16(i), zm)
-		bf, err := index.NewBinaryFuseFilter(columnData)
-		if err != nil {
-			return nil, err
-		}
-		buf, err := bf.Marshal()
-		if err != nil {
-			return nil, err
-		}
-		if err = w.writer.WriteBF(int(block.GetID()), uint16(i), buf, true); err != nil {
-			return nil, err
-		}
-	}
-	return block, nil
-}
-
 func (w *BlockWriter) WriteSubBatch(batch *batch.Batch, dataType objectio.DataMetaType) (objectio.BlockObject, int, error) {
 	return w.writer.WriteSubBlock(batch, dataType)
 }
@@ -202,8 +171,8 @@ func (w *BlockWriter) Sync(ctx context.Context) ([]objectio.BlockObject, objecti
 		common.OperandField(w.writer.GetMaxSeqnum()))
 	return blocks, blocks[0].BlockHeader().MetaLocation(), err
 }
-func (w *BlockWriter) Stats(isTombstone bool) objectio.ObjectStats {
-	return w.writer.GetDataStats(isTombstone)
+func (w *BlockWriter) Stats() objectio.ObjectStats {
+	return w.writer.GetDataStats()
 }
 func (w *BlockWriter) GetName() objectio.ObjectName {
 	return w.name

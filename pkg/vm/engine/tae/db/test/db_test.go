@@ -423,7 +423,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		assert.Nil(t, err)
 		_, _, err = writer.Sync(context.Background())
 		assert.Nil(t, err)
-		obj.UpdateStats(writer.Stats(false))
+		obj.UpdateStats(writer.Stats())
 		v, _, err := dataBlk.GetValue(context.Background(), txn, readSchema, 0, 4, 2, false, common.DefaultAllocator)
 		assert.Nil(t, err)
 		expectVal := bat.Vecs[2].Get(4)

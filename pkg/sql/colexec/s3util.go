@@ -625,7 +625,7 @@ func (w *S3Writer) WriteBlock(bat *batch.Batch, dataType ...objectio.DataMetaTyp
 	}
 	// logutil.Infof("write s3 batch(%d) %q: %v, %v", bat.vecs[0].Length(), w.tablename, w.seqnums, w.attrs)
 	if len(dataType) > 0 && dataType[0] == objectio.SchemaTombstone {
-		_, err := w.writer.WriteTombstoneBatch(bat)
+		_, err := w.writer.WriteBatch(bat)
 		if err != nil {
 			return err
 		}

@@ -587,10 +587,7 @@ func (w *objectWriterV1) Sync(ctx context.Context, items ...WriteOptions) error 
 	return err
 }
 
-func (w *objectWriterV1) GetDataStats(isTombstone bool) ObjectStats {
-	if isTombstone {
-		return w.objStats[SchemaData]
-	}
+func (w *objectWriterV1) GetDataStats() ObjectStats {
 	return w.objStats[SchemaData]
 }
 

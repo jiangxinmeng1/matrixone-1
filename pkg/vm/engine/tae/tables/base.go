@@ -227,7 +227,6 @@ func (blk *baseObject) LoadPersistedColumnData(
 		id,
 		def,
 		location,
-		blk.meta.IsTombstone,
 		mp,
 	)
 }
@@ -264,7 +263,7 @@ func (blk *baseObject) ResolvePersistedColumnDatas(
 	id := blk.meta.AsCommonID()
 	id.SetBlockOffset(blkID)
 	vecs, err := LoadPersistedColumnDatas(
-		ctx, readSchema, blk.rt, id, colIdxs, location, blk.meta.IsTombstone, mp,
+		ctx, readSchema, blk.rt, id, colIdxs, location, mp,
 	)
 	if err != nil {
 		return nil, err
@@ -568,7 +567,7 @@ func (blk *baseObject) GetAllColumns(
 			if err != nil {
 				return nil, err
 			}
-			vecs, err := LoadPersistedColumnDatas(ctx, readSchema.(*catalog.Schema), blk.rt, id, catalog.TombstoneBatchIdxes, location, blk.meta.IsTombstone, mp)
+			vecs, err := LoadPersistedColumnDatas(ctx, readSchema.(*catalog.Schema), blk.rt, id, catalog.TombstoneBatchIdxes, location, mp)
 			if err != nil {
 				return nil, err
 			}

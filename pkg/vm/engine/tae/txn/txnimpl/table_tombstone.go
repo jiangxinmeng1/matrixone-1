@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
@@ -167,22 +166,6 @@ func (tbl *txnTable) RangeDelete(
 	tbl.store.warChecker.Insert(obj)
 	return
 }
-func (tbl *txnTable) getWorkSpaceDeletes(fp *common.ID) (deletes *roaring.Bitmap) {
-	if tbl.tombstoneTableSpace == nil {
-		return
-	}
-	workspaceDeleteBatch := tbl.tombstoneTableSpace.nodes[0].(*anode).data
-	for i := 0; i < workspaceDeleteBatch.Length(); i++ {
-		rowID := workspaceDeleteBatch.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
-		if *rowID.BorrowBlockID() == fp.BlockID {
-			if deletes == nil {
-				deletes = &roaring.Bitmap{}
-			}
-			deletes.Add(rowID.GetRowOffset())
-		}
-	}
-	return
-}
 func (tbl *txnTable) contains(
 	ctx context.Context,
 	keys containers.Vector,
@@ -215,11 +198,11 @@ func (tbl *txnTable) contains(
 			continue
 		}
 		var bf objectio.BloomFilter
-		bf, err = objectio.FastLoadBF(ctx, stats.ObjectLocation(), false, true, tbl.store.rt.Fs.Service)
+		bf, err = objectio.FastLoadBF(ctx, stats.ObjectLocation(), false, tbl.store.rt.Fs.Service)
 		if err != nil {
 			return
 		}
-		idx := indexwrapper.NewImmutIndex(stats.SortKeyZoneMap(), bf, true, stats.ObjectLocation())
+		idx := indexwrapper.NewImmutIndex(stats.SortKeyZoneMap(), bf, stats.ObjectLocation())
 		for i := uint16(0); i < uint16(blkCount); i++ {
 			sel, err := idx.BatchDedup(ctx, keys, keysZM, tbl.store.rt, uint32(i))
 			if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
@@ -235,12 +218,13 @@ func (tbl *txnTable) contains(
 			totalRow -= blkRow
 			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
 
-			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+			vectors, closeFunc, err := blockio.LoadColumns2(
 				tbl.store.ctx,
 				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
 				nil,
 				tbl.store.rt.Fs.Service,
 				metaloc,
+				fileservice.Policy(0),
 				false,
 				nil,
 			)
@@ -357,12 +341,13 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *container
 			metaLocs = append(metaLocs, metaloc)
 		}
 		for _, loc := range metaLocs {
-			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+			vectors, closeFunc, err := blockio.LoadColumns2(
 				tbl.store.ctx,
 				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
 				nil,
 				tbl.store.rt.Fs.Service,
 				loc,
+				fileservice.Policy(0),
 				false,
 				nil,
 			)
@@ -418,12 +403,13 @@ func (tbl *txnTable) IsDeletedInWorkSpace(blkID objectio.Blockid, row uint32) (b
 			metaLocs = append(metaLocs, metaloc)
 		}
 		for _, loc := range metaLocs {
-			vectors, closeFunc, err := blockio.LoadTombstoneColumns2(
+			vectors, closeFunc, err := blockio.LoadColumns2(
 				tbl.store.ctx,
 				[]uint16{uint16(tbl.tombstoneSchema.GetSingleSortKeyIdx())},
 				nil,
 				tbl.store.rt.Fs.Service,
 				loc,
+				fileservice.Policy(0),
 				false,
 				nil,
 			)

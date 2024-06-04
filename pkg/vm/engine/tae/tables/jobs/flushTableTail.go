@@ -655,7 +655,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 	if isTombstone {
 		for _, bat := range writtenBatches {
-			_, err = writer.WriteTombstoneBatch(bat)
+			_, err = writer.WriteBatch(bat)
 			if err != nil {
 				return err
 			}
@@ -679,7 +679,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 
 	// update new status for created blocks
-	err = createdObjectHandle.UpdateStats(writer.Stats(isTombstone))
+	err = createdObjectHandle.UpdateStats(writer.Stats())
 	if err != nil {
 		return
 	}

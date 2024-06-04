@@ -172,7 +172,6 @@ func FastLoadBF(
 	ctx context.Context,
 	location Location,
 	isPrefetch bool,
-	isTombstone bool,
 	fs fileservice.FileService,
 ) (BloomFilter, error) {
 	key := encodeCacheKey(*location.ShortName(), cacheKeyTypeBloomFilter)
@@ -184,9 +183,6 @@ func FastLoadBF(
 	meta, err := FastLoadObjectMeta(ctx, &location, isPrefetch, fs)
 	if err != nil {
 		return nil, err
-	}
-	if isTombstone{
-		return LoadBFWithMeta(ctx, meta.MustTombstoneMeta(), location, fs)
 	}
 	return LoadBFWithMeta(ctx, meta.MustDataMeta(), location, fs)
 }

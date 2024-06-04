@@ -88,19 +88,6 @@ func (entries *txnEntries) Close() {
 	entries.entries = nil
 }
 
-type deleteNode struct {
-	DeleteNodes []txnif.DeleteNode
-	idx         []int
-}
-
-func newDeleteNode(node txnif.DeleteNode, idx int) *deleteNode {
-	nodes := []txnif.DeleteNode{node}
-	return &deleteNode{
-		DeleteNodes: nodes,
-		idx:         []int{idx},
-	}
-}
-
 type txnTable struct {
 	store           *txnStore
 	createEntry     txnif.TxnEntry
@@ -716,12 +703,13 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 				//No NeedCopy. closeFunc is required after use.
 				//VectorPool is nil.
 				if isTombstone {
-					vectors, closeFunc, err = blockio.LoadTombstoneColumns2(
+					vectors, closeFunc, err = blockio.LoadColumns2(
 						ctx,
 						[]uint16{uint16(schema.GetSingleSortKeyIdx())},
 						nil,
 						tbl.store.rt.Fs.Service,
 						loc,
+						fileservice.Policy(0),
 						false,
 						nil,
 					)
@@ -1055,7 +1043,6 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 	currLocation objectio.Location,
 	prevBF objectio.BloomFilter,
 	prevObjName *objectio.ObjectNameShort,
-	isTombstone bool,
 ) (currBf objectio.BloomFilter, err error) {
 	if len(currLocation) == 0 {
 		return
@@ -1068,7 +1055,6 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 		ctx,
 		currLocation,
 		false,
-		isTombstone,
 		tbl.store.rt.Fs.Service,
 	)
 	return
@@ -1136,7 +1122,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 				stats.ObjectLocation(),
 				bf,
 				&name,
-				obj.IsTombstone,
 			); err != nil {
 				return
 			}

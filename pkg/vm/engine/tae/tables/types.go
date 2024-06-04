@@ -51,6 +51,7 @@ type NodeT interface {
 		rowIDs containers.Vector,
 		bf objectio.BloomFilter,
 		isCommitting bool,
+		checkWWConflict bool,
 		mp *mpool.MPool,
 	) (err error)
 

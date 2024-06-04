@@ -168,9 +168,11 @@ func (idx *MutIndex) GetDuplicatedRows(
 		if err == index.ErrNotFound {
 			return nil
 		}
-		err = skipFn(rows[len(rows)-1])
-		if err != nil {
-			return err
+		if skipFn != nil {
+			err = skipFn(rows[len(rows)-1])
+			if err != nil {
+				return err
+			}
 		}
 		var maxRow uint32
 		exist := false

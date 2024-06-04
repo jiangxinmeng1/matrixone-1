@@ -127,6 +127,7 @@ func (obj *object) GetDuplicatedRows(
 	keys containers.Vector,
 	keysZM index.ZM,
 	precommit bool,
+	checkWWConflict bool,
 	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
 	mp *mpool.MPool,

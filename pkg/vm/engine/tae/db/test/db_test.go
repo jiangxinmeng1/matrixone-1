@@ -3398,7 +3398,7 @@ func TestImmutableIndexInAblk(t *testing.T) {
 		rowIDs.Append(nil, true)
 	}
 	err = meta.GetObjectData().GetDuplicatedRows(
-		context.Background(), txn, bat.Vecs[1], nil, false, objectio.BloomFilter{}, rowIDs, common.DefaultAllocator,
+		context.Background(), txn, bat.Vecs[1], nil, false, true, objectio.BloomFilter{}, rowIDs, common.DefaultAllocator,
 	)
 	assert.NoError(t, err)
 	err = meta.GetObjectData().Contains(context.Background(), txn, false, rowIDs, nil, objectio.BloomFilter{}, common.DebugAllocator)

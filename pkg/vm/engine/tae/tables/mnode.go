@@ -351,11 +351,16 @@ func (node *memoryNode) GetDuplicatedRows(
 	rowIDs containers.Vector,
 	bf objectio.BloomFilter,
 	isCommitting bool,
+	checkWWConflict bool,
 	mp *mpool.MPool,
 ) (err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, node.checkConflictLocked(txn, isCommitting), mp)
+	var checkFn func(uint32) error
+	if checkWWConflict {
+		checkFn = node.checkConflictLocked(txn, isCommitting)
+	}
+	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, checkFn, mp)
 
 	return
 }
@@ -371,11 +376,6 @@ func (node *memoryNode) checkConflictLocked(
 		}
 		if appendnode.IsActive() {
 			panic("logic error")
-		}
-		if !appendnode.IsCommitted() {
-			node.object.RUnlock()
-			appendnode.Txn.GetTxnState(true)
-			node.object.RLock()
 		}
 		return appendnode.CheckConflict(txn)
 	}

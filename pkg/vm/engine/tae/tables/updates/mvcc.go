@@ -23,9 +23,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	"github.com/matrixorigin/matrixone/pkg/objectio"
-
-	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -392,28 +389,4 @@ func (n *AppendMVCCHandle) GetTotalRow() uint32 {
 
 func (n *AppendMVCCHandle) GetID() *common.ID {
 	return n.meta.AsCommonID()
-}
-
-func VisitDeltaloc(bat, tnBatch *containers.Batch, object *catalog.ObjectEntry, blkID *objectio.Blockid, node *catalog.MVCCNode[*catalog.MetadataMVCCNode], commitTS, createTS types.TS) {
-	is_sorted := false
-	if !object.IsAppendable() && object.GetSchema().HasSortKey() {
-		is_sorted = true
-	}
-	bat.GetVectorByName(pkgcatalog.BlockMeta_ID).Append(*blkID, false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_EntryState).Append(object.IsAppendable(), false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_Sorted).Append(is_sorted, false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_MetaLoc).Append([]byte(node.BaseNode.MetaLoc), false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_DeltaLoc).Append([]byte(node.BaseNode.DeltaLoc), false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_CommitTs).Append(commitTS, false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_SegmentID).Append(*object.ID.Segment(), false)
-	bat.GetVectorByName(pkgcatalog.BlockMeta_MemTruncPoint).Append(node.Start, false)
-	bat.GetVectorByName(catalog.AttrCommitTs).Append(createTS, false)
-	bat.GetVectorByName(catalog.AttrRowID).Append(objectio.HackBlockid2Rowid(blkID), false)
-
-	// When pull and push, it doesn't collect tn batch
-	if tnBatch != nil {
-		tnBatch.GetVectorByName(catalog.SnapshotAttr_DBID).Append(object.GetTable().GetDB().ID, false)
-		tnBatch.GetVectorByName(catalog.SnapshotAttr_TID).Append(object.GetTable().ID, false)
-		node.TxnMVCCNode.AppendTuple(tnBatch)
-	}
 }

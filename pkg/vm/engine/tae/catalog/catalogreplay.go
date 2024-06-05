@@ -398,7 +398,7 @@ func (catalog *Catalog) onReplayUpdateObject(
 	}
 }
 
-func (catalog *Catalog) OnReplayObjectBatch(objectInfo *containers.Batch, dataFactory DataFactory) {
+func (catalog *Catalog) OnReplayObjectBatch(objectInfo *containers.Batch, isTombstone bool, dataFactory DataFactory) {
 	dbidVec := objectInfo.GetVectorByName(SnapshotAttr_DBID)
 	for i := 0; i < dbidVec.Length(); i++ {
 		dbid := objectInfo.GetVectorByName(SnapshotAttr_DBID).Get(i).(uint64)
@@ -408,7 +408,6 @@ func (catalog *Catalog) OnReplayObjectBatch(objectInfo *containers.Batch, dataFa
 		txnNode := txnbase.ReadTuple(objectInfo, i)
 		entryNode := ReadEntryNodeTuple(objectInfo, i)
 		state := objectInfo.GetVectorByName(ObjectAttr_State).Get(i).(bool)
-		isTombstone := objectInfo.GetVectorByName(ObjectAttr_IsTombstone).Get(i).(bool)
 		entryState := ES_Appendable
 		if !state {
 			entryState = ES_NotAppendable

@@ -71,12 +71,13 @@ const (
 	StorageUsageInsIDX
 
 	ObjectInfoIDX
-	TNObjectInfoIDX
 
 	StorageUsageDelIDX
+
+	TombstoneObjectInfoIDX
 )
 
-const MaxIDX = StorageUsageDelIDX + 1
+const MaxIDX = TombstoneObjectInfoIDX + 1
 
 const (
 	Checkpoint_Meta_TID_IDX                 = 2
@@ -127,8 +128,8 @@ func init() {
 		TNMetaSchema, //11
 		StorageUsageSchema,
 		ObjectInfoSchema,
-		ObjectInfoSchema,
-		StorageUsageSchema, //15
+		StorageUsageSchema,
+		ObjectInfoSchema, //15
 	}
 
 	checkpointDataReferVersions = make(map[uint32][MaxIDX]*checkpointDataItem)
@@ -169,8 +170,8 @@ func IDXString(idx uint16) string {
 
 	case ObjectInfoIDX:
 		return "ObjectInfoIDX"
-	case TNObjectInfoIDX:
-		return "TNObjectInfoIDX"
+	case TombstoneObjectInfoIDX:
+		return "TombstoneObjectInfoIDX"
 	case StorageUsageDelIDX:
 		return "StorageUsageDelIDX"
 	default:
@@ -539,10 +540,10 @@ func (data *CheckpointData) ApplyReplayTo(
 	c.OnReplayDatabaseBatch(data.GetDBBatchs())
 	ins, colins, tnins, del, tndel := data.GetTblBatchs()
 	c.OnReplayTableBatch(ins, colins, tnins, del, tndel, dataFactory)
-	objectInfo := data.GetTNObjectBatchs()
-	c.OnReplayObjectBatch(objectInfo, dataFactory)
+	objectInfo := data.GetTombstoneObjectBatchs()
+	c.OnReplayObjectBatch(objectInfo, true, dataFactory)
 	objectInfo = data.GetObjectBatchs()
-	c.OnReplayObjectBatch(objectInfo, dataFactory)
+	c.OnReplayObjectBatch(objectInfo, false, dataFactory)
 	return
 }
 
@@ -1826,8 +1827,8 @@ func (data *CheckpointData) GetTblBatchs() (
 		data.bats[TBLDeleteIDX],
 		data.bats[TBLDeleteTxnIDX]
 }
-func (data *CheckpointData) GetTNObjectBatchs() *containers.Batch {
-	return data.bats[TNObjectInfoIDX]
+func (data *CheckpointData) GetTombstoneObjectBatchs() *containers.Batch {
+	return data.bats[TombstoneObjectInfoIDX]
 }
 func (data *CheckpointData) GetObjectBatchs() *containers.Batch {
 	return data.bats[ObjectInfoIDX]
@@ -2044,12 +2045,9 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 		if node.IsAborted() {
 			continue
 		}
-		if entry.IsAppendable() && node.BaseNode.IsEmpty() {
-			visitObject(collector.data.bats[TNObjectInfoIDX], entry, node, false, types.TS{})
+		if entry.IsTombstone {
+			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, false, types.TS{})
 		} else {
-			if entry.IsAppendable() && node.DeletedAt.IsEmpty() {
-				panic(fmt.Sprintf("logic error, object %v", entry.ID.String()))
-			}
 			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, false, types.TS{})
 		}
 		objNode := node

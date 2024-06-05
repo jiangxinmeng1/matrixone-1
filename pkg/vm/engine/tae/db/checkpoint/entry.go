@@ -79,9 +79,6 @@ func (e *CheckpointEntry) CheckPrintTime() bool {
 	return time.Since(e.lastPrint) > e.waterLine
 }
 func (e *CheckpointEntry) LSNString() string {
-	if e.version < logtail.CheckpointVersion7 {
-		return fmt.Sprintf("version too small: v%d", e.version)
-	}
 	return fmt.Sprintf("ckp %d, truncate %d", e.ckpLSN, e.truncateLSN)
 }
 

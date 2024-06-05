@@ -756,11 +756,6 @@ func (m *TNUsageMemo) EstablishFromCKPs(c *catalog.Catalog) {
 	}()
 
 	for x := range m.pendingReplay.datas {
-		if m.pendingReplay.vers[x] < CheckpointVersion9 {
-			// haven't StorageUsageIns batch
-			// haven't StorageUsageDel batch
-			continue
-		}
 
 		insVecs := getStorageUsageBatVectors(m.pendingReplay.datas[x].bats[StorageUsageInsIDX])
 		accCol, dbCol, tblCol, sizeCol := getStorageUsageVectorCols(insVecs)

@@ -509,55 +509,55 @@ func LoadCheckpointEntriesFromKey(
 		//locations = append(locations, objectStats.ObjectName())
 	}
 
-	for i := 0; i < data.bats[BLKMetaInsertIDX].Length(); i++ {
-		deltaLoc := objectio.Location(
-			data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Get(i).([]byte))
-		commitTS := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_CommitTs).Get(i).(types.TS)
-		if deltaLoc.IsEmpty() {
-			metaLoc := objectio.Location(
-				data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc).Get(i).([]byte))
-			panic(fmt.Sprintf("block %v deltaLoc is empty", metaLoc.String()))
-		}
-		bo := &objectio.BackupObject{
-			Location: deltaLoc,
-			CrateTS:  commitTS,
-		}
-		if baseTS.IsEmpty() ||
-			(!baseTS.IsEmpty() && commitTS.GreaterEq(baseTS)) {
-			bo.NeedCopy = true
-		}
-		locations = append(locations, bo)
-	}
-	for i := 0; i < data.bats[BLKCNMetaInsertIDX].Length(); i++ {
-		metaLoc := objectio.Location(
-			data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc).Get(i).([]byte))
-		commitTS := data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_CommitTs).Get(i).(types.TS)
-		if !metaLoc.IsEmpty() {
-			if softDeletes != nil {
-				if !(*softDeletes)[metaLoc.Name().String()] {
-					(*softDeletes)[metaLoc.Name().String()] = true
-					//Fixme:The objectlist has updated this object to the cropped object,
-					// and the expired object in the soft-deleted blocklist has not been processed.
-					logutil.Warnf("block %v metaLoc is not deleted", metaLoc.String())
-					//panic(fmt.Sprintf("block111 %v metaLoc is not deleted", metaLoc.String()))
-				}
-			}
-		}
-		deltaLoc := objectio.Location(
-			data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Get(i).([]byte))
-		if deltaLoc.IsEmpty() {
-			panic(fmt.Sprintf("block %v deltaLoc is empty", deltaLoc.String()))
-		}
-		bo := &objectio.BackupObject{
-			Location: deltaLoc,
-			CrateTS:  commitTS,
-		}
-		if baseTS.IsEmpty() ||
-			(!baseTS.IsEmpty() && commitTS.GreaterEq(baseTS)) {
-			bo.NeedCopy = true
-		}
-		locations = append(locations, bo)
-	}
+	// for i := 0; i < data.bats[BLKMetaInsertIDX].Length(); i++ {
+	// 	deltaLoc := objectio.Location(
+	// 		data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Get(i).([]byte))
+	// 	commitTS := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_CommitTs).Get(i).(types.TS)
+	// 	if deltaLoc.IsEmpty() {
+	// 		metaLoc := objectio.Location(
+	// 			data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc).Get(i).([]byte))
+	// 		panic(fmt.Sprintf("block %v deltaLoc is empty", metaLoc.String()))
+	// 	}
+	// 	bo := &objectio.BackupObject{
+	// 		Location: deltaLoc,
+	// 		CrateTS:  commitTS,
+	// 	}
+	// 	if baseTS.IsEmpty() ||
+	// 		(!baseTS.IsEmpty() && commitTS.GreaterEq(baseTS)) {
+	// 		bo.NeedCopy = true
+	// 	}
+	// 	locations = append(locations, bo)
+	// }
+	// for i := 0; i < data.bats[BLKCNMetaInsertIDX].Length(); i++ {
+	// 	metaLoc := objectio.Location(
+	// 		data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc).Get(i).([]byte))
+	// 	commitTS := data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_CommitTs).Get(i).(types.TS)
+	// 	if !metaLoc.IsEmpty() {
+	// 		if softDeletes != nil {
+	// 			if !(*softDeletes)[metaLoc.Name().String()] {
+	// 				(*softDeletes)[metaLoc.Name().String()] = true
+	// 				//Fixme:The objectlist has updated this object to the cropped object,
+	// 				// and the expired object in the soft-deleted blocklist has not been processed.
+	// 				logutil.Warnf("block %v metaLoc is not deleted", metaLoc.String())
+	// 				//panic(fmt.Sprintf("block111 %v metaLoc is not deleted", metaLoc.String()))
+	// 			}
+	// 		}
+	// 	}
+	// 	deltaLoc := objectio.Location(
+	// 		data.bats[BLKCNMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Get(i).([]byte))
+	// 	if deltaLoc.IsEmpty() {
+	// 		panic(fmt.Sprintf("block %v deltaLoc is empty", deltaLoc.String()))
+	// 	}
+	// 	bo := &objectio.BackupObject{
+	// 		Location: deltaLoc,
+	// 		CrateTS:  commitTS,
+	// 	}
+	// 	if baseTS.IsEmpty() ||
+	// 		(!baseTS.IsEmpty() && commitTS.GreaterEq(baseTS)) {
+	// 		bo.NeedCopy = true
+	// 	}
+	// 	locations = append(locations, bo)
+	// }
 	return locations, data, nil
 }
 
@@ -615,15 +615,15 @@ func ReWriteCheckpointAndBlockFromKey(
 	// Analyze checkpoint to get the object file
 	var files []string
 	isCkpChange := false
-	blkCNMetaInsert := data.bats[BLKCNMetaInsertIDX]
-	blkMetaInsTxnBat := data.bats[BLKMetaInsertTxnIDX]
-	blkMetaInsTxnBatTid := blkMetaInsTxnBat.GetVectorByName(SnapshotAttr_TID)
+	// blkCNMetaInsert := data.bats[BLKCNMetaInsertIDX]
+	// blkMetaInsTxnBat := data.bats[BLKMetaInsertTxnIDX]
+	// blkMetaInsTxnBatTid := blkMetaInsTxnBat.GetVectorByName(SnapshotAttr_TID)
 
-	blkMetaInsert := data.bats[BLKMetaInsertIDX]
-	blkMetaInsertMetaLoc := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc)
-	blkMetaInsertDeltaLoc := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc)
-	blkMetaInsertEntryState := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_EntryState)
-	blkMetaInsertBlkID := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_ID)
+	// blkMetaInsert := data.bats[BLKMetaInsertIDX]
+	// blkMetaInsertMetaLoc := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_MetaLoc)
+	// blkMetaInsertDeltaLoc := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc)
+	// blkMetaInsertEntryState := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_EntryState)
+	// blkMetaInsertBlkID := data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_ID)
 
 	objInfoData := data.bats[ObjectInfoIDX]
 	objInfoStats := objInfoData.GetVectorByName(ObjectAttr_ObjectStats)
@@ -676,47 +676,47 @@ func ReWriteCheckpointAndBlockFromKey(
 		addObjectToObjectData(stats, isABlk, !deleteAt.IsEmpty(), true, i, tid, &objectsData)
 	}
 
-	if blkCNMetaInsert.Length() > 0 {
-		panic(any("blkCNMetaInsert is not empty"))
-	}
+	// if blkCNMetaInsert.Length() > 0 {
+	// 	panic(any("blkCNMetaInsert is not empty"))
+	// }
 
-	for i := 0; i < blkMetaInsert.Length(); i++ {
-		metaLoc := objectio.Location(blkMetaInsertMetaLoc.Get(i).([]byte))
-		deltaLoc := objectio.Location(blkMetaInsertDeltaLoc.Get(i).([]byte))
-		blkID := blkMetaInsertBlkID.Get(i).(types.Blockid)
-		isABlk := blkMetaInsertEntryState.Get(i).(bool)
-		if deltaLoc.IsEmpty() || !metaLoc.IsEmpty() {
-			panic(any(fmt.Sprintf("deltaLoc is empty: %v-%v", deltaLoc.String(), metaLoc.String())))
-		}
-		name := objectio.BuildObjectName(blkID.Segment(), blkID.Sequence())
-		if isABlk {
-			if objectsData[name.String()] == nil {
-				continue
-			}
-			if !objectsData[name.String()].isDeleteBatch {
-				panic(any(fmt.Sprintf("object %v is not deleteBatch", name.String())))
-			}
-			addBlockToObjectData(deltaLoc, isABlk, true, i,
-				blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
-			objectsData[name.String()].data[blkID.Sequence()].blockId = blkID
-			objectsData[name.String()].data[blkID.Sequence()].tombstone = objectsData[deltaLoc.Name().String()].data[deltaLoc.ID()]
-			if len(objectsData[name.String()].data[blkID.Sequence()].deleteRow) > 0 {
-				objectsData[name.String()].data[blkID.Sequence()].deleteRow = append(objectsData[name.String()].data[blkID.Sequence()].deleteRow, i)
-			} else {
-				objectsData[name.String()].data[blkID.Sequence()].deleteRow = []int{i}
-			}
-		} else {
-			if objectsData[name.String()] != nil {
-				if objectsData[name.String()].isDeleteBatch {
-					addBlockToObjectData(deltaLoc, isABlk, true, i,
-						blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
-					continue
-				}
-			}
-			addBlockToObjectData(deltaLoc, isABlk, false, i,
-				blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
-		}
-	}
+	// for i := 0; i < blkMetaInsert.Length(); i++ {
+	// 	metaLoc := objectio.Location(blkMetaInsertMetaLoc.Get(i).([]byte))
+	// 	deltaLoc := objectio.Location(blkMetaInsertDeltaLoc.Get(i).([]byte))
+	// 	blkID := blkMetaInsertBlkID.Get(i).(types.Blockid)
+	// 	isABlk := blkMetaInsertEntryState.Get(i).(bool)
+	// 	if deltaLoc.IsEmpty() || !metaLoc.IsEmpty() {
+	// 		panic(any(fmt.Sprintf("deltaLoc is empty: %v-%v", deltaLoc.String(), metaLoc.String())))
+	// 	}
+	// 	name := objectio.BuildObjectName(blkID.Segment(), blkID.Sequence())
+	// 	if isABlk {
+	// 		if objectsData[name.String()] == nil {
+	// 			continue
+	// 		}
+	// 		if !objectsData[name.String()].isDeleteBatch {
+	// 			panic(any(fmt.Sprintf("object %v is not deleteBatch", name.String())))
+	// 		}
+	// 		addBlockToObjectData(deltaLoc, isABlk, true, i,
+	// 			blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
+	// 		objectsData[name.String()].data[blkID.Sequence()].blockId = blkID
+	// 		objectsData[name.String()].data[blkID.Sequence()].tombstone = objectsData[deltaLoc.Name().String()].data[deltaLoc.ID()]
+	// 		if len(objectsData[name.String()].data[blkID.Sequence()].deleteRow) > 0 {
+	// 			objectsData[name.String()].data[blkID.Sequence()].deleteRow = append(objectsData[name.String()].data[blkID.Sequence()].deleteRow, i)
+	// 		} else {
+	// 			objectsData[name.String()].data[blkID.Sequence()].deleteRow = []int{i}
+	// 		}
+	// 	} else {
+	// 		if objectsData[name.String()] != nil {
+	// 			if objectsData[name.String()].isDeleteBatch {
+	// 				addBlockToObjectData(deltaLoc, isABlk, true, i,
+	// 					blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
+	// 				continue
+	// 			}
+	// 		}
+	// 		addBlockToObjectData(deltaLoc, isABlk, false, i,
+	// 			blkMetaInsTxnBatTid.Get(i).(uint64), blkID, objectio.SchemaTombstone, &objectsData)
+	// 	}
+	// }
 
 	phaseNumber = 3
 	// Trim object files based on timestamp
@@ -954,139 +954,139 @@ func ReWriteCheckpointAndBlockFromKey(
 				}
 			}
 
-			for i := range dataBlocks {
-				blockLocation := dataBlocks[i].location
-				if objectData.isChange {
-					blockLocation = objectio.BuildLocation(objectData.name, extent, blocks[uint16(i)].GetRows(), dataBlocks[i].num)
-				}
-				for _, insertRow := range dataBlocks[i].insertRow {
-					if dataBlocks[uint16(i)].blockType == objectio.SchemaTombstone {
-						data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
-							insertRow,
-							[]byte(blockLocation),
-							false)
-						data.bats[BLKMetaInsertTxnIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
-							insertRow,
-							[]byte(blockLocation),
-							false)
-					}
-				}
-				for _, deleteRow := range dataBlocks[uint16(i)].deleteRow {
-					if dataBlocks[uint16(i)].blockType == objectio.SchemaTombstone {
-						data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
-							deleteRow,
-							[]byte(blockLocation),
-							false)
-						data.bats[BLKMetaInsertTxnIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
-							deleteRow,
-							[]byte(blockLocation),
-							false)
-					}
-				}
-			}
+			// for i := range dataBlocks {
+			// blockLocation := dataBlocks[i].location
+			// if objectData.isChange {
+			// 	blockLocation = objectio.BuildLocation(objectData.name, extent, blocks[uint16(i)].GetRows(), dataBlocks[i].num)
+			// }
+			// for _, insertRow := range dataBlocks[i].insertRow {
+			// 	if dataBlocks[uint16(i)].blockType == objectio.SchemaTombstone {
+			// 		data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
+			// 			insertRow,
+			// 			[]byte(blockLocation),
+			// 			false)
+			// 		data.bats[BLKMetaInsertTxnIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
+			// 			insertRow,
+			// 			[]byte(blockLocation),
+			// 			false)
+			// 	}
+			// }
+			// for _, deleteRow := range dataBlocks[uint16(i)].deleteRow {
+			// 	if dataBlocks[uint16(i)].blockType == objectio.SchemaTombstone {
+			// 		data.bats[BLKMetaInsertIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
+			// 			deleteRow,
+			// 			[]byte(blockLocation),
+			// 			false)
+			// 		data.bats[BLKMetaInsertTxnIDX].GetVectorByName(catalog.BlockMeta_DeltaLoc).Update(
+			// 			deleteRow,
+			// 			[]byte(blockLocation),
+			// 			false)
+			// 	}
+			// }
+			// }
 		}
 	}
 
 	phaseNumber = 5
 	// Transfer the object file that needs to be deleted to insert
-	if len(insertBatch) > 0 {
-		blkMeta := makeRespBatchFromSchema(checkpointDataSchemas_Curr[BLKMetaInsertIDX], common.CheckpointAllocator)
-		blkMetaTxn := makeRespBatchFromSchema(checkpointDataSchemas_Curr[BLKMetaInsertTxnIDX], common.CheckpointAllocator)
-		for i := 0; i < blkMetaInsert.Length(); i++ {
-			tid := data.bats[BLKMetaInsertTxnIDX].GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
-			appendValToBatch(data.bats[BLKMetaInsertIDX], blkMeta, i)
-			appendValToBatch(data.bats[BLKMetaInsertTxnIDX], blkMetaTxn, i)
-			if insertBatch[tid] != nil {
-				for b, blk := range insertBatch[tid].insertBlocks {
-					if blk.apply {
-						continue
-					}
-					if insertBatch[tid].insertBlocks[b].data == nil {
+	// if len(insertBatch) > 0 {
+	// 	blkMeta := makeRespBatchFromSchema(checkpointDataSchemas_Curr[BLKMetaInsertIDX], common.CheckpointAllocator)
+	// 	blkMetaTxn := makeRespBatchFromSchema(checkpointDataSchemas_Curr[BLKMetaInsertTxnIDX], common.CheckpointAllocator)
+	// 	for i := 0; i < blkMetaInsert.Length(); i++ {
+	// 		tid := data.bats[BLKMetaInsertTxnIDX].GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
+	// 		appendValToBatch(data.bats[BLKMetaInsertIDX], blkMeta, i)
+	// 		appendValToBatch(data.bats[BLKMetaInsertTxnIDX], blkMetaTxn, i)
+	// 		if insertBatch[tid] != nil {
+	// 			for b, blk := range insertBatch[tid].insertBlocks {
+	// 				if blk.apply {
+	// 					continue
+	// 				}
+	// 				if insertBatch[tid].insertBlocks[b].data == nil {
 
-					} else {
-						insertBatch[tid].insertBlocks[b].apply = true
+	// 				} else {
+	// 					insertBatch[tid].insertBlocks[b].apply = true
 
-						row := blkMeta.Vecs[0].Length() - 1
-						if !blk.location.IsEmpty() {
-							sort := true
-							if insertBatch[tid].insertBlocks[b].data != nil &&
-								insertBatch[tid].insertBlocks[b].data.isABlock &&
-								insertBatch[tid].insertBlocks[b].data.sortKey == math.MaxUint16 {
-								sort = false
-							}
-							updateBlockMeta(blkMeta, blkMetaTxn, row,
-								insertBatch[tid].insertBlocks[b].blockId,
-								insertBatch[tid].insertBlocks[b].location,
-								sort)
-						}
-					}
-				}
-			}
-		}
+	// 					row := blkMeta.Vecs[0].Length() - 1
+	// 					if !blk.location.IsEmpty() {
+	// 						sort := true
+	// 						if insertBatch[tid].insertBlocks[b].data != nil &&
+	// 							insertBatch[tid].insertBlocks[b].data.isABlock &&
+	// 							insertBatch[tid].insertBlocks[b].data.sortKey == math.MaxUint16 {
+	// 							sort = false
+	// 						}
+	// 						updateBlockMeta(blkMeta, blkMetaTxn, row,
+	// 							insertBatch[tid].insertBlocks[b].blockId,
+	// 							insertBatch[tid].insertBlocks[b].location,
+	// 							sort)
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
 
-		for tid := range insertBatch {
-			for b := range insertBatch[tid].insertBlocks {
-				if insertBatch[tid].insertBlocks[b].apply {
-					continue
-				}
-				if insertBatch[tid] != nil && !insertBatch[tid].insertBlocks[b].apply {
-					insertBatch[tid].insertBlocks[b].apply = true
-					if insertBatch[tid].insertBlocks[b].data == nil {
+	// 	for tid := range insertBatch {
+	// 		for b := range insertBatch[tid].insertBlocks {
+	// 			if insertBatch[tid].insertBlocks[b].apply {
+	// 				continue
+	// 			}
+	// 			if insertBatch[tid] != nil && !insertBatch[tid].insertBlocks[b].apply {
+	// 				insertBatch[tid].insertBlocks[b].apply = true
+	// 				if insertBatch[tid].insertBlocks[b].data == nil {
 
-					} else {
-						i := blkMeta.Vecs[0].Length() - 1
-						if !insertBatch[tid].insertBlocks[b].location.IsEmpty() {
-							sort := true
-							if insertBatch[tid].insertBlocks[b].data != nil &&
-								insertBatch[tid].insertBlocks[b].data.isABlock &&
-								insertBatch[tid].insertBlocks[b].data.sortKey == math.MaxUint16 {
-								sort = false
-							}
-							updateBlockMeta(blkMeta, blkMetaTxn, i,
-								insertBatch[tid].insertBlocks[b].blockId,
-								insertBatch[tid].insertBlocks[b].location,
-								sort)
-						}
-					}
-				}
-			}
-		}
+	// 				} else {
+	// 					i := blkMeta.Vecs[0].Length() - 1
+	// 					if !insertBatch[tid].insertBlocks[b].location.IsEmpty() {
+	// 						sort := true
+	// 						if insertBatch[tid].insertBlocks[b].data != nil &&
+	// 							insertBatch[tid].insertBlocks[b].data.isABlock &&
+	// 							insertBatch[tid].insertBlocks[b].data.sortKey == math.MaxUint16 {
+	// 							sort = false
+	// 						}
+	// 						updateBlockMeta(blkMeta, blkMetaTxn, i,
+	// 							insertBatch[tid].insertBlocks[b].blockId,
+	// 							insertBatch[tid].insertBlocks[b].location,
+	// 							sort)
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
 
-		for i := range insertBatch {
-			for _, block := range insertBatch[i].insertBlocks {
-				if block.data != nil {
-					for _, cnRow := range block.data.deleteRow {
-						if block.data.isABlock {
-							data.bats[BLKMetaInsertIDX].Delete(cnRow)
-							data.bats[BLKMetaInsertTxnIDX].Delete(cnRow)
-						}
-					}
-				}
-			}
-		}
+	// 	for i := range insertBatch {
+	// 		for _, block := range insertBatch[i].insertBlocks {
+	// 			if block.data != nil {
+	// 				for _, cnRow := range block.data.deleteRow {
+	// 					if block.data.isABlock {
+	// 						data.bats[BLKMetaInsertIDX].Delete(cnRow)
+	// 						data.bats[BLKMetaInsertTxnIDX].Delete(cnRow)
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+	// 	}
 
-		data.bats[BLKMetaInsertIDX].Compact()
-		data.bats[BLKMetaInsertTxnIDX].Compact()
-		tableInsertOff := make(map[uint64]*tableOffset)
-		for i := 0; i < blkMetaTxn.Vecs[0].Length(); i++ {
-			tid := blkMetaTxn.GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
-			if tableInsertOff[tid] == nil {
-				tableInsertOff[tid] = &tableOffset{
-					offset: i,
-					end:    i,
-				}
-			}
-			tableInsertOff[tid].end += 1
-		}
+	// 	data.bats[BLKMetaInsertIDX].Compact()
+	// 	data.bats[BLKMetaInsertTxnIDX].Compact()
+	// 	tableInsertOff := make(map[uint64]*tableOffset)
+	// 	for i := 0; i < blkMetaTxn.Vecs[0].Length(); i++ {
+	// 		tid := blkMetaTxn.GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
+	// 		if tableInsertOff[tid] == nil {
+	// 			tableInsertOff[tid] = &tableOffset{
+	// 				offset: i,
+	// 				end:    i,
+	// 			}
+	// 		}
+	// 		tableInsertOff[tid].end += 1
+	// 	}
 
-		for tid, table := range tableInsertOff {
-			data.UpdateBlockInsertBlkMeta(tid, int32(table.offset), int32(table.end))
-		}
-		data.bats[BLKMetaInsertIDX].Close()
-		data.bats[BLKMetaInsertTxnIDX].Close()
-		data.bats[BLKMetaInsertIDX] = blkMeta
-		data.bats[BLKMetaInsertTxnIDX] = blkMetaTxn
-	}
+	// 	for tid, table := range tableInsertOff {
+	// 		data.UpdateBlockInsertBlkMeta(tid, int32(table.offset), int32(table.end))
+	// 	}
+	// 	data.bats[BLKMetaInsertIDX].Close()
+	// 	data.bats[BLKMetaInsertTxnIDX].Close()
+	// 	data.bats[BLKMetaInsertIDX] = blkMeta
+	// 	data.bats[BLKMetaInsertTxnIDX] = blkMetaTxn
+	// }
 
 	phaseNumber = 6
 	if len(insertObjBatch) > 0 {

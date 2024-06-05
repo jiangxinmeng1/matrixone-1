@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
-	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
@@ -473,7 +472,9 @@ func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Loc
 		}
 	}
 	for _, c := range cb {
-		c()
+		if c != nil {
+			c()
+		}
 	}
 	return
 }
@@ -510,10 +511,6 @@ func getBatchLength(bat *containers.Batch) int {
 }
 
 func isBatchEqual(ctx context.Context, t *testing.T, bat1, bat2 *containers.Batch) {
-	oldver := -1
-	if ver := ctx.Value(CtxOldVersion{}); ver != nil {
-		oldver = ver.(int)
-	}
 	require.Equal(t, getBatchLength(bat1), getBatchLength(bat2))
 	require.Equal(t, len(bat1.Vecs), len(bat2.Vecs))
 	for i := 0; i < getBatchLength(bat1); i++ {
@@ -522,14 +519,6 @@ func isBatchEqual(ctx context.Context, t *testing.T, bat1, bat2 *containers.Batc
 			if vec1.Length() == 0 || vec2.Length() == 0 {
 				// for commitTS and rowid in checkpoint
 				// logutil.Warnf("empty vec attr %v", bat1.Attrs[j])
-				continue
-			}
-			if oldver >= 0 && oldver <= int(logtail.CheckpointVersion5) && // read old version checkpoint
-				logtail.CheckpointCurrentVersion > logtail.CheckpointVersion5 && // check on new version
-				bat1.Attrs[j] == pkgcatalog.BlockMeta_MemTruncPoint {
-				// memTruncatePoint vector is committs vec in old checkpoint
-				// it can't be the same with newly collected on new version checkpoint, just skip it
-				logutil.Infof("isBatchEqual skip attr %v for ver.%d on ver.%d", bat1.Attrs[j], oldver, logtail.CheckpointCurrentVersion)
 				continue
 			}
 			// t.Logf("attr %v, row %d", bat1.Attrs[j], i)
@@ -633,14 +622,7 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cn
 	collector.LoadAndCollectObject(c, collector.VisitObj)
 	data2 := collector.OrphanData()
 	bats := data2.GetBatches()
-	ins2 := bats[logtail.BLKMetaInsertIDX]
-	// del2 := bats[logtail.BLKMetaDeleteIDX]
-	// cnIns2 := bats[logtail.BLKCNMetaInsertIDX]
 	seg2 := bats[logtail.ObjectInfoIDX]
-
-	isProtoTNBatchEqual(ctx, t, ins, ins2)
-	// isProtoTNBatchEqual(ctx, t, del, del2)// del is always empty after block is removed
-	// isProtoTNBatchEqual(ctx, t, cnIns, cnIns2)
 
 	// seg batch doesn't exist before ckp V9
 	if seg != nil {
@@ -648,7 +630,7 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cn
 	}
 }
 
-func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (*containers.Batch, *containers.Batch) {
+func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) *containers.Batch {
 	collector := logtail.NewIncrementalCollector(start, end, false)
 	p := &catalog.LoopProcessor{}
 	// p.TombstoneFn = func(be *catalog.ObjectEntry) error {
@@ -668,7 +650,7 @@ func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *cat
 	collector.LoadAndCollectObject(c, collector.VisitObj)
 	data := collector.OrphanData()
 	bats := data.GetBatches()
-	return bats[logtail.BLKMetaInsertIDX], bats[logtail.ObjectInfoIDX]
+	return bats[logtail.ObjectInfoIDX]
 }
 
 func CheckCheckpointReadWrite(

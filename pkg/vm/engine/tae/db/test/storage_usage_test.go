@@ -26,7 +26,7 @@ import (
 	"unsafe"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	// "github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -403,35 +403,14 @@ func appendUsageToBatch(bat *containers.Batch, usage logtail.UsageData) {
 }
 
 func Test_EstablishFromCheckpoints(t *testing.T) {
-	version8Cnt, version9Cnt, version11Cnt := 3, 4, 5
+	version11Cnt := 5
 	allocator := atomic.Uint64{}
 	allocator.Store(pkgcatalog.MO_RESERVED_MAX + 1)
 
-	ckps := make([]*logtail.CheckpointData, version8Cnt+version9Cnt+version11Cnt)
-	vers := make([]uint32, version8Cnt+version9Cnt+version11Cnt)
-
-	for idx := 0; idx < version8Cnt; idx++ {
-		data := logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion8, common.DebugAllocator)
-		ckps = append(ckps, data)
-		vers = append(vers, logtail.CheckpointVersion8)
-	}
+	ckps := make([]*logtail.CheckpointData, 0)
+	vers := make([]uint32, 0)
 
 	var usageIns, usageDel []logtail.UsageData
-
-	for idx := 0; idx < version9Cnt; idx++ {
-		data := logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion9, common.DebugAllocator)
-		insBat := data.GetBatches()[logtail.StorageUsageInsIDX]
-
-		usages := logtail.MockUsageData(10, 10, 10, &allocator)
-		usageIns = append(usageIns, usages...)
-
-		for xx := range usages {
-			appendUsageToBatch(insBat, usages[xx])
-		}
-
-		ckps = append(ckps, data)
-		vers = append(vers, logtail.CheckpointVersion9)
-	}
 
 	for idx := 0; idx < version11Cnt; idx++ {
 		data := logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion11, common.DebugAllocator)
@@ -543,20 +522,20 @@ func Test_UpdateDataFromOldVersion(t *testing.T) {
 
 	ctlog.SetUsageMemo(memo)
 
-	ckpDatas, _ := mockCkpDataWithVersion(logtail.CheckpointVersion9, 1)
+	// ckpDatas, _ := mockCkpDataWithVersion(logtail.CheckpointVersion9, 1)
 
 	// phase 1: all db/tbl have been deleted
-	{
-		memo.PrepareReplay(ckpDatas, []uint32{logtail.CheckpointVersion9})
-		memo.EstablishFromCKPs(ctlog)
+	// {
+	// 	memo.PrepareReplay(ckpDatas, []uint32{logtail.CheckpointVersion9})
+	// 	memo.EstablishFromCKPs(ctlog)
 
-		require.Equal(t, 0, len(memo.GetDelayed()))
-		require.Equal(t, 0, memo.CacheLen())
+	// 	require.Equal(t, 0, len(memo.GetDelayed()))
+	// 	require.Equal(t, 0, memo.CacheLen())
 
-		for idx := range ckpDatas {
-			require.Nil(t, ckpDatas[idx])
-		}
-	}
+	// 	for idx := range ckpDatas {
+	// 		require.Nil(t, ckpDatas[idx])
+	// 	}
+	// }
 
 	createdTbl := make([]logtail.UsageData, 0)
 
@@ -574,42 +553,42 @@ func Test_UpdateDataFromOldVersion(t *testing.T) {
 		txnMgr.Start(ctx)
 		defer txnMgr.Stop()
 
-		txn, _ := txnMgr.StartTxn(nil)
+		// txn, _ := txnMgr.StartTxn(nil)
 
-		ckpDatas, usages := mockCkpDataWithVersion(logtail.CheckpointVersion9, 1)
+		// ckpDatas, usages := mockCkpDataWithVersion(logtail.CheckpointVersion9, 1)
 
-		for xx := range usages {
-			for yy := range usages[xx] {
-				db, err := ctlog.GetDatabaseByID(usages[xx][yy].DbId)
-				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) || db == nil {
-					db, err = ctlog.CreateDBEntryWithID(usages[xx][yy].String(), "", "", usages[xx][yy].DbId, txn)
-					db.TestSetAccId(uint32(usages[xx][yy].AccId))
-				}
+		// for xx := range usages {
+		// 	for yy := range usages[xx] {
+		// 		db, err := ctlog.GetDatabaseByID(usages[xx][yy].DbId)
+		// 		if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) || db == nil {
+		// 			db, err = ctlog.CreateDBEntryWithID(usages[xx][yy].String(), "", "", usages[xx][yy].DbId, txn)
+		// 			db.TestSetAccId(uint32(usages[xx][yy].AccId))
+		// 		}
 
-				require.Nil(t, err)
-				require.NotNil(t, db)
+		// 		require.Nil(t, err)
+		// 		require.NotNil(t, db)
 
-				if rand.Int()%3 == 0 {
-					continue
-				}
+		// 		if rand.Int()%3 == 0 {
+		// 			continue
+		// 		}
 
-				tbl, err := db.CreateTableEntryWithTableId(
-					catalog.MockSchema(1, 1), txn, nil, usages[xx][yy].TblId)
-				require.Nil(t, err)
-				require.NotNil(t, tbl)
+		// 		tbl, err := db.CreateTableEntryWithTableId(
+		// 			catalog.MockSchema(1, 1), txn, nil, usages[xx][yy].TblId)
+		// 		require.Nil(t, err)
+		// 		require.NotNil(t, tbl)
 
-				createdTbl = append(createdTbl, usages[xx][yy])
-			}
-		}
+		// 		createdTbl = append(createdTbl, usages[xx][yy])
+		// 	}
+		// }
 
-		require.Nil(t, txn.Commit(ctx))
+		// require.Nil(t, txn.Commit(ctx))
 
-		memo.PrepareReplay(ckpDatas, []uint32{logtail.CheckpointVersion9})
-		memo.EstablishFromCKPs(ctlog)
+		// memo.PrepareReplay(ckpDatas, []uint32{logtail.CheckpointVersion9})
+		// memo.EstablishFromCKPs(ctlog)
 
-		for idx := range ckpDatas {
-			require.Nil(t, ckpDatas[idx])
-		}
+		// for idx := range ckpDatas {
+		// 	require.Nil(t, ckpDatas[idx])
+		// }
 
 		require.Equal(t, len(createdTbl), len(memo.GetDelayed()))
 

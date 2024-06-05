@@ -97,10 +97,8 @@ func (b *TxnLogtailRespBuilder) CollectLogtail(txn txnif.AsyncTxn) (*[]logtail.T
 		b.visitDatabase,
 		b.visitTable,
 		b.rotateTable,
-		b.visitDeltaloc,
 		b.visitObject,
-		b.visitAppend,
-		b.visitDelete)
+		b.visitAppend)
 	b.BuildResp()
 	logtails := b.logtails
 	newlogtails := make([]logtail.TableLogtail, 0)
@@ -133,9 +131,42 @@ func (b *TxnLogtailRespBuilder) visitDeltaloc(ideltalocChain any) {
 	return
 }
 
-func (b *TxnLogtailRespBuilder) visitAppend(ibat any) {
+func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {
 	src := ibat.(*containers.BatchWithVersion)
 	// sort by seqnums
+	if isTombstone {
+		b.visitAppendTombstone(src)
+	} else {
+		b.visitAppendData(src)
+	}
+}
+func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVersion) {
+
+	mybat := containers.NewBatchWithCapacity(3)
+	mybat.AddVector(
+		catalog.AttrRowID,
+		src.GetVectorByName(catalog.AttrRowID).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+	)
+	mybat.AddVector(
+		catalog.AttrPKVal,
+		src.GetVectorByName(catalog.AttrPKVal).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+	)
+	tsType := types.T_TS.ToType()
+	commitVec := b.rt.VectorPool.Small.GetVector(&tsType)
+	commitVec.PreExtend(src.Length())
+	for i := 0; i < src.Length(); i++ {
+		commitVec.Append(b.txn.GetPrepareTS(), false)
+	}
+	mybat.AddVector(catalog.AttrCommitTs, commitVec)
+
+	if b.batches[dataDelBatch] == nil {
+		b.batches[dataDelBatch] = mybat
+	} else {
+		b.batches[dataDelBatch].Extend(mybat)
+		mybat.Close()
+	}
+}
+func (b *TxnLogtailRespBuilder) visitAppendData(src *containers.BatchWithVersion) {
 	sort.Sort(src)
 	mybat := containers.NewBatchWithCapacity(int(src.NextSeqnum) + 2)
 	mybat.AddVector(
@@ -168,7 +199,6 @@ func (b *TxnLogtailRespBuilder) visitAppend(ibat any) {
 		mybat.Close()
 	}
 }
-
 func (b *TxnLogtailRespBuilder) visitDelete(ctx context.Context, vnode txnif.DeleteNode) {
 	// TODO
 	return

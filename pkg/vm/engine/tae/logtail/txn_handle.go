@@ -15,7 +15,6 @@
 package logtail
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"time"
@@ -126,11 +125,6 @@ func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 	visitObject(b.batches[objectInfoBatch], obj, node, true, b.txn.GetPrepareTS())
 }
 
-func (b *TxnLogtailRespBuilder) visitDeltaloc(ideltalocChain any) {
-	// TODO
-	return
-}
-
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {
 	src := ibat.(*containers.BatchWithVersion)
 	// sort by seqnums
@@ -198,10 +192,6 @@ func (b *TxnLogtailRespBuilder) visitAppendData(src *containers.BatchWithVersion
 		b.batches[dataInsBatch].Extend(mybat)
 		mybat.Close()
 	}
-}
-func (b *TxnLogtailRespBuilder) visitDelete(ctx context.Context, vnode txnif.DeleteNode) {
-	// TODO
-	return
 }
 
 func (b *TxnLogtailRespBuilder) visitTable(itbl any) {

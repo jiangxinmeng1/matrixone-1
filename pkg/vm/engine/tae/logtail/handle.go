@@ -441,8 +441,6 @@ type TableLogtailRespBuilder struct {
 	did, tid        uint64
 	dname, tname    string
 	checkpoint      string
-	blkMetaInsBatch *containers.Batch
-	blkMetaDelBatch *containers.Batch
 	objectMetaBatch *containers.Batch
 	dataInsBatches  map[uint32]*containers.Batch // schema version -> data batch
 	dataDelBatch    *containers.Batch
@@ -466,8 +464,6 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 
 	b.dataInsBatches = make(map[uint32]*containers.Batch)
 	b.dataDelBatch = makeDelRespBatchFromSchema(tbl.GetLastestSchema(false).GetPrimaryKey().Type, common.LogtailAllocator)
-	b.blkMetaInsBatch = makeRespBatchFromSchema(BlkMetaSchema, common.LogtailAllocator)
-	b.blkMetaDelBatch = makeRespBatchFromSchema(DelSchema, common.LogtailAllocator)
 	b.objectMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	return b
 }
@@ -482,14 +478,6 @@ func (b *TableLogtailRespBuilder) Close() {
 	if b.dataDelBatch != nil {
 		b.dataDelBatch.Close()
 		b.dataDelBatch = nil
-	}
-	if b.blkMetaInsBatch != nil {
-		b.blkMetaInsBatch.Close()
-		b.blkMetaInsBatch = nil
-	}
-	if b.blkMetaDelBatch != nil {
-		b.blkMetaDelBatch.Close()
-		b.blkMetaDelBatch = nil
 	}
 }
 
@@ -583,7 +571,6 @@ type TableRespKind int
 
 const (
 	TableRespKind_Data TableRespKind = iota
-	TableRespKind_Blk
 	TableRespKind_Obj
 )
 
@@ -604,10 +591,6 @@ func (b *TableLogtailRespBuilder) BuildResp() (api.SyncLogTailResp, error) {
 			tableName = b.tname
 			logutil.Debugf("[logtail] table data [%v] %d-%s-%d: %s", typ, b.tid, b.tname, version,
 				DebugBatchToString("data", batch, false, zap.InfoLevel))
-		case TableRespKind_Blk:
-			tableName = fmt.Sprintf("_%d_meta", b.tid)
-			logutil.Debugf("[logtail] table meta [%v] %d-%s: %s", typ, b.tid, b.tname,
-				DebugBatchToString("blkmeta", batch, false, zap.InfoLevel))
 		case TableRespKind_Obj:
 			tableName = fmt.Sprintf("_%d_obj", b.tid)
 			logutil.Debugf("[logtail] table meta [%v] %d-%s: %s", typ, b.tid, b.tname,
@@ -627,12 +610,6 @@ func (b *TableLogtailRespBuilder) BuildResp() (api.SyncLogTailResp, error) {
 	}
 
 	empty := api.SyncLogTailResp{}
-	if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Blk, b.blkMetaInsBatch, 0); err != nil {
-		return empty, err
-	}
-	if err := tryAppendEntry(api.Entry_Delete, TableRespKind_Blk, b.blkMetaDelBatch, 0); err != nil {
-		return empty, err
-	}
 	if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Obj, b.objectMetaBatch, 0); err != nil {
 		return empty, err
 	}

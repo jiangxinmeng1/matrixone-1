@@ -93,7 +93,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 	"go.uber.org/zap"
 )
@@ -458,7 +457,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 		checkpoint:    ckp,
 	}
 	b.ObjectFn = b.VisitObj
-	// b.TombstoneFn = b.visitDelete
+	b.TombstoneFn = b.VisitObj
 
 	b.did = tbl.GetDB().GetID()
 	b.tid = tbl.ID
@@ -466,6 +465,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 	b.tname = tbl.GetLastestSchemaLocked(false).Name
 
 	b.dataInsBatches = make(map[uint32]*containers.Batch)
+	b.dataDelBatch = makeDelRespBatchFromSchema(tbl.GetLastestSchema(false).GetPrimaryKey().Type, common.LogtailAllocator)
 	b.blkMetaInsBatch = makeRespBatchFromSchema(BlkMetaSchema, common.LogtailAllocator)
 	b.blkMetaDelBatch = makeRespBatchFromSchema(DelSchema, common.LogtailAllocator)
 	b.objectMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
@@ -533,14 +533,19 @@ func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 		return err
 	}
 	if insBatch != nil && insBatch.Length() > 0 {
-		dest, ok := b.dataInsBatches[insBatch.Version]
-		if !ok {
-			// create new dest batch
-			dest = DataChangeToLogtailBatch(insBatch)
-			b.dataInsBatches[insBatch.Version] = dest
-		} else {
-			dest.Extend(insBatch.Batch)
+		if e.IsTombstone {
 			// insBatch is freed, don't use anymore
+			b.dataDelBatch.Extend(insBatch.Batch)
+		} else {
+			dest, ok := b.dataInsBatches[insBatch.Version]
+			if !ok {
+				// create new dest batch
+				dest = DataChangeToLogtailBatch(insBatch)
+				b.dataInsBatches[insBatch.Version] = dest
+			} else {
+				dest.Extend(insBatch.Batch)
+				// insBatch is freed, don't use anymore
+			}
 		}
 	}
 	return nil
@@ -572,22 +577,6 @@ func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, node *cata
 		sorted = true
 	}
 	batch.GetVectorByName(ObjectAttr_Sorted).Append(sorted, false)
-}
-
-func (b *TableLogtailRespBuilder) visitDelete(e data.Tombstone) error {
-	deletes, _, _, err := e.VisitDeletes(b.ctx, b.start, b.end, b.blkMetaInsBatch, nil, false)
-	if err != nil {
-		return err
-	}
-	if deletes != nil && deletes.Length() != 0 {
-		if b.dataDelBatch == nil {
-			b.dataDelBatch = deletes
-		} else {
-			b.dataDelBatch.Extend(deletes)
-			deletes.Close()
-		}
-	}
-	return nil
 }
 
 type TableRespKind int

@@ -45,7 +45,6 @@ const (
 	ObjectAttr_ObjectStats                      = catalog.ObjectAttr_ObjectStats
 	ObjectAttr_State                            = catalog.ObjectAttr_State
 	ObjectAttr_Sorted                           = catalog.ObjectAttr_Sorted
-	ObjectAttr_CNPersisted                      = catalog.ObjectAttr_CNPersisted
 	ObjectAttr_IsTombstone                      = catalog.ObjectAttr_IsTombstone
 	EntryNode_CreateAt                          = catalog.EntryNode_CreateAt
 	EntryNode_DeleteAt                          = catalog.EntryNode_DeleteAt
@@ -316,7 +315,6 @@ var (
 		txnbase.SnapshotAttr_StartTS,
 		txnbase.SnapshotAttr_PrepareTS,
 		txnbase.SnapshotAttr_CommitTS,
-		ObjectAttr_CNPersisted,
 		ObjectAttr_IsTombstone,
 	}
 	ObjectInfoTypes = []types.Type{
@@ -330,7 +328,6 @@ var (
 		types.New(types.T_TS, 0, 0),
 		types.New(types.T_TS, 0, 0),
 		types.New(types.T_TS, 0, 0),
-		types.New(types.T_bool, 0, 0),
 		types.New(types.T_bool, 0, 0),
 	}
 

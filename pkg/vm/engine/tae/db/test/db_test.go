@@ -2498,7 +2498,6 @@ func TestMergeBlocks(t *testing.T) {
 }
 
 func TestSegDelLogtail(t *testing.T) {
-	return
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
 	ctx := context.Background()
@@ -2538,15 +2537,11 @@ func TestSegDelLogtail(t *testing.T) {
 		Table:  &api.TableID{DbId: did, TbId: tid},
 	}, false)
 	require.Nil(t, err)
-	require.Equal(t, 2, len(resp.Commands)) // block insert + object info
+	require.Equal(t, 1, len(resp.Commands)) // object info
 
 	require.Equal(t, api.Entry_Insert, resp.Commands[0].EntryType)
-	require.True(t, strings.HasSuffix(resp.Commands[0].TableName, "meta"))
-	require.Equal(t, uint32(1), resp.Commands[0].Bat.Vecs[0].Len) /* 1 deltaloc */
-
-	require.Equal(t, api.Entry_Insert, resp.Commands[1].EntryType)
-	require.True(t, strings.HasSuffix(resp.Commands[1].TableName, "obj"))
-	require.Equal(t, uint32(6), resp.Commands[1].Bat.Vecs[0].Len) /* 2 Objects (create) + 4 (update object info) */
+	require.True(t, strings.HasSuffix(resp.Commands[0].TableName, "obj"))
+	require.Equal(t, uint32(9), resp.Commands[0].Bat.Vecs[0].Len) /* 2 Objects (create) + 4 (update object info) */
 
 	close()
 
@@ -2569,11 +2564,11 @@ func TestSegDelLogtail(t *testing.T) {
 		entry := ckpEntries[0]
 		ins, del, cnins, segdel, err := entry.GetByTableID(context.Background(), tae.Runtime.Fs, tid)
 		require.NoError(t, err)
-		require.Equal(t, uint32(1), ins.Vecs[0].Len)    // 1 deltaloc, skip blks without deltaloc
+		require.Nil(t, ins)                             // 0 ins
 		require.Nil(t, del)                             // 0  del
 		require.Nil(t, cnins)                           // 0  del
-		require.Equal(t, uint32(6), segdel.Vecs[0].Len) // 2 create + 4 update
-		require.Equal(t, 12, len(segdel.Vecs))
+		require.Equal(t, uint32(9), segdel.Vecs[0].Len) // 2 create + 4 update
+		require.Equal(t, 13, len(segdel.Vecs))
 	}
 	check()
 
@@ -3880,7 +3875,6 @@ func tots(ts types.TS) *timestamp.Timestamp {
 }
 
 func TestLogtailBasic(t *testing.T) {
-	return
 	defer testutils.AfterTest(t)()
 	ctx := context.Background()
 
@@ -4058,6 +4052,8 @@ func TestLogtailBasic(t *testing.T) {
 	check_same_rows(resp.Commands[0].Bat, len(schema.ColDefs)*2) // column count of 2 tables
 	close()
 
+	t.Log(tae.Catalog.SimplePPString(3))
+	t.Logf("collect %v %v", firstWriteTs.Next().ToString(), lastWriteTs.ToString())
 	// get user table change
 	resp, close, err = logtail.HandleSyncLogTailReq(ctx, new(dummyCpkGetter), tae.LogtailMgr, tae.Catalog, api.SyncLogTailReq{
 		CnHave: tots(firstWriteTs.Next()), // skip the first write deliberately,
@@ -4066,12 +4062,6 @@ func TestLogtailBasic(t *testing.T) {
 	}, true)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(resp.Commands)) // 2 insert data and delete data
-
-	// blk meta change
-	// blkMetaEntry := resp.Commands[0]
-	// require.Equal(t, api.Entry_Insert, blkMetaEntry.EntryType)
-	// require.Equal(t, len(logtail.BlkMetaSchema.ColDefs)+fixedColCnt, len(blkMetaEntry.Bat.Vecs))
-	// check_same_rows(blkMetaEntry.Bat, 9) // 9 blocks, because the first write is excluded.
 
 	// check data change
 	insDataEntry := resp.Commands[0]
@@ -4086,7 +4076,7 @@ func TestLogtailBasic(t *testing.T) {
 
 	delDataEntry := resp.Commands[1]
 	require.Equal(t, api.Entry_Delete, delDataEntry.EntryType)
-	require.Equal(t, fixedColCnt+1, len(delDataEntry.Bat.Vecs)) // 3 columns, rowid + commit_ts + aborted
+	require.Equal(t, fixedColCnt+1, len(delDataEntry.Bat.Vecs)) // 3 columns, rowid + commit_ts
 	check_same_rows(delDataEntry.Bat, 10)
 
 	// check delete rowids are exactly what we want
@@ -6263,7 +6253,6 @@ func TestAlterTableBasic(t *testing.T) {
 }
 
 func TestAlterFakePk(t *testing.T) {
-	return
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
 	ctx := context.Background()
@@ -6327,6 +6316,7 @@ func TestAlterFakePk(t *testing.T) {
 		require.NoError(t, txn.Commit(context.Background()))
 	}
 
+	t.Log(tae.Catalog.SimplePPString(3))
 	resp, close, _ := logtail.HandleSyncLogTailReq(context.TODO(), new(dummyCpkGetter), tae.LogtailMgr, tae.Catalog, api.SyncLogTailReq{
 		CnHave: tots(types.BuildTS(0, 0)),
 		CnWant: tots(types.MaxTs()),

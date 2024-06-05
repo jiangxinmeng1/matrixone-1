@@ -271,23 +271,6 @@ func (entry *ObjectEntry) CheckAndLoad() error {
 	}
 	return nil
 }
-
-func (entry *ObjectEntry) NeedPrefetchObjectMetaForObjectInfo(nodes []*MVCCNode[*ObjectMVCCNode]) (needPrefetch bool) {
-	lastNode := nodes[0]
-	for _, n := range nodes {
-		if n.Start.Greater(&lastNode.Start) {
-			lastNode = n
-		}
-	}
-	if !lastNode.BaseNode.IsEmpty() {
-		return
-	}
-	if entry.nodeHasPersistedData(lastNode) {
-		needPrefetch = true
-	}
-
-	return
-}
 func (entry *ObjectEntry) nodeHasPersistedData(node *MVCCNode[*ObjectMVCCNode]) bool {
 	if !entry.IsAppendable() {
 		return true

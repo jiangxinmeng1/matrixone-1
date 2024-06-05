@@ -190,9 +190,9 @@ func registerCheckpointDataReferVersion(version uint32, schemas []*catalog.Schem
 	checkpointDataReferVersions[version] = checkpointDataRefer
 }
 
-func IncrementalCheckpointDataFactory(start, end types.TS, collectUsage bool, skipLoadObjectStats bool) func(c *catalog.Catalog) (*CheckpointData, error) {
+func IncrementalCheckpointDataFactory(start, end types.TS, collectUsage bool) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewIncrementalCollector(start, end, skipLoadObjectStats)
+		collector := NewIncrementalCollector(start, end)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -200,9 +200,6 @@ func IncrementalCheckpointDataFactory(start, end types.TS, collectUsage bool, sk
 		}
 		if err != nil {
 			return
-		}
-		if !skipLoadObjectStats {
-			err = collector.LoadAndCollectObject(c, collector.VisitObj)
 		}
 
 		if collectUsage {
@@ -244,8 +241,6 @@ func GlobalCheckpointDataFactory(
 		if err != nil {
 			return
 		}
-		err = collector.LoadAndCollectObject(c, collector.VisitObj)
-
 		collector.UsageMemo = c.GetUsageMemo().(*TNUsageMemo)
 		FillUsageBatOfGlobal(collector)
 
@@ -480,14 +475,13 @@ type IncrementalCollector struct {
 	*BaseCollector
 }
 
-func NewIncrementalCollector(start, end types.TS, skipLoadObjectStats bool) *IncrementalCollector {
+func NewIncrementalCollector(start, end types.TS) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
-			LoopProcessor:       new(catalog.LoopProcessor),
-			data:                NewCheckpointData(common.CheckpointAllocator),
-			start:               start,
-			end:                 end,
-			skipLoadObjectStats: skipLoadObjectStats,
+			LoopProcessor: new(catalog.LoopProcessor),
+			data:          NewCheckpointData(common.CheckpointAllocator),
+			start:         start,
+			end:           end,
 		},
 	}
 	collector.DatabaseFn = collector.VisitDB
@@ -1838,26 +1832,6 @@ func (data *CheckpointData) GetTNObjectBatchs() *containers.Batch {
 func (data *CheckpointData) GetObjectBatchs() *containers.Batch {
 	return data.bats[ObjectInfoIDX]
 }
-func (collector *BaseCollector) LoadAndCollectObject(c *catalog.Catalog, visitObject func(*catalog.ObjectEntry) error) error {
-	if collector.isPrefetch {
-		collector.isPrefetch = false
-	} else {
-		return nil
-	}
-	collector.data.bats[ObjectInfoIDX] = makeRespBatchFromSchema(ObjectInfoSchema, common.CheckpointAllocator)
-	collector.data.bats[TNObjectInfoIDX] = makeRespBatchFromSchema(ObjectInfoSchema, common.CheckpointAllocator)
-	err := collector.loadObjectInfo()
-	if err != nil {
-		return err
-	}
-	p := &catalog.LoopProcessor{}
-	p.ObjectFn = visitObject
-	err = c.RecurLoop(p)
-	if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
-		err = nil
-	}
-	return err
-}
 func (collector *BaseCollector) VisitDB(entry *catalog.DBEntry) error {
 	if shouldIgnoreDBInLogtail(entry.ID) {
 		return nil
@@ -2051,97 +2025,15 @@ func (collector *BaseCollector) visitObjectEntry(entry *catalog.ObjectEntry) err
 		return nil
 	}
 
-	var needPrefetch bool
-	if !collector.skipLoadObjectStats {
-		needPrefetch = entry.NeedPrefetchObjectMetaForObjectInfo(mvccNodes)
-	}
-
-	if collector.isPrefetch {
-		if needPrefetch {
-			collector.Objects = append(collector.Objects, entry)
-		}
-	} else {
-		if needPrefetch {
-			collector.isPrefetch = true
-			logutil.Infof("checkpoint %v->%v, when try visit object, object %v need to load stats",
-				collector.start.ToString(),
-				collector.end.ToString(),
-				entry.String())
-			if collector.data.bats[ObjectInfoIDX] != nil {
-				collector.data.bats[ObjectInfoIDX].Close()
-			}
-			if collector.data.bats[TNObjectInfoIDX] != nil {
-				collector.data.bats[TNObjectInfoIDX].Close()
-			}
-			collector.data.resetObjectMeta()
-			if collector.Objects == nil {
-				collector.Objects = make([]*catalog.ObjectEntry, 0)
-			}
-			collector.Objects = append(collector.Objects, entry)
-		} else {
-			entry.SetObjectStatsForPreviousNode(mvccNodes)
-			err := collector.fillObjectInfoBatch(entry, mvccNodes)
-			if err != nil {
-				return err
-			}
-		}
+	entry.SetObjectStatsForPreviousNode(mvccNodes)
+	err := collector.fillObjectInfoBatch(entry, mvccNodes)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
-func (collector *BaseCollector) loadObjectInfo() error {
-	logutil.Infof("checkpoint %v->%v, start to load object meta, total %d objects",
-		collector.start.ToString(),
-		collector.end.ToString(),
-		len(collector.Objects))
-	t0 := time.Now()
-	batchCnt := 100
-	i := 0
-	for idx := 1; idx <= len(collector.Objects); idx++ {
 
-		obj := collector.Objects[idx-1]
-		blockio.PrefetchMeta(obj.GetObjectData().GetFs().Service, obj.GetLocation())
-
-		for idx%batchCnt == 0 && i < idx {
-			obj := collector.Objects[i]
-			mvccNodes := obj.ClonePreparedInRange(collector.start, collector.end)
-			for _, node := range mvccNodes {
-				if node.BaseNode.IsEmpty() {
-					stats, err := obj.LoadObjectInfoWithTxnTS(node.Start)
-					if err != nil {
-						return err
-					}
-					obj.Lock()
-					obj.SearchNodeLocked(node).BaseNode.ObjectStats = stats
-					obj.Unlock()
-				}
-
-			}
-			i++
-		}
-	}
-	for ; i < len(collector.Objects); i++ {
-		obj := collector.Objects[i]
-		mvccNodes := obj.ClonePreparedInRange(collector.start, collector.end)
-		for _, node := range mvccNodes {
-			if node.BaseNode.IsEmpty() {
-				stats, err := obj.LoadObjectInfoWithTxnTS(node.Start)
-				if err != nil {
-					return err
-				}
-				obj.Lock()
-				obj.SearchNodeLocked(node).BaseNode.ObjectStats = stats
-				obj.Unlock()
-			}
-		}
-	}
-	logutil.Infof("checkpoint %v->%v, load %d object meta takes %v",
-		collector.start.ToString(),
-		collector.end.ToString(),
-		len(collector.Objects),
-		time.Since(t0))
-	return nil
-}
 func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, mvccNodes []*catalog.MVCCNode[*catalog.ObjectMVCCNode]) error {
 	if len(mvccNodes) == 0 {
 		return nil

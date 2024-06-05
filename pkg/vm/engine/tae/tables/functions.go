@@ -351,6 +351,7 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
 		vec, rowIDs, scanFn, txn := parseAContainsArgs(args...)
+		vs := vector.MustFixedCol[T](vec.GetDownstreamVector())
 		return func(v1 T, _ bool, rowOffset int) error {
 			if rowIDs.IsNull(rowOffset) {
 				return nil
@@ -362,32 +363,27 @@ func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args 
 					tsVec = nil
 				}
 			}()
-			return containers.ForeachWindowFixed(
-				vec.GetDownstreamVector(),
-				0,
-				vec.Length(),
-				false,
-				func(v2 T, _ bool, row int) (err error) {
-					if rowIDs.IsNull(rowOffset) {
-						return nil
+			if row, existed := compute.GetOffsetWithFunc(
+				vs,
+				v1,
+				comp,
+				nil,
+			); existed {
+				if tsVec == nil {
+					var err error
+					tsVec, err = scanFn(0)
+					if err != nil {
+						return err
 					}
-					if comp(v1, v2) != 0 {
-						return
-					}
-					if tsVec == nil {
-						tsVec, err = scanFn(0)
-						if err != nil {
-							return err
-						}
-					}
-					commitTS := tsVec.Get(row).(types.TS)
-					startTS := txn.GetStartTS()
-					if commitTS.Greater(&startTS) {
-						return txnif.ErrTxnWWConflict
-					}
-					rowIDs.Update(row, nil, true)
-					return nil
-				}, nil, nil)
+				}
+				rowIDs.Update(rowOffset, nil, true)
+				commitTS := tsVec.Get(row).(types.TS)
+				startTS := txn.GetStartTS()
+				if commitTS.Greater(&startTS) {
+					return txnif.ErrTxnWWConflict
+				}
+			}
+			return nil
 		}
 	}
 }

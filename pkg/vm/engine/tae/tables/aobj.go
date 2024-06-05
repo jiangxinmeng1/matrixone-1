@@ -325,7 +325,7 @@ func (obj *aobject) GetByFilter(
 
 	node := obj.PinNode()
 	defer node.Unref()
-	_, offset, err = node.GetRowByFilter(ctx, txn, filter, mp)
+	_, offset, err = node.GetRowByFilter(ctx, txn, filter, mp, obj.rt.VectorPool.Small)
 	return
 }
 

@@ -296,6 +296,9 @@ func (entry *flushTableTailEntry) ApplyCommit(_ string) (err error) {
 	for _, blk := range entry.ablksMetas {
 		_ = blk.GetObjectData().TryUpgrade()
 	}
+	for _, blk := range entry.atombstonesMetas {
+		_ = blk.GetObjectData().TryUpgrade()
+	}
 	return
 }
 

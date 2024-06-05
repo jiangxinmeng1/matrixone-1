@@ -1116,7 +1116,7 @@ func ReWriteCheckpointAndBlockFromKey(
 		}
 
 		for tid, table := range tableInsertOff {
-			data.UpdateObjectInsertMeta(tid, int32(table.offset), int32(table.end))
+			data.UpdateDataObjectMeta(tid, int32(table.offset), int32(table.end))
 		}
 	}
 	cnLocation, dnLocation, checkpointFiles, err := data.WriteTo(dstFs, DefaultCheckpointBlockRows, DefaultCheckpointSize)

@@ -37,9 +37,7 @@ import (
 )
 
 const (
-	blkMetaInsBatch int8 = iota
-	blkMetaDelBatch
-	dataInsBatch
+	dataInsBatch int8 = iota
 	dataDelBatch
 	dbInsBatch
 	dbDelBatch
@@ -49,7 +47,8 @@ const (
 	tblSpecialDeleteBatch
 	columnInsBatch
 	columnDelBatch
-	objectInfoBatch
+	dataObjectInfoBatch
+	tombstoneObjectInfoBatch
 	batchTotalNum
 )
 
@@ -108,21 +107,24 @@ func (b *TxnLogtailRespBuilder) CollectLogtail(txn txnif.AsyncTxn) (*[]logtail.T
 func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 	obj := iobj.(*catalog.ObjectEntry)
 	node := obj.GetLatestNodeLocked()
-	if obj.IsAppendable() && node.BaseNode.IsEmpty() {
-		return
+	var batchIdx int8
+	if obj.IsTombstone {
+		batchIdx = tombstoneObjectInfoBatch
+	} else {
+		batchIdx = dataObjectInfoBatch
 	}
 	if !node.DeletedAt.Equal(&txnif.UncommitTS) {
-		if b.batches[objectInfoBatch] == nil {
-			b.batches[objectInfoBatch] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
+		if b.batches[batchIdx] == nil {
+			b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 		}
-		visitObject(b.batches[objectInfoBatch], obj, node, true, b.txn.GetPrepareTS())
+		visitObject(b.batches[batchIdx], obj, node, true, b.txn.GetPrepareTS())
 		return
 	}
 
-	if b.batches[objectInfoBatch] == nil {
-		b.batches[objectInfoBatch] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
+	if b.batches[batchIdx] == nil {
+		b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	}
-	visitObject(b.batches[objectInfoBatch], obj, node, true, b.txn.GetPrepareTS())
+	visitObject(b.batches[batchIdx], obj, node, true, b.txn.GetPrepareTS())
 }
 
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {
@@ -362,21 +364,16 @@ func (b *TxnLogtailRespBuilder) buildLogtailEntry(tid, dbid uint64, tableName, d
 }
 
 func (b *TxnLogtailRespBuilder) rotateTable(dbName, tableName string, dbid, tid uint64) {
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_meta", b.currTableID), b.currDBName, blkMetaInsBatch, false)
-	if b.batches[blkMetaInsBatch] != nil {
-		b.batchToClose = append(b.batchToClose, b.batches[blkMetaInsBatch])
-		b.batches[blkMetaInsBatch] = nil
-	}
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_meta", b.currTableID), b.currDBName, blkMetaDelBatch, true)
-	if b.batches[blkMetaDelBatch] != nil {
-		b.batchToClose = append(b.batchToClose, b.batches[blkMetaDelBatch])
-		b.batches[blkMetaDelBatch] = nil
-	}
 
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_obj", b.currTableID), b.currDBName, objectInfoBatch, false)
-	if b.batches[objectInfoBatch] != nil {
-		b.batchToClose = append(b.batchToClose, b.batches[objectInfoBatch])
-		b.batches[objectInfoBatch] = nil
+	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_data_meta", b.currTableID), b.currDBName, dataObjectInfoBatch, false)
+	if b.batches[dataObjectInfoBatch] != nil {
+		b.batchToClose = append(b.batchToClose, b.batches[dataObjectInfoBatch])
+		b.batches[dataObjectInfoBatch] = nil
+	}
+	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_tombstone_meta", b.currTableID), b.currDBName, tombstoneObjectInfoBatch, false)
+	if b.batches[tombstoneObjectInfoBatch] != nil {
+		b.batchToClose = append(b.batchToClose, b.batches[tombstoneObjectInfoBatch])
+		b.batches[tombstoneObjectInfoBatch] = nil
 	}
 	b.buildLogtailEntry(b.currTableID, b.currDBID, b.currTableName, b.currDBName, dataDelBatch, true)
 	if b.batches[dataDelBatch] != nil {
@@ -396,9 +393,8 @@ func (b *TxnLogtailRespBuilder) rotateTable(dbName, tableName string, dbid, tid 
 }
 
 func (b *TxnLogtailRespBuilder) BuildResp() {
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_meta", b.currTableID), b.currDBName, blkMetaInsBatch, false)
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_meta", b.currTableID), b.currDBName, blkMetaDelBatch, true)
-	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_obj", b.currTableID), b.currDBName, objectInfoBatch, false)
+	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_data_meta", b.currTableID), b.currDBName, dataObjectInfoBatch, false)
+	b.buildLogtailEntry(b.currTableID, b.currDBID, fmt.Sprintf("_%d_tombstone_meta", b.currTableID), b.currDBName, tombstoneObjectInfoBatch, false)
 	b.buildLogtailEntry(b.currTableID, b.currDBID, b.currTableName, b.currDBName, dataDelBatch, true)
 	b.buildLogtailEntry(b.currTableID, b.currDBID, b.currTableName, b.currDBName, dataInsBatch, false)
 

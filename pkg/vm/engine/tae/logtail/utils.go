@@ -80,23 +80,13 @@ const (
 const MaxIDX = TombstoneObjectInfoIDX + 1
 
 const (
-	Checkpoint_Meta_TID_IDX                 = 2
-	Checkpoint_Meta_Insert_Block_LOC_IDX    = 3
-	Checkpoint_Meta_CN_Delete_Block_LOC_IDX = 4
-	Checkpoint_Meta_Delete_Block_LOC_IDX    = 5
-	Checkpoint_Meta_Object_LOC_IDX          = 6
-	Checkpoint_Meta_Usage_Ins_LOC_IDX       = 7
-	Checkpoint_Meta_Usage_Del_LOC_IDX       = 8
-)
-
-// for ver1-3
-const (
-	Checkpoint_Meta_Insert_Block_Start_IDX = 3
-	Checkpoint_Meta_Insert_Block_End_IDX   = 4
-	Checkpoint_Meta_Delete_Block_Start_IDX = 5
-	Checkpoint_Meta_Delete_Block_End_IDX   = 6
-	Checkpoint_Meta_Object_Start_IDX       = 7
-	Checkpoint_Meta_Object_End_IDX         = 8
+	Checkpoint_Meta_TID_IDX                  = 2
+	Checkpoint_Meta_Insert_Block_LOC_IDX     = 3
+	Checkpoint_Meta_Delete_Block_LOC_IDX     = 4
+	Checkpoint_Meta_Data_Object_LOC_IDX      = 5
+	Checkpoint_Meta_Tombstone_Object_LOC_IDX = 6
+	Checkpoint_Meta_Usage_Ins_LOC_IDX        = 7
+	Checkpoint_Meta_Usage_Del_LOC_IDX        = 8
 )
 
 type checkpointDataItem struct {
@@ -371,7 +361,8 @@ type TableMeta struct {
 const (
 	BlockInsert = iota
 	BlockDelete
-	ObjectInfo
+	DataObject
+	TombstoneObject
 	StorageUsageIns
 	StorageUsageDel
 )
@@ -562,8 +553,10 @@ func NewCNCheckpointData() *CNCheckpointData {
 func switchCheckpointIdx(i uint16, tableID uint64) uint16 {
 	idx := uint16(i)
 
-	if i == ObjectInfo {
+	if i == DataObject {
 		idx = ObjectInfoIDX
+	} else if i == TombstoneObject {
+		idx = TombstoneObjectInfoIDX
 	} else if i == StorageUsageIns {
 		idx = StorageUsageInsIDX
 	} else if i == StorageUsageDel {
@@ -727,7 +720,8 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32, loc o
 	tidVec := vector.MustFixedCol[uint64](data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX])
 	blkIns := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Insert_Block_LOC_IDX]
 	blkDel := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Delete_Block_LOC_IDX]
-	segDel := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Object_LOC_IDX]
+	dataObj := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Data_Object_LOC_IDX]
+	tombstoneObj := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Tombstone_Object_LOC_IDX]
 
 	var usageInsVec, usageDelVec *vector.Vector
 	if version >= CheckpointVersion11 {
@@ -743,27 +737,33 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32, loc o
 	tid := tidVec[i]
 	blkInsStr := blkIns.GetBytesAt(i)
 	blkDelStr := blkDel.GetBytesAt(i)
-	segDelStr := segDel.GetBytesAt(i)
+	dataObjStr := dataObj.GetBytesAt(i)
+	tombstoneObjStr := tombstoneObj.GetBytesAt(i)
 	tableMeta := NewCheckpointMeta()
-	if len(blkInsStr) > 0 {
-		blkInsertTableMeta := NewTableMeta()
-		blkInsertTableMeta.locations = blkInsStr
-		// blkInsertOffset
-		tableMeta.tables[BlockInsert] = blkInsertTableMeta
-	}
 	if tableID == pkgcatalog.MO_DATABASE_ID ||
 		tableID == pkgcatalog.MO_TABLES_ID ||
 		tableID == pkgcatalog.MO_COLUMNS_ID {
+		if len(blkInsStr) > 0 {
+			blkInsertTableMeta := NewTableMeta()
+			blkInsertTableMeta.locations = blkInsStr
+			// blkInsertOffset
+			tableMeta.tables[BlockInsert] = blkInsertTableMeta
+		}
 		if len(blkDelStr) > 0 {
 			blkDeleteTableMeta := NewTableMeta()
 			blkDeleteTableMeta.locations = blkDelStr
 			tableMeta.tables[BlockDelete] = blkDeleteTableMeta
 		}
 	}
-	if len(segDelStr) > 0 {
-		segDeleteTableMeta := NewTableMeta()
-		segDeleteTableMeta.locations = segDelStr
-		tableMeta.tables[ObjectInfo] = segDeleteTableMeta
+	if len(dataObjStr) > 0 {
+		dataObjectTableMeta := NewTableMeta()
+		dataObjectTableMeta.locations = dataObjStr
+		tableMeta.tables[DataObject] = dataObjectTableMeta
+	}
+	if len(tombstoneObjStr) > 0 {
+		tombstoneObjectTableMeta := NewTableMeta()
+		tombstoneObjectTableMeta.locations = tombstoneObjStr
+		tableMeta.tables[TombstoneObject] = tombstoneObjectTableMeta
 	}
 
 	if usageInsVec != nil {
@@ -848,8 +848,8 @@ func (data *CNCheckpointData) ReadFromData(
 	return
 }
 
-func (data *CNCheckpointData) GetTableDataFromBats(tid uint64, bats []*batch.Batch) (ins, del, cnIns, objInfo *api.Batch, err error) {
-	var insTaeBat, delTaeBat, objInfoTaeBat *batch.Batch
+func (data *CNCheckpointData) GetTableDataFromBats(tid uint64, bats []*batch.Batch) (ins, del, dataObject, tombstoneObject *api.Batch, err error) {
+	var insTaeBat, delTaeBat, dataObjectTaeBat, tombstoneObjectTaeBat *batch.Batch
 	if len(bats) == 0 {
 		return
 	}
@@ -871,23 +871,16 @@ func (data *CNCheckpointData) GetTableDataFromBats(tid uint64, bats []*batch.Bat
 		return
 	}
 
-	insTaeBat = bats[BlockInsert]
-	if insTaeBat != nil {
-		ins, err = batch.BatchToProtoBatch(insTaeBat)
+	dataObjectTaeBat = bats[DataObject]
+	if dataObjectTaeBat != nil {
+		dataObject, err = batch.BatchToProtoBatch(dataObjectTaeBat)
 		if err != nil {
 			return
 		}
 	}
-	delTaeBat = bats[BlockDelete]
-	if delTaeBat != nil {
-		del, err = batch.BatchToProtoBatch(delTaeBat)
-		if err != nil {
-			return
-		}
-	}
-	objInfoTaeBat = bats[ObjectInfo]
-	if objInfoTaeBat != nil {
-		objInfo, err = batch.BatchToProtoBatch(objInfoTaeBat)
+	tombstoneObjectTaeBat = bats[TombstoneObject]
+	if tombstoneObjectTaeBat != nil {
+		tombstoneObject, err = batch.BatchToProtoBatch(tombstoneObjectTaeBat)
 		if err != nil {
 			return
 		}
@@ -928,7 +921,8 @@ func (data *CheckpointData) prepareMeta() {
 	bat := data.bats[MetaIDX]
 	blkInsLoc := bat.GetVectorByName(SnapshotMetaAttr_BlockInsertBatchLocation).GetDownstreamVector()
 	blkDelLoc := bat.GetVectorByName(SnapshotMetaAttr_BlockDeleteBatchLocation).GetDownstreamVector()
-	segDelLoc := bat.GetVectorByName(SnapshotMetaAttr_SegDeleteBatchLocation).GetDownstreamVector()
+	dataObjectLoc := bat.GetVectorByName(SnapshotMetaAttr_DataObjectBatchLocation).GetDownstreamVector()
+	tombstoneObjectLoc := bat.GetVectorByName(SnapshotMetaAttr_TombstoneObjectBatchLocation).GetDownstreamVector()
 	tidVec := bat.GetVectorByName(SnapshotAttr_TID).GetDownstreamVector()
 	usageInsLoc := bat.GetVectorByName(CheckpointMetaAttr_StorageUsageInsLocation).GetDownstreamVector()
 	usageDelLoc := bat.GetVectorByName(CheckpointMetaAttr_StorageUsageDelLocation).GetDownstreamVector()
@@ -950,10 +944,15 @@ func (data *CheckpointData) prepareMeta() {
 		} else {
 			vector.AppendBytes(blkDelLoc, []byte(data.meta[uint64(tid)].tables[BlockDelete].locations), false, data.allocator)
 		}
-		if data.meta[uint64(tid)].tables[ObjectInfo] == nil {
-			vector.AppendBytes(segDelLoc, nil, true, data.allocator)
+		if data.meta[uint64(tid)].tables[DataObject] == nil {
+			vector.AppendBytes(dataObjectLoc, nil, true, data.allocator)
 		} else {
-			vector.AppendBytes(segDelLoc, []byte(data.meta[uint64(tid)].tables[ObjectInfo].locations), false, data.allocator)
+			vector.AppendBytes(dataObjectLoc, []byte(data.meta[uint64(tid)].tables[DataObject].locations), false, data.allocator)
+		}
+		if data.meta[uint64(tid)].tables[TombstoneObject] == nil {
+			vector.AppendBytes(tombstoneObjectLoc, nil, true, data.allocator)
+		} else {
+			vector.AppendBytes(tombstoneObjectLoc, []byte(data.meta[uint64(tid)].tables[TombstoneObject].locations), false, data.allocator)
 		}
 
 		if data.meta[uint64(tid)].tables[StorageUsageIns] == nil {
@@ -967,11 +966,6 @@ func (data *CheckpointData) prepareMeta() {
 		} else {
 			vector.AppendBytes(usageDelLoc, data.meta[uint64(tid)].tables[StorageUsageDel].locations, false, data.allocator)
 		}
-	}
-}
-func (data *CheckpointData) resetObjectMeta() {
-	for _, meta := range data.meta {
-		meta.tables[ObjectInfo] = nil
 	}
 }
 func (data *CheckpointData) updateTableMeta(tid uint64, metaIdx int, start, end int32) {
@@ -1007,18 +1001,18 @@ func (data *CheckpointData) UpdateBlkMeta(tid uint64, insStart, insEnd, delStart
 	data.updateTableMeta(tid, BlockDelete, delStart, delEnd)
 }
 
-func (data *CheckpointData) UpdateSegMeta(tid uint64, delStart, delEnd int32) {
+func (data *CheckpointData) UpdateDataObjectMeta(tid uint64, delStart, delEnd int32) {
 	if delEnd <= delStart {
 		return
 	}
-	data.updateTableMeta(tid, ObjectInfo, delStart, delEnd)
+	data.updateTableMeta(tid, DataObject, delStart, delEnd)
 }
 
-func (data *CheckpointData) UpdateObjectInsertMeta(tid uint64, delStart, delEnd int32) {
+func (data *CheckpointData) UpdateTombstoneObjectMeta(tid uint64, delStart, delEnd int32) {
 	if delEnd <= delStart {
 		return
 	}
-	data.resetTableMeta(tid, ObjectInfo, delStart, delEnd)
+	data.resetTableMeta(tid, TombstoneObject, delStart, delEnd)
 }
 
 func (data *CheckpointData) resetTableMeta(tid uint64, metaIdx int, start, end int32) {
@@ -1673,7 +1667,8 @@ func (data *CheckpointData) replayMetaBatch(version uint32) {
 	data.locations = make(map[string]objectio.Location)
 	tidVec := vector.MustFixedCol[uint64](bat.GetVectorByName(SnapshotAttr_TID).GetDownstreamVector())
 	insVec := bat.GetVectorByName(SnapshotMetaAttr_BlockInsertBatchLocation).GetDownstreamVector()
-	segVec := bat.GetVectorByName(SnapshotMetaAttr_SegDeleteBatchLocation).GetDownstreamVector()
+	dataObjectVec := bat.GetVectorByName(SnapshotMetaAttr_DataObjectBatchLocation).GetDownstreamVector()
+	tombstoneObjectVec := bat.GetVectorByName(SnapshotMetaAttr_TombstoneObjectBatchLocation).GetDownstreamVector()
 
 	var usageInsVec, usageDelVec *vector.Vector
 	if version >= CheckpointVersion11 {
@@ -1694,9 +1689,10 @@ func (data *CheckpointData) replayMetaBatch(version uint32) {
 			}
 			continue
 		}
-		segLocation := segVec.GetBytesAt(i)
+		dataObjectLocation := dataObjectVec.GetBytesAt(i)
+		tombstoneObjectLocation := tombstoneObjectVec.GetBytesAt(i)
 
-		tmp := [][]byte{segLocation}
+		tmp := [][]byte{dataObjectLocation, tombstoneObjectLocation}
 		if usageInsVec != nil {
 			tmp = append(tmp, usageInsVec.GetBytesAt(i))
 			tmp = append(tmp, usageDelVec.GetBytesAt(i))
@@ -2039,7 +2035,8 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 	if len(mvccNodes) == 0 {
 		return nil
 	}
-	delStart := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
+	dataStart := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
+	tombstoneStart := collector.data.bats[TombstoneObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
 
 	for _, node := range mvccNodes {
 		if node.IsAborted() {
@@ -2066,8 +2063,10 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 		}
 
 	}
-	delEnd := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
-	collector.data.UpdateSegMeta(entry.GetTable().ID, int32(delStart), int32(delEnd))
+	dataEnd := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
+	collector.data.UpdateDataObjectMeta(entry.GetTable().ID, int32(dataStart), int32(dataEnd))
+	tombstoneEnd := collector.data.bats[TombstoneObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
+	collector.data.UpdateTombstoneObjectMeta(entry.GetTable().ID, int32(tombstoneStart), int32(tombstoneEnd))
 	return nil
 }
 

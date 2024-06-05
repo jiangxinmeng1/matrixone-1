@@ -298,7 +298,7 @@ func (entry *TableEntry) GetLastestSchemaLocked(isTombstone bool) *Schema {
 	if isTombstone {
 		tombstoneSchema := entry.tombstoneSchema.Load()
 		if tombstoneSchema == nil {
-			entry.tombstoneSchema.Store(GetTombstoneSchema(true, entry.schema.Load()))
+			entry.tombstoneSchema.Store(GetTombstoneSchema(entry.schema.Load()))
 			tombstoneSchema = entry.tombstoneSchema.Load()
 		}
 		return tombstoneSchema
@@ -320,7 +320,7 @@ func (entry *TableEntry) GetVisibleSchema(txn txnif.TxnReader) (schema, tombston
 	defer entry.RUnlock()
 	node := entry.GetVisibleNodeLocked(txn)
 	if node != nil {
-		return node.BaseNode.Schema, node.BaseNode.GetTombstoneSchema(false)
+		return node.BaseNode.Schema, node.BaseNode.GetTombstoneSchema()
 	}
 	return nil, nil
 }

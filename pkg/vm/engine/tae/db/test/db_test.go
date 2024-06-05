@@ -2537,11 +2537,15 @@ func TestSegDelLogtail(t *testing.T) {
 		Table:  &api.TableID{DbId: did, TbId: tid},
 	}, false)
 	require.Nil(t, err)
-	require.Equal(t, 1, len(resp.Commands)) // object info
+	require.Equal(t, 2, len(resp.Commands)) // data object + tombstone object
 
 	require.Equal(t, api.Entry_Insert, resp.Commands[0].EntryType)
-	require.True(t, strings.HasSuffix(resp.Commands[0].TableName, "obj"))
-	require.Equal(t, uint32(9), resp.Commands[0].Bat.Vecs[0].Len) /* 2 Objects (create) + 4 (update object info) */
+	require.True(t, strings.HasSuffix(resp.Commands[0].TableName, "data_meta"))
+	require.Equal(t, uint32(9), resp.Commands[0].Bat.Vecs[0].Len) /* 5 create + 4 delete */
+
+	require.Equal(t, api.Entry_Insert, resp.Commands[1].EntryType)
+	require.True(t, strings.HasSuffix(resp.Commands[1].TableName, "tombstone_meta"))
+	require.Equal(t, uint32(4), resp.Commands[1].Bat.Vecs[0].Len) /* 2 create + 2 delete */
 
 	close()
 
@@ -2562,13 +2566,14 @@ func TestSegDelLogtail(t *testing.T) {
 		ckpEntries := tae.BGCheckpointRunner.GetAllIncrementalCheckpoints()
 		require.Equal(t, 1, len(ckpEntries))
 		entry := ckpEntries[0]
-		ins, del, cnins, segdel, err := entry.GetByTableID(context.Background(), tae.Runtime.Fs, tid)
+		ins, del, dataObj, tombstoneObj, err := entry.GetByTableID(context.Background(), tae.Runtime.Fs, tid)
 		require.NoError(t, err)
-		require.Nil(t, ins)                             // 0 ins
-		require.Nil(t, del)                             // 0  del
-		require.Nil(t, cnins)                           // 0  del
-		require.Equal(t, uint32(9), segdel.Vecs[0].Len) // 2 create + 4 update
-		require.Equal(t, 12, len(segdel.Vecs))
+		require.Nil(t, ins)                              // 0 ins
+		require.Nil(t, del)                              // 0  del
+		require.Equal(t, uint32(9), dataObj.Vecs[0].Len) // 5 create + 4 delete
+		require.Equal(t, 12, len(dataObj.Vecs))
+		require.Equal(t, uint32(4), tombstoneObj.Vecs[0].Len) // 2 create + 2 delete
+		require.Equal(t, 12, len(tombstoneObj.Vecs))
 	}
 	check()
 
@@ -4061,10 +4066,22 @@ func TestLogtailBasic(t *testing.T) {
 		Table:  &api.TableID{DbId: dbID, TbId: tableID},
 	}, true)
 	require.NoError(t, err)
-	require.Equal(t, 2, len(resp.Commands)) // 2 insert data and delete data
+	require.Equal(t, 4, len(resp.Commands)) // data object, tombstone object, insert data, delete data
 
 	// check data change
-	insDataEntry := resp.Commands[0]
+	dataObjectEntry := resp.Commands[0]
+	require.Equal(t, api.Entry_Insert, dataObjectEntry.EntryType)
+	require.Equal(t, 12, len(dataObjectEntry.Bat.Vecs))
+	check_same_rows(dataObjectEntry.Bat, 9) // 9 create, the first write is ignore
+	// test first user col, this is probably fragile, it depends on the details of MockSchema
+	// if something changes, delete this is okay.
+
+	tombstoneObjectEntry := resp.Commands[1]
+	require.Equal(t, api.Entry_Insert, tombstoneObjectEntry.EntryType)
+	require.Equal(t, 12, len(tombstoneObjectEntry.Bat.Vecs))
+	check_same_rows(tombstoneObjectEntry.Bat, 1) // 1 create
+
+	insDataEntry := resp.Commands[2]
 	require.Equal(t, api.Entry_Insert, insDataEntry.EntryType)
 	require.Equal(t, len(schema.ColDefs)+1, len(insDataEntry.Bat.Vecs)) // 5 columns, rowid + commit ts + 2 visibile
 	check_same_rows(insDataEntry.Bat, 99)                               // 99 rows, because the first write is excluded.
@@ -4074,7 +4091,7 @@ func TestLogtailBasic(t *testing.T) {
 	require.Equal(t, types.T_int8, firstCol.GetType().Oid)
 	require.NoError(t, err)
 
-	delDataEntry := resp.Commands[1]
+	delDataEntry := resp.Commands[3]
 	require.Equal(t, api.Entry_Delete, delDataEntry.EntryType)
 	require.Equal(t, fixedColCnt+1, len(delDataEntry.Bat.Vecs)) // 3 columns, rowid + commit_ts
 	check_same_rows(delDataEntry.Bat, 10)
@@ -6324,14 +6341,34 @@ func TestAlterFakePk(t *testing.T) {
 	}, true)
 
 	defer close()
-	require.Equal(t, 2, len(resp.Commands)) // first blk 4 insert; first blk 2 dels
+	require.Equal(t, 4, len(resp.Commands)) // data object, tombstone object, date insert, data delete
 	for i, cmd := range resp.Commands {
 		t.Logf("command %d, table name %v, type %d", i, cmd.TableName, cmd.EntryType)
 	}
 	require.Equal(t, api.Entry_Insert, resp.Commands[0].EntryType) // data insert
-	require.Equal(t, api.Entry_Delete, resp.Commands[1].EntryType) // data delete
+	require.Equal(t, api.Entry_Insert, resp.Commands[1].EntryType) // data insert
+	require.Equal(t, api.Entry_Insert, resp.Commands[2].EntryType) // data insert
+	require.Equal(t, api.Entry_Delete, resp.Commands[3].EntryType) // data delete
 
-	insBat, err := batch.ProtoBatchToBatch(resp.Commands[0].Bat)
+	dataObjectBat, err := batch.ProtoBatchToBatch(resp.Commands[0].Bat)
+	require.NoError(t, err)
+	tnDataObjectBat := containers.NewNonNullBatchWithSharedMemory(dataObjectBat, common.DefaultAllocator)
+	t.Log(tnDataObjectBat.Attrs)
+	require.Equal(t, 12, len(tnDataObjectBat.Vecs))
+	for _, v := range tnDataObjectBat.Vecs {
+		require.Equal(t, 1, v.Length())
+	}
+
+	tombstoneObjectBat, err := batch.ProtoBatchToBatch(resp.Commands[1].Bat)
+	require.NoError(t, err)
+	tnTombstoneObjectBat := containers.NewNonNullBatchWithSharedMemory(tombstoneObjectBat, common.DefaultAllocator)
+	t.Log(tnTombstoneObjectBat.Attrs)
+	require.Equal(t, 12, len(tnTombstoneObjectBat.Vecs)) // 1 fake pk + 1 rowid + 1 committs
+	for _, v := range tnTombstoneObjectBat.Vecs {
+		require.Equal(t, 1, v.Length())
+	}
+
+	insBat, err := batch.ProtoBatchToBatch(resp.Commands[2].Bat)
 	require.NoError(t, err)
 	tnInsBat := containers.NewNonNullBatchWithSharedMemory(insBat, common.DefaultAllocator)
 	t.Log(tnInsBat.Attrs)
@@ -6341,7 +6378,7 @@ func TestAlterFakePk(t *testing.T) {
 	}
 	t.Log(tnInsBat.GetVectorByName(pkgcatalog.FakePrimaryKeyColName).PPString(10))
 
-	delBat, err := batch.ProtoBatchToBatch(resp.Commands[1].Bat)
+	delBat, err := batch.ProtoBatchToBatch(resp.Commands[3].Bat)
 	require.NoError(t, err)
 	tnDelBat := containers.NewNonNullBatchWithSharedMemory(delBat, common.DefaultAllocator)
 	t.Log(tnDelBat.Attrs)
@@ -6477,21 +6514,23 @@ func TestAlterColumnAndFreeze(t *testing.T) {
 	testutil.CheckAllColRowsByScan(t, rel, 20, true)
 	require.NoError(t, txn.Commit(context.Background()))
 
+	t.Log(tae.Catalog.SimplePPString(3))
+
 	resp, close, _ := logtail.HandleSyncLogTailReq(context.TODO(), new(dummyCpkGetter), tae.LogtailMgr, tae.Catalog, api.SyncLogTailReq{
 		CnHave: tots(types.BuildTS(0, 0)),
 		CnWant: tots(types.MaxTs()),
 		Table:  &api.TableID{DbId: did, TbId: tid},
 	}, true)
 
-	require.Equal(t, 3, len(resp.Commands)) // 3 version insert
-	bat0 := resp.Commands[0].Bat
+	require.Equal(t, 4, len(resp.Commands)) // data object + 3 version insert
+	bat0 := resp.Commands[1].Bat
 	require.Equal(t, 12, len(bat0.Attrs))
 	require.Equal(t, "mock_9", bat0.Attrs[2+schema.GetSeqnum("mock_9")])
-	bat1 := resp.Commands[1].Bat
+	bat1 := resp.Commands[2].Bat
 	require.Equal(t, 13, len(bat1.Attrs))
 	require.Equal(t, "mock_9", bat1.Attrs[2+schema1.GetSeqnum("mock_9")])
 	require.Equal(t, "xyz", bat1.Attrs[2+schema1.GetSeqnum("xyz")])
-	bat2 := resp.Commands[2].Bat
+	bat2 := resp.Commands[3].Bat
 	require.Equal(t, 13, len(bat2.Attrs))
 	require.Equal(t, "mock_9", bat2.Attrs[2+schema1.GetSeqnum("mock_9")])
 	require.Equal(t, "mock_9", bat2.Attrs[2+schema2.GetSeqnum("mock_9")])
@@ -8329,14 +8368,15 @@ func TestSnapshotCheckpoint(t *testing.T) {
 		assert.Nil(t, err)
 	}
 	wg2.Wait()
+	t.Log(tae.Catalog.SimplePPString(3))
 	tae.ForceCheckpoint()
 	tae.ForceCheckpoint()
-	seg1 := testutil.GetUserTablesInsBatch(t, rel1.ID(), types.TS{}, snapshot, db.Catalog)
+	dataObject, tombstoneObject := testutil.GetUserTablesInsBatch(t, rel1.ID(), types.TS{}, snapshot, db.Catalog)
 	ckps, err := checkpoint.ListSnapshotCheckpoint(ctx, db.Opts.Fs, snapshot, rel1.ID(), checkpoint.SpecifiedCheckpoint)
 	assert.Nil(t, err)
-	var inslen, seglen int
+	var inslen, dataObjectLen, tombstoneObjectLen int
 	for _, ckp := range ckps {
-		ins, _, _, seg, cbs := testutil.ReadSnapshotCheckpoint(t, rel1.ID(), ckp.GetLocation(), db.Opts.Fs)
+		ins, _, dataObject, tombstoneObject, cbs := testutil.ReadSnapshotCheckpoint(t, rel1.ID(), ckp.GetLocation(), db.Opts.Fs)
 		for _, cb := range cbs {
 			if cb != nil {
 				cb()
@@ -8347,13 +8387,19 @@ func TestSnapshotCheckpoint(t *testing.T) {
 			assert.NoError(t, err)
 			inslen += moIns.Vecs[0].Length()
 		}
-		if seg != nil {
-			moIns, err := batch.ProtoBatchToBatch(seg)
+		if dataObject != nil {
+			moIns, err := batch.ProtoBatchToBatch(dataObject)
 			assert.NoError(t, err)
-			seglen += moIns.Vecs[0].Length()
+			dataObjectLen += moIns.Vecs[0].Length()
+		}
+		if tombstoneObject != nil {
+			moIns, err := batch.ProtoBatchToBatch(tombstoneObject)
+			assert.NoError(t, err)
+			tombstoneObjectLen += moIns.Vecs[0].Length()
 		}
 	}
-	assert.Equal(t, seglen, seg1.Length())
+	assert.Equal(t, dataObjectLen, dataObject.Length())
+	assert.Equal(t, tombstoneObjectLen, tombstoneObject.Length())
 	assert.Equal(t, int64(0), common.DebugAllocator.CurrNB())
 }
 

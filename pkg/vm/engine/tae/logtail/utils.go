@@ -1012,7 +1012,7 @@ func (data *CheckpointData) UpdateTombstoneObjectMeta(tid uint64, delStart, delE
 	if delEnd <= delStart {
 		return
 	}
-	data.resetTableMeta(tid, TombstoneObject, delStart, delEnd)
+	data.updateTableMeta(tid, TombstoneObject, delStart, delEnd)
 }
 
 func (data *CheckpointData) resetTableMeta(tid uint64, metaIdx int, start, end int32) {

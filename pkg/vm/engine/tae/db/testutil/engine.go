@@ -441,7 +441,7 @@ func ReadSnapshotCheckpoint(t *testing.T, tid uint64, location objectio.Location
 	return
 }
 
-func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Location, fs fileservice.FileService, ver uint32) (ins, del, cnIns, segDel *api.Batch, cb []func()) {
+func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Location, fs fileservice.FileService, ver uint32) (ins, del, dataObj, tombstoneObj *api.Batch, cb []func()) {
 	locs := make([]string, 0)
 	locs = append(locs, location.String())
 	locs = append(locs, strconv.Itoa(int(ver)))
@@ -459,16 +459,14 @@ func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Loc
 	assert.NoError(t, err)
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
-		if e.TableName == fmt.Sprintf("_%d_obj", tid) {
-			segDel = e.Bat
-		} else if e.EntryType == api.Entry_Delete {
-			del = e.Bat
-			if tid != pkgcatalog.MO_DATABASE_ID && tid != pkgcatalog.MO_TABLES_ID && tid != pkgcatalog.MO_COLUMNS_ID {
-				cnIns = entries[i-1].Bat
-				i--
-			}
-		} else {
+		if e.TableName == fmt.Sprintf("_%d_data_meta", tid) {
+			dataObj = e.Bat
+		} else if e.TableName == fmt.Sprintf("_%d_tombstone_meta", tid) {
+			tombstoneObj = e.Bat
+		} else if e.EntryType == api.Entry_Insert {
 			ins = e.Bat
+		} else {
+			del = e.Bat
 		}
 	}
 	for _, c := range cb {
@@ -602,7 +600,7 @@ func checkMOColumns(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *
 	assert.Nil(t, segDel)
 }
 
-func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cnIns, seg *api.Batch, start, end types.TS, c *catalog.Catalog) {
+func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, dataObject, tombstoneObject *api.Batch, start, end types.TS, c *catalog.Catalog) {
 	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
@@ -622,22 +620,21 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cn
 	data2 := collector.OrphanData()
 	bats := data2.GetBatches()
 	seg2 := bats[logtail.ObjectInfoIDX]
+	tombstone2 := bats[logtail.TombstoneObjectInfoIDX]
 
-	// seg batch doesn't exist before ckp V9
-	if seg != nil {
-		isProtoTNBatchEqual(ctx, t, seg, seg2)
-	}
+	isProtoTNBatchEqual(ctx, t, dataObject, seg2)
+	isProtoTNBatchEqual(ctx, t, tombstoneObject, tombstone2)
 }
 
-func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) *containers.Batch {
+func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (dataObject, tombstoneObject *containers.Batch) {
 	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
-	// p.TombstoneFn = func(be *catalog.ObjectEntry) error {
-	// 	if be.GetTable().ID != tid {
-	// 		return nil
-	// 	}
-	// 	return collector.VisitTombstone(be)
-	// }
+	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
+		if be.GetTable().ID != tid {
+			return nil
+		}
+		return collector.VisitObj(be)
+	}
 	p.ObjectFn = func(se *catalog.ObjectEntry) error {
 		if se.GetTable().ID != tid {
 			return nil
@@ -648,7 +645,7 @@ func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *cat
 	assert.NoError(t, err)
 	data := collector.OrphanData()
 	bats := data.GetBatches()
-	return bats[logtail.ObjectInfoIDX]
+	return bats[logtail.ObjectInfoIDX], bats[logtail.TombstoneObjectInfoIDX]
 }
 
 func CheckCheckpointReadWrite(

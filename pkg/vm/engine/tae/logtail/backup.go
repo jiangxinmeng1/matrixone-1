@@ -470,7 +470,8 @@ func LoadCheckpointEntriesFromKey(
 		commitAt := data.bats[ObjectInfoIDX].GetVectorByName(txnbase.SnapshotAttr_CommitTS).Get(i).(types.TS)
 		isAblk := data.bats[ObjectInfoIDX].GetVectorByName(ObjectAttr_State).Get(i).(bool)
 		if objectStats.Extent().End() == 0 {
-			panic(fmt.Sprintf("object %v Extent not empty", objectStats.ObjectName().String()))
+			// tn obj is in the batch too
+			continue
 		}
 
 		if deletedAt.IsEmpty() && isAblk {
@@ -493,20 +494,6 @@ func LoadCheckpointEntriesFromKey(
 				}
 			}
 		}
-	}
-
-	for i := 0; i < data.bats[TNObjectInfoIDX].Length(); i++ {
-		var objectStats objectio.ObjectStats
-		buf := data.bats[TNObjectInfoIDX].GetVectorByName(ObjectAttr_ObjectStats).Get(i).([]byte)
-		objectStats.UnMarshal(buf)
-		deletedAt := data.bats[TNObjectInfoIDX].GetVectorByName(EntryNode_DeleteAt).Get(i).(types.TS)
-		if objectStats.Extent().End() > 0 {
-			panic(any(fmt.Sprintf("extent end is not 0: %v, name is %v", objectStats.Extent().End(), objectStats.ObjectName().String())))
-		}
-		if !deletedAt.IsEmpty() {
-			panic(any(fmt.Sprintf("deleteAt is not empty: %v, name is %v", deletedAt.ToString(), objectStats.ObjectName().String())))
-		}
-		//locations = append(locations, objectStats.ObjectName())
 	}
 
 	// for i := 0; i < data.bats[BLKMetaInsertIDX].Length(); i++ {
@@ -647,33 +634,6 @@ func ReWriteCheckpointAndBlockFromKey(
 			panic(any(fmt.Sprintf("block %v deleteAt is empty", stats.ObjectName().String())))
 		}
 		addObjectToObjectData(stats, isABlk, !deleteAt.IsEmpty(), false, i, tid, &objectsData)
-	}
-
-	tnObjInfoData := data.bats[TNObjectInfoIDX]
-	tnObjInfoStats := tnObjInfoData.GetVectorByName(ObjectAttr_ObjectStats)
-	tnObjInfoState := tnObjInfoData.GetVectorByName(ObjectAttr_State)
-	tnObjInfoTid := tnObjInfoData.GetVectorByName(SnapshotAttr_TID)
-	tnObjInfoDelete := tnObjInfoData.GetVectorByName(EntryNode_DeleteAt)
-	tnObjInfoCommit := tnObjInfoData.GetVectorByName(txnbase.SnapshotAttr_CommitTS)
-	for i := 0; i < tnObjInfoData.Length(); i++ {
-		stats := objectio.NewObjectStats()
-		stats.UnMarshal(tnObjInfoStats.Get(i).([]byte))
-		isABlk := tnObjInfoState.Get(i).(bool)
-		deleteAt := tnObjInfoDelete.Get(i).(types.TS)
-		tid := tnObjInfoTid.Get(i).(uint64)
-		commitTS := tnObjInfoCommit.Get(i).(types.TS)
-
-		if commitTS.Less(&ts) {
-			panic(any(fmt.Sprintf("commitTs less than ts: %v-%v", commitTS.ToString(), ts.ToString())))
-		}
-
-		if stats.Extent().End() > 0 {
-			panic(any(fmt.Sprintf("extent end is not 0: %v, name is %v", stats.Extent().End(), stats.ObjectName().String())))
-		}
-		if !deleteAt.IsEmpty() {
-			panic(any(fmt.Sprintf("deleteAt is not empty: %v, name is %v", deleteAt.ToString(), stats.ObjectName().String())))
-		}
-		addObjectToObjectData(stats, isABlk, !deleteAt.IsEmpty(), true, i, tid, &objectsData)
 	}
 
 	// if blkCNMetaInsert.Length() > 0 {
@@ -1107,9 +1067,9 @@ func ReWriteCheckpointAndBlockFromKey(
 					objectio.SetObjectStatsExtent(insertObjBatch[tid].rowObjects[i].obj.stats, insertObjBatch[tid].rowObjects[i].location.Extent())
 					objectio.SetObjectStatsObjectName(insertObjBatch[tid].rowObjects[i].obj.stats, insertObjBatch[tid].rowObjects[i].location.Name())
 					infoInsert[obj.infoDel[0]] = insertObjBatch[tid].rowObjects[i].obj
-					if len(obj.infoTNRow) > 0 {
-						data.bats[TNObjectInfoIDX].Delete(obj.infoTNRow[0])
-					}
+					// if len(obj.infoTNRow) > 0 {
+					// 	data.bats[TNObjectInfoIDX].Delete(obj.infoTNRow[0])
+					// }
 				} else {
 					if infoDelete[insertObjBatch[tid].rowObjects[i].obj.infoDel[0]] {
 						panic("should not have info delete")
@@ -1139,7 +1099,7 @@ func ReWriteCheckpointAndBlockFromKey(
 		for i := range deleteRow {
 			objectInfoMeta.Delete(deleteRow[i])
 		}
-		data.bats[TNObjectInfoIDX].Compact()
+		// data.bats[TNObjectInfoIDX].Compact()
 		objectInfoMeta.Compact()
 		data.bats[ObjectInfoIDX].Close()
 		data.bats[ObjectInfoIDX] = objectInfoMeta

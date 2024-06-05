@@ -47,7 +47,6 @@ const (
 	ObjectAttr_ObjectStats      = "object_stats"
 	ObjectAttr_State            = "state"
 	ObjectAttr_Sorted           = "sorted"
-	ObjectAttr_IsTombstone      = "is_tombstone"
 	EntryNode_CreateAt          = "create_at"
 	EntryNode_DeleteAt          = "delete_at"
 )

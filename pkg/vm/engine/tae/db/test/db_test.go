@@ -2568,7 +2568,7 @@ func TestSegDelLogtail(t *testing.T) {
 		require.Nil(t, del)                             // 0  del
 		require.Nil(t, cnins)                           // 0  del
 		require.Equal(t, uint32(9), segdel.Vecs[0].Len) // 2 create + 4 update
-		require.Equal(t, 13, len(segdel.Vecs))
+		require.Equal(t, 12, len(segdel.Vecs))
 	}
 	check()
 

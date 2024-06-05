@@ -18,11 +18,11 @@ import (
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
 func (entry *ObjectEntry) foreachTombstoneInRange(
@@ -87,62 +87,6 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	return nil
 }
 
-func (entry *ObjectEntry) foreachTombstoneVisible(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	blkOffset uint16,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	var bat *containers.BlockView
-	var err error
-	idx := []int{0, 1}
-	schema := entry.GetTable().GetLastestSchema(true)
-	bat, err = entry.GetObjectData().GetColumnDataByIds(ctx, txn, schema, blkOffset, idx, mp)
-	if err != nil {
-		return err
-	}
-	if bat == nil || bat.Columns[0].Length() == 0 {
-		return nil
-	}
-	defer bat.Close()
-	rowIDVec := bat.GetColumnData(0).GetDownstreamVector()
-	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
-	var commitTSs []types.TS
-	if entry.IsAppendable() {
-		commitTSVec, err := entry.GetObjectData().GetCommitTSVector(uint32(len(rowIDs)), mp)
-		if err != nil {
-			return err
-		}
-		defer commitTSVec.Close()
-		commitTSs = vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
-	}
-	for i := 0; i < rowIDVec.Length(); i++ {
-		if !entry.IsAppendable() {
-			entry.RLock()
-			commitTS := entry.GetCreatedAtLocked()
-			entry.RUnlock()
-			pk := bat.GetColumnData(1).Get(i)
-			goNext, err := op(rowIDs[i], commitTS, false, pk)
-			if err != nil {
-				return err
-			}
-			if !goNext {
-				break
-			}
-		} else {
-			pk := bat.GetColumnData(1).Get(i)
-			goNext, err := op(rowIDs[i], commitTSs[i], false, pk)
-			if err != nil {
-				return err
-			}
-			if !goNext {
-				break
-			}
-		}
-	}
-	return nil
-}
-
 // for each tombstone in range [start,end]
 func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	ctx context.Context,
@@ -160,34 +104,39 @@ func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
 	return nil
 }
 
-func (entry *ObjectEntry) tryGetTombstoneVisible(
+func (entry *ObjectEntry) fillDeletes(
 	ctx context.Context,
+	blkID types.Blockid,
 	txn txnif.TxnReader,
-	rowID types.Rowid,
-	mp *mpool.MPool) (ok bool, commitTS types.TS, aborted bool, pk any, err error) {
-	if entry.HasCommittedPersistedData() {
-		var zm index.ZM
-		zm, err = entry.GetPKZoneMap(ctx)
-		if err != nil {
-			return
-		}
-		if !zm.Contains(rowID) {
-			return
-		}
-	}
+	view *containers.BaseView,
+	mp *mpool.MPool) (err error) {
 	blkCount := entry.BlockCnt()
 	for i := 0; i < blkCount; i++ {
-		entry.foreachTombstoneVisible(ctx, txn, uint16(i), mp,
-			func(row types.Rowid, ts types.TS, abort bool, pkVal any) (goNext bool, err error) {
-				if row != rowID {
-					return true, nil
+		schema := entry.GetTable().GetLastestSchema(true)
+		var rowIDsView *containers.ColumnView
+		rowIDsView, err = entry.GetObjectData().GetColumnDataById(ctx, txn, schema, uint16(i), 0, mp)
+		if err != nil {
+			return err
+		}
+		if rowIDsView == nil || rowIDsView.GetData() == nil {
+			return nil
+		}
+		defer rowIDsView.Close()
+		if rowIDsView.GetData().Length() == 0 {
+			return nil
+		}
+		rowIDVec := rowIDsView.GetData().GetDownstreamVector()
+		rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
+
+		for _, rowID := range rowIDs {
+			if types.PrefixCompare(rowID[:], blkID[:]) == 0 {
+				if view.DeleteMask == nil {
+					view.DeleteMask = &nulls.Nulls{}
 				}
-				ok = true
-				commitTS = ts
-				aborted = abort
-				pk = pkVal
-				return false, nil
-			})
+				_, rowOffset := rowID.Decode()
+				view.DeleteMask.Add(uint64(rowOffset))
+			}
+		}
 	}
 	return
 }

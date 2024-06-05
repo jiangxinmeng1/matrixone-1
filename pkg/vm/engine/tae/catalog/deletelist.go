@@ -18,11 +18,11 @@ import (
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
-	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
 func (entry *TableEntry) CollectDeleteInRange(
@@ -75,7 +75,16 @@ func (entry *TableEntry) IsDeleted(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	rowID types.Rowid,
+	vp *containers.VectorPool,
 	mp *mpool.MPool) (deleted bool, err error) {
+	rowIDs := vp.GetVector(&objectio.RowidType)
+	rowIDs.Append(rowID, false)
+	defer rowIDs.Close()
+	rowIDZM := index.NewZM(objectio.RowidType.Oid, objectio.RowidType.Scale)
+	if err = index.BatchUpdateZM(rowIDZM, rowIDs.GetDownstreamVector()); err != nil {
+		return
+	}
+
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
@@ -89,11 +98,11 @@ func (entry *TableEntry) IsDeleted(
 		if !visible {
 			continue
 		}
-		ok, _, _, _, err := tombstone.tryGetTombstoneVisible(ctx, txn, rowID, mp)
+		err = tombstone.GetObjectData().Contains(ctx, txn, false, rowIDs, rowIDZM, nil, mp)
 		if err != nil {
 			return false, err
 		}
-		if ok {
+		if rowIDs.IsNull(0) {
 			return true, nil
 		}
 	}
@@ -120,34 +129,7 @@ func (entry *TableEntry) FillDeletes(
 		if !visible {
 			continue
 		}
-		blkCount := 1
-		if !tombstone.IsAppendable() {
-			stats, err := tombstone.MustGetObjectStats()
-			if err != nil {
-				return err
-			}
-			blkCount = int(stats.BlkCnt())
-		}
-		for i := 0; i < blkCount; i++ {
-			err = tombstone.foreachTombstoneVisible(
-				ctx,
-				txn,
-				uint16(i),
-				mp,
-				func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-					if *rowID.BorrowBlockID() == blkID {
-						if view.DeleteMask == nil {
-							view.DeleteMask = &nulls.Nulls{}
-						}
-						_, rowOffset := rowID.Decode()
-						view.DeleteMask.Add(uint64(rowOffset))
-					}
-					return true, nil
-				})
-			if err != nil {
-				return err
-			}
-		}
+		tombstone.fillDeletes(ctx, blkID, txn, view, mp)
 	}
 	return
 }

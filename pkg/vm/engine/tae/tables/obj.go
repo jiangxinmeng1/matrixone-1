@@ -262,7 +262,7 @@ func (obj *object) getPersistedRowByFilter(
 		blkid := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkID)
 		rowID := objectio.NewRowid(blkid, offset)
 		var deleted bool
-		deleted, err = obj.meta.GetTable().IsDeleted(ctx, txn, *rowID, mp)
+		deleted, err = obj.meta.GetTable().IsDeleted(ctx, txn, *rowID, obj.rt.VectorPool.Small, mp)
 		if !deleted {
 			return
 		}

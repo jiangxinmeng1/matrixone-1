@@ -309,10 +309,8 @@ type TxnStore interface {
 		visitDatabase func(db any),
 		visitTable func(tbl any),
 		rotateTable func(dbName, tblName string, dbid, tid uint64),
-		visitMetadata func(block any),
 		visitObject func(obj any),
-		visitAppend func(bat any),
-		visitDelete func(ctx context.Context, deletes DeleteNode))
+		visitAppend func(bat any, isTombstone bool))
 	GetTransactionType() TxnType
 	UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error
 	FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error

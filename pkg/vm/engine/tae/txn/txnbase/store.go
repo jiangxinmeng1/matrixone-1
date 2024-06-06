@@ -163,10 +163,8 @@ func (store *NoopTxnStore) ObserveTxn(
 	visitDatabase func(db any),
 	visitTable func(tbl any),
 	rotateTable func(dbName, tblName string, dbid, tid uint64),
-	visitMetadata func(block any),
 	visitObject func(any),
-	visitAppend func(bat any),
-	visitDelete func(ctx context.Context, deletes txnif.DeleteNode)) {
+	visitAppend func(bat any, isTombstone bool)) {
 }
 
 func (store *NoopTxnStore) GetTransactionType() txnif.TxnType {

@@ -51,13 +51,7 @@ func (es EntryState) Repr() string {
 }
 
 var (
-	TNTombstoneSchemaAttr = []string{
-		AttrRowID,
-		AttrCommitTs,
-		AttrPKVal,
-		AttrAborted,
-	}
-	CNTombstoneCNSchemaAttr = []string{
+	TombstoneCNSchemaAttr = []string{
 		AttrRowID,
 		AttrPKVal,
 	}
@@ -71,54 +65,28 @@ var (
 	TombstoneBatchIdxes = []int{0, 1}
 )
 
-func GetTombstoneSchema(isPersistedByCN bool, objectSchema *Schema) *Schema {
+func GetTombstoneSchema(objectSchema *Schema) *Schema {
 	pkType := objectSchema.GetPrimaryKey().GetType()
 	schema := NewEmptySchema("tombstone")
 	schema.BlockMaxRows = objectSchema.BlockMaxRows
 	schema.ObjectMaxBlocks = objectSchema.ObjectMaxBlocks
-	if !isPersistedByCN {
-		// colTypes := []types.Type{
-		// 	types.T_Rowid.ToType(),
-		// 	types.T_TS.ToType(),
-		// 	pkType,
-		// 	types.T_bool.ToType(),
-		// }
-		colTypes := []types.Type{
-			types.T_Rowid.ToType(),
-			pkType,
-		}
-		for i, colname := range CNTombstoneCNSchemaAttr {
-			if i == 0 {
-				if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
-					panic(err)
-				}
-			} else {
-				if err := schema.AppendCol(colname, colTypes[i]); err != nil {
-					panic(err)
-				}
-			}
-		}
-		schema.Finalize(false)
-		return schema
-	} else {
-		colTypes := []types.Type{
-			types.T_Rowid.ToType(),
-			pkType,
-		}
-		for i, colname := range CNTombstoneCNSchemaAttr {
-			if i == 0 {
-				if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
-					panic(err)
-				}
-			} else {
-				if err := schema.AppendCol(colname, colTypes[i]); err != nil {
-					panic(err)
-				}
-			}
-		}
-		schema.Finalize(false)
-		return schema
+	colTypes := []types.Type{
+		types.T_Rowid.ToType(),
+		pkType,
 	}
+	for i, colname := range TombstoneCNSchemaAttr {
+		if i == 0 {
+			if err := schema.AppendPKCol(colname, colTypes[i], 0); err != nil {
+				panic(err)
+			}
+		} else {
+			if err := schema.AppendCol(colname, colTypes[i]); err != nil {
+				panic(err)
+			}
+		}
+	}
+	schema.Finalize(false)
+	return schema
 }
 
 func NewTombstoneBatch(pkType types.Type, mp *mpool.MPool) *containers.Batch {

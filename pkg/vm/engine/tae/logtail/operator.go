@@ -84,7 +84,7 @@ func (c *BoundTableOperator) processTableData() error {
 
 	}
 	for _, dirtyObj := range dirty.Tombstones {
-		obj, err := tbl.GetObjectByID(dirtyObj.ID, false)
+		obj, err := tbl.GetObjectByID(dirtyObj.ID, true)
 		if err != nil {
 			if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
 				continue

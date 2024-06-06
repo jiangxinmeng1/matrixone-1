@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
-	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
@@ -409,7 +408,7 @@ func writeIncrementalCheckpoint(
 	checkpointSize int,
 	fs fileservice.FileService,
 ) (objectio.Location, objectio.Location) {
-	factory := logtail.IncrementalCheckpointDataFactory(start, end, false, false)
+	factory := logtail.IncrementalCheckpointDataFactory(start, end, false)
 	data, err := factory(c)
 	assert.NoError(t, err)
 	defer data.Close()
@@ -442,7 +441,7 @@ func ReadSnapshotCheckpoint(t *testing.T, tid uint64, location objectio.Location
 	return
 }
 
-func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Location, fs fileservice.FileService, ver uint32) (ins, del, cnIns, segDel *api.Batch, cb []func()) {
+func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Location, fs fileservice.FileService, ver uint32) (ins, del, dataObj, tombstoneObj *api.Batch, cb []func()) {
 	locs := make([]string, 0)
 	locs = append(locs, location.String())
 	locs = append(locs, strconv.Itoa(int(ver)))
@@ -460,27 +459,27 @@ func cnReadCheckpointWithVersion(t *testing.T, tid uint64, location objectio.Loc
 	assert.NoError(t, err)
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
-		if e.TableName == fmt.Sprintf("_%d_obj", tid) {
-			segDel = e.Bat
-		} else if e.EntryType == api.Entry_Delete {
-			del = e.Bat
-			if tid != pkgcatalog.MO_DATABASE_ID && tid != pkgcatalog.MO_TABLES_ID && tid != pkgcatalog.MO_COLUMNS_ID {
-				cnIns = entries[i-1].Bat
-				i--
-			}
-		} else {
+		if e.TableName == fmt.Sprintf("_%d_data_meta", tid) {
+			dataObj = e.Bat
+		} else if e.TableName == fmt.Sprintf("_%d_tombstone_meta", tid) {
+			tombstoneObj = e.Bat
+		} else if e.EntryType == api.Entry_Insert {
 			ins = e.Bat
+		} else {
+			del = e.Bat
 		}
 	}
 	for _, c := range cb {
-		c()
+		if c != nil {
+			c()
+		}
 	}
 	return
 }
 
 func checkTNCheckpointData(ctx context.Context, t *testing.T, data *logtail.CheckpointData,
 	start, end types.TS, c *catalog.Catalog) {
-	factory := logtail.IncrementalCheckpointDataFactory(start, end, false, false)
+	factory := logtail.IncrementalCheckpointDataFactory(start, end, false)
 	data2, err := factory(c)
 	assert.NoError(t, err)
 	defer data2.Close()
@@ -510,10 +509,6 @@ func getBatchLength(bat *containers.Batch) int {
 }
 
 func isBatchEqual(ctx context.Context, t *testing.T, bat1, bat2 *containers.Batch) {
-	oldver := -1
-	if ver := ctx.Value(CtxOldVersion{}); ver != nil {
-		oldver = ver.(int)
-	}
 	require.Equal(t, getBatchLength(bat1), getBatchLength(bat2))
 	require.Equal(t, len(bat1.Vecs), len(bat2.Vecs))
 	for i := 0; i < getBatchLength(bat1); i++ {
@@ -522,14 +517,6 @@ func isBatchEqual(ctx context.Context, t *testing.T, bat1, bat2 *containers.Batc
 			if vec1.Length() == 0 || vec2.Length() == 0 {
 				// for commitTS and rowid in checkpoint
 				// logutil.Warnf("empty vec attr %v", bat1.Attrs[j])
-				continue
-			}
-			if oldver >= 0 && oldver <= int(logtail.CheckpointVersion5) && // read old version checkpoint
-				logtail.CheckpointCurrentVersion > logtail.CheckpointVersion5 && // check on new version
-				bat1.Attrs[j] == pkgcatalog.BlockMeta_MemTruncPoint {
-				// memTruncatePoint vector is committs vec in old checkpoint
-				// it can't be the same with newly collected on new version checkpoint, just skip it
-				logutil.Infof("isBatchEqual skip attr %v for ver.%d on ver.%d", bat1.Attrs[j], oldver, logtail.CheckpointCurrentVersion)
 				continue
 			}
 			// t.Logf("attr %v, row %d", bat1.Attrs[j], i)
@@ -565,7 +552,7 @@ func checkCNCheckpointData(ctx context.Context, t *testing.T, tid uint64, ins, d
 }
 
 func checkMODatabase(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector(start, end, false)
+	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
 	p.DatabaseFn = collector.VisitDB
 	err := c.RecurLoop(p)
@@ -581,7 +568,7 @@ func checkMODatabase(ctx context.Context, t *testing.T, ins, del, cnIns, segDel 
 }
 
 func checkMOTables(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector(start, end, false)
+	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
 	p.TableFn = collector.VisitTable
 	err := c.RecurLoop(p)
@@ -597,7 +584,7 @@ func checkMOTables(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *a
 }
 
 func checkMOColumns(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector(start, end, false)
+	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
 	p.TableFn = collector.VisitTable
 	err := c.RecurLoop(p)
@@ -613,8 +600,8 @@ func checkMOColumns(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *
 	assert.Nil(t, segDel)
 }
 
-func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cnIns, seg *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector(start, end, false)
+func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, dataObject, tombstoneObject *api.Batch, start, end types.TS, c *catalog.Catalog) {
+	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
 		if be.GetTable().ID != tid {
@@ -630,33 +617,24 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, cn
 	}
 	err := c.RecurLoop(p)
 	assert.NoError(t, err)
-	collector.LoadAndCollectObject(c, collector.VisitObj)
 	data2 := collector.OrphanData()
 	bats := data2.GetBatches()
-	ins2 := bats[logtail.BLKMetaInsertIDX]
-	// del2 := bats[logtail.BLKMetaDeleteIDX]
-	// cnIns2 := bats[logtail.BLKCNMetaInsertIDX]
 	seg2 := bats[logtail.ObjectInfoIDX]
+	tombstone2 := bats[logtail.TombstoneObjectInfoIDX]
 
-	isProtoTNBatchEqual(ctx, t, ins, ins2)
-	// isProtoTNBatchEqual(ctx, t, del, del2)// del is always empty after block is removed
-	// isProtoTNBatchEqual(ctx, t, cnIns, cnIns2)
-
-	// seg batch doesn't exist before ckp V9
-	if seg != nil {
-		isProtoTNBatchEqual(ctx, t, seg, seg2)
-	}
+	isProtoTNBatchEqual(ctx, t, dataObject, seg2)
+	isProtoTNBatchEqual(ctx, t, tombstoneObject, tombstone2)
 }
 
-func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (*containers.Batch, *containers.Batch) {
-	collector := logtail.NewIncrementalCollector(start, end, false)
+func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (dataObject, tombstoneObject *containers.Batch) {
+	collector := logtail.NewIncrementalCollector(start, end)
 	p := &catalog.LoopProcessor{}
-	// p.TombstoneFn = func(be *catalog.ObjectEntry) error {
-	// 	if be.GetTable().ID != tid {
-	// 		return nil
-	// 	}
-	// 	return collector.VisitTombstone(be)
-	// }
+	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
+		if be.GetTable().ID != tid {
+			return nil
+		}
+		return collector.VisitObj(be)
+	}
 	p.ObjectFn = func(se *catalog.ObjectEntry) error {
 		if se.GetTable().ID != tid {
 			return nil
@@ -665,10 +643,9 @@ func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *cat
 	}
 	err := c.RecurLoop(p)
 	assert.NoError(t, err)
-	collector.LoadAndCollectObject(c, collector.VisitObj)
 	data := collector.OrphanData()
 	bats := data.GetBatches()
-	return bats[logtail.BLKMetaInsertIDX], bats[logtail.ObjectInfoIDX]
+	return bats[logtail.ObjectInfoIDX], bats[logtail.TombstoneObjectInfoIDX]
 }
 
 func CheckCheckpointReadWrite(

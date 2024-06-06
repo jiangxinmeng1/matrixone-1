@@ -461,10 +461,8 @@ func (store *txnStore) ObserveTxn(
 	visitDatabase func(db any),
 	visitTable func(tbl any),
 	rotateTable func(dbName, tblName string, dbid, tid uint64),
-	visitMetadata func(block any),
 	visitObject func(obj any),
-	visitAppend func(bat any),
-	visitDelete func(ctx context.Context, vnode txnif.DeleteNode)) {
+	visitAppend func(bat any, isTombstone bool)) {
 	for _, db := range store.dbs {
 		if db.createEntry != nil || db.dropEntry != nil {
 			visitDatabase(db.entry)
@@ -500,7 +498,22 @@ func (store *txnStore) ObserveTxn(
 							Seqnums:    schema.AllSeqnums(),
 							Batch:      anode.data,
 						}
-						visitAppend(bat)
+						visitAppend(bat, false)
+					}
+				}
+			}
+			if tbl.tombstoneTableSpace != nil {
+				for _, node := range tbl.tombstoneTableSpace.nodes {
+					anode, ok := node.(*anode)
+					if ok {
+						schema := anode.table.GetLocalSchema(true)
+						bat := &containers.BatchWithVersion{
+							Version:    schema.Version,
+							NextSeqnum: uint16(schema.Extra.NextColSeqnum),
+							Seqnums:    schema.AllSeqnums(),
+							Batch:      anode.data,
+						}
+						visitAppend(bat, true)
 					}
 				}
 			}

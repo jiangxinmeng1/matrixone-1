@@ -143,25 +143,3 @@ type Object interface {
 		mp *mpool.MPool) (err error)
 	Close()
 }
-
-type Tombstone interface {
-	EstimateMemSizeLocked() (dsize int)
-	GetChangeIntentionCntLocked() uint32
-	GetDeleteCnt() uint32
-	GetDeletesListener() func(uint64, types.TS) error
-	// GetOrCreateDeleteChain(blkID uint16) *updates.MVCCHandle
-	HasDeleteIntentsPreparedIn(from types.TS, to types.TS) (found bool, isPersist bool)
-	HasInMemoryDeleteIntentsPreparedInByBlock(blockID uint16, from, to types.TS) (bool, bool)
-	SetDeletesListener(l func(uint64, types.TS) error)
-	StringLocked(level common.PPLevel, depth int, prefix string) string
-	String(level common.PPLevel, depth int, prefix string) string
-	// TryGetDeleteChain(blkID uint16) *updates.MVCCHandle
-	UpgradeDeleteChain(blkID uint16)
-	UpgradeDeleteChainByTSLocked(ts types.TS)
-	VisitDeletes(ctx context.Context, start, end types.TS, bat, tnBatch *containers.Batch, skipMemory bool) (*containers.Batch, int, int, error)
-	GetObject() any
-	InMemoryDeletesExistedLocked() bool
-	// for test
-	GetLatestDeltaloc(uint16) objectio.Location
-	CheckTombstone()
-}

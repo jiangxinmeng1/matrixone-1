@@ -35,7 +35,7 @@ import (
 )
 
 type ObjectDataFactory = func(meta *ObjectEntry) data.Object
-type TombstoneFactory = func(meta *ObjectEntry) data.Tombstone
+
 type ObjectEntry struct {
 	ID     types.Objectid
 	blkCnt int

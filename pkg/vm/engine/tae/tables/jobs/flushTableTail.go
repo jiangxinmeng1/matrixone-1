@@ -37,7 +37,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
@@ -472,7 +471,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		bat.AddVector(schema.ColDefs[colidx].Name, vec.TryConvertConst())
 	}
 
-	if isTombstone && deletes != nil {
+	if isTombstone && bat.Deletes != nil {
 		panic(fmt.Sprintf("logic err, tombstone %v has deletes", obj.GetID().String()))
 	}
 
@@ -549,7 +548,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		}
 	}
 
-	for i := range task.aObjHandles {
+	for i := range objHandles {
 		bat, empty, err := task.prepareAObjSortedData(ctx, i, readColIdxs, sortKeyPos, isTombstone)
 		if err != nil {
 			return err
@@ -572,12 +571,21 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		// no pk, just pick the first column to reshape
 		sortKeyPos = 0
 	}
+	mergeRowCount := 0
 	for _, bat := range readedBats {
-		task.mergeRowsCnt += bat.Vecs[sortKeyPos].Length()
+		mergeRowCount += bat.Vecs[sortKeyPos].Length()
 	}
-	task.mergeRowsCnt -= task.aObjDeletesCnt
+	if !isTombstone {
+		mergeRowCount -= task.aObjDeletesCnt
+	}
 
-	if task.mergeRowsCnt == 0 {
+	if isTombstone {
+		task.tombstoneMergeRowsCnt = mergeRowCount
+	} else {
+		task.mergeRowsCnt = mergeRowCount
+	}
+
+	if mergeRowCount == 0 {
 		// just soft delete all Objects
 		for _, obj := range objHandles {
 			tbl := obj.GetRelation()
@@ -591,12 +599,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		return nil
 	}
 
-if isTombstone {
-	task.tombstoneMergeRowsCnt = totalRowCnt
-} else {
-	task.mergeRowsCnt = totalRowCnt
-}
-	rowsLeft := task.mergeRowsCnt
+	rowsLeft := mergeRowCount
 	for rowsLeft > 0 {
 		if rowsLeft > int(schema.BlockMaxRows) {
 			toLayout = append(toLayout, schema.BlockMaxRows)

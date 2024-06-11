@@ -490,10 +490,10 @@ func (tbl *txnTable) CreateObject(isTombstone bool) (obj handle.Object, err erro
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.Create.Add(1)
 	})
-	return tbl.createObject(catalog.ES_Appendable,  nil, isTombstone)
+	return tbl.createObject(catalog.ES_Appendable, nil, isTombstone)
 }
 
-func (tbl *txnTable) CreateNonAppendableObject( opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateNonAppendableObject(opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.CreateNonAppendable.Add(1)
 	})
@@ -511,14 +511,7 @@ func (tbl *txnTable) createObject(state catalog.EntryState, opts *objectio.Creat
 	}
 	obj = newObject(tbl, meta)
 	tbl.store.IncreateWriteCnt()
-<<<<<<< HEAD
 	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
-	if is1PC {
-		meta.Set1PC()
-	}
-=======
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID)
->>>>>>> main
 	tbl.txnEntries.Append(meta)
 	return
 }

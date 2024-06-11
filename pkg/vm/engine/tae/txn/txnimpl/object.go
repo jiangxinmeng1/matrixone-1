@@ -308,31 +308,6 @@ func (obj *txnObject) GetColumnDataByIds(
 	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
 }
 
-func (obj *txnObject) GetColumnDataByName(
-	ctx context.Context, blkID uint16, attr string, mp *mpool.MPool,
-) (*containers.ColumnView, error) {
-	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
-	colIdx := schema.GetColIdx(attr)
-	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, schema, blkID, colIdx, mp)
-}
-
-func (obj *txnObject) GetColumnDataByNames(
-	ctx context.Context, blkID uint16, attrs []string, mp *mpool.MPool,
-) (*containers.BlockView, error) {
-	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
-	attrIds := make([]int, len(attrs))
-	for i, attr := range attrs {
-		attrIds[i] = schema.GetColIdx(attr)
-	}
-	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataByIds(obj.entry, attrIds, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, schema, blkID, attrIds, mp)
-}
-
 func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) error {
 	id := obj.entry.AsCommonID()
 	id.SetBlockOffset(blkID)

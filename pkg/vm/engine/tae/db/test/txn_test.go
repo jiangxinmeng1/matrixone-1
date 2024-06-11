@@ -247,7 +247,7 @@ func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint3
 	for blockIt.Valid() {
 		blk := blockIt.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			view, err = blk.GetColumnDataByName(context.Background(), uint16(j), repertory.ColDefs[1].Name, common.DefaultAllocator)
+			view, err = blk.GetColumnDataById(context.Background(), uint16(j), repertory.ColDefs[1].Idx, common.DefaultAllocator)
 			if err != nil {
 				return
 			}

@@ -764,21 +764,6 @@ func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obje
 	return tableSpace.AddObjsWithMetaLoc(pkVecs, stats)
 }
 
-func (tbl *txnTable) LocalDeletesToString() string {
-	s := fmt.Sprintf("<txnTable-%d>[LocalDeletes]:\n", tbl.GetID())
-	if tbl.tableSpace != nil {
-		s = fmt.Sprintf("%s%s", s, tbl.tableSpace.DeletesToString())
-	}
-	return s
-}
-
-func (tbl *txnTable) IsLocalDeleted(row uint32) bool {
-	if tbl.tableSpace == nil {
-		return false
-	}
-	return tbl.tableSpace.IsDeleted(row)
-}
-
 func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id *common.ID, offset uint32, err error) {
 	if filter.Op != handle.FilterEq {
 		panic("logic error")
@@ -858,13 +843,6 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 	return
 }
 
-func (tbl *txnTable) GetLocalValue(row uint32, col uint16) (v any, isNull bool, err error) {
-	if tbl.tableSpace == nil {
-		return
-	}
-	return tbl.tableSpace.GetValue(row, col)
-}
-
 func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, col uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
 	if tbl.tableSpace != nil && id.ObjectID().Eq(tbl.tableSpace.entry.ID) {
 		return tbl.tableSpace.GetValue(row, col)
@@ -931,16 +909,6 @@ func (tbl *txnTable) AlterTable(ctx context.Context, req *apipb.AlterTableReq) e
 	tbl.schema = newSchema // update new schema to txn local schema
 	//TODO(aptend): handle written data in localobj, keep the batch aligned with the new schema
 	return err
-}
-
-func (tbl *txnTable) UncommittedRows() uint32 {
-	if tbl.tableSpace == nil {
-		return 0
-	}
-	return tbl.tableSpace.Rows()
-}
-func (tbl *txnTable) NeedRollback() bool {
-	return tbl.createEntry != nil && tbl.dropEntry != nil
 }
 
 // PrePrepareDedup do deduplication check for 1PC Commit or 2PC Prepare

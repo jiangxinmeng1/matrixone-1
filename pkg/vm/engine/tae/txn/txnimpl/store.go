@@ -487,8 +487,8 @@ func (store *txnStore) ObserveTxn(
 					visitTable(txnEntry)
 				}
 			}
-			if tbl.tableSpace != nil {
-				for _, node := range tbl.tableSpace.nodes {
+			if tbl.dataTable.tableSpace != nil {
+				for _, node := range tbl.dataTable.tableSpace.nodes {
 					anode, ok := node.(*anode)
 					if ok {
 						schema := anode.table.GetLocalSchema(false)
@@ -502,8 +502,8 @@ func (store *txnStore) ObserveTxn(
 					}
 				}
 			}
-			if tbl.tombstoneTableSpace != nil {
-				for _, node := range tbl.tombstoneTableSpace.nodes {
+			if tbl.tombstoneTable.tableSpace != nil {
+				for _, node := range tbl.tombstoneTable.tableSpace.nodes {
 					anode, ok := node.(*anode)
 					if ok {
 						schema := anode.table.GetLocalSchema(true)

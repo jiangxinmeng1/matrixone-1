@@ -19,10 +19,12 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
@@ -39,7 +41,6 @@ type baseTable struct {
 
 	tableSpace        *tableSpace
 	dedupedObjectHint uint64
-	dedupedBlockID    *types.Blockid
 }
 
 func newBaseTable(schema *catalog.Schema, isTombstone bool) *baseTable {
@@ -139,18 +140,18 @@ func (tbl *baseTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obj
 					return
 				}
 				//do PK deduplication check against txn's snapshot data.
-				if err = tbl.DedupSnapByPK(ctx, v, false, isTombstone); err != nil {
+				if err = tbl.txnTable.DedupSnapByPK(ctx, v, false, tbl.isTombstone); err != nil {
 					return
 				}
 			}
 		} else if dedupType == txnif.FullSkipWorkSpaceDedup {
 			//do PK deduplication check against txn's snapshot data.
-			if err = tbl.DedupSnapByMetaLocs(ctx, metaLocs, false, isTombstone); err != nil {
+			if err = tbl.txnTable.DedupSnapByMetaLocs(ctx, metaLocs, false, tbl.isTombstone); err != nil {
 				return
 			}
 		} else if dedupType == txnif.IncrementalDedup {
 			//do PK deduplication check against txn's snapshot data.
-			if err = tbl.DedupSnapByMetaLocs(ctx, metaLocs, true, isTombstone); err != nil {
+			if err = tbl.txnTable.DedupSnapByMetaLocs(ctx, metaLocs, true, tbl.isTombstone); err != nil {
 				return
 			}
 		}
@@ -161,57 +162,138 @@ func (tbl *baseTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obj
 	}
 	return tbl.tableSpace.AddObjsWithMetaLoc(pkVecs, stats)
 }
-
-func (tbl *baseTable) PrePrepareDedup(ctx context.Context) (err error) {
-	if tbl.tableSpace == nil || !tbl.schema.HasPK() || tbl.schema.IsSecondaryIndexTable() {
+func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, dedupAfterSnapshotTS bool) (rowIDs containers.Vector, err error) {
+	it := newObjectItOnSnap(tbl.txnTable, tbl.isTombstone)
+	rowIDs = tbl.txnTable.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
+	pkType := pks.GetType()
+	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
+	if err = index.BatchUpdateZM(keysZM, pks.GetDownstreamVector()); err != nil {
 		return
 	}
-	var zm index.ZM
-	pkColPos := tbl.schema.GetSingleSortKeyIdx()
-	for _, node := range tbl.tableSpace.nodes {
-		if node.IsPersisted() {
-			err = tbl.DoPrecommitDedupByNode(ctx, node, isTombstone)
-			if err != nil {
-				return
-			}
+	vector.AppendMultiFixed[types.Rowid](
+		rowIDs.GetDownstreamVector(),
+		types.EmptyRowid,
+		true,
+		pks.Length(),
+		common.WorkspaceAllocator,
+	)
+	if err != nil {
+		return
+	}
+	var (
+		name objectio.ObjectNameShort
+		bf   objectio.BloomFilter
+	)
+	maxObjectHint := uint64(0)
+	for ; it.Valid(); it.Next() {
+		obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
+		objectHint := obj.SortHint
+		if objectHint > maxObjectHint {
+			maxObjectHint = objectHint
+		}
+		objData := obj.GetObjectData()
+		if objData == nil {
 			continue
 		}
-		pkVec, err := node.WindowColumn(0, node.Rows(), pkColPos)
+
+		// if it is in the incremental deduplication scenario
+		// coarse check whether all rows in this block are committed before the snapshot timestamp
+		// if true, skip this block's deduplication
+		if dedupAfterSnapshotTS &&
+			objData.CoarseCheckAllRowsCommittedBefore(tbl.txnTable.store.txn.GetSnapshotTS()) {
+			continue
+		}
+		if obj.HasCommittedPersistedData() {
+			stats := obj.GetObjectStats()
+			var skip bool
+			if skip, err = quickSkipThisObject(ctx, keysZM, obj); err != nil {
+				return
+			} else if skip {
+				it.Next()
+				continue
+			}
+			if bf, err = tryGetCurrentObjectBF(
+				ctx,
+				stats.ObjectLocation(),
+				bf,
+				&name,
+				tbl.txnTable.store.rt.Fs.Service,
+			); err != nil {
+				return
+			}
+			name = *stats.ObjectShortName()
+		}
+		err = obj.GetObjectData().GetDuplicatedRows(
+			ctx,
+			tbl.txnTable.store.txn,
+			pks,
+			nil,
+			true,
+			true,
+			objectio.BloomFilter{},
+			rowIDs,
+			common.WorkspaceAllocator,
+		)
 		if err != nil {
-			return err
+			return
 		}
-		if zm.Valid() {
-			zm.ResetMinMax()
-		} else {
-			pkType := pkVec.GetType()
-			zm = index.NewZM(pkType.Oid, pkType.Scale)
+	}
+	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint)
+	return
+}
+
+func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.Vector) (rowIDs containers.Vector, err error) {
+	objIt := tbl.txnTable.entry.MakeObjectIt(false, tbl.isTombstone)
+	rowIDs = tbl.txnTable.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
+	vector.AppendMultiFixed[types.Rowid](
+		rowIDs.GetDownstreamVector(),
+		types.EmptyRowid,
+		true,
+		pks.Length(),
+		common.WorkspaceAllocator,
+	)
+	if err != nil {
+		return
+	}
+	dedupedHint := tbl.dedupedObjectHint
+	for ; objIt.Valid(); objIt.Next() {
+		obj := objIt.Get().GetPayload()
+		if obj.SortHint < dedupedHint {
+			break
 		}
-		if err = index.BatchUpdateZM(zm, pkVec.GetDownstreamVector()); err != nil {
-			pkVec.Close()
-			return err
+		obj.RLock()
+		shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
+		obj.RUnlock()
+		if shouldSkip {
+			continue
 		}
-		if err = tbl.DoPrecommitDedupByPK(pkVec, zm, isTombstone); err != nil {
-			pkVec.Close()
-			return err
+		err = obj.GetObjectData().GetDuplicatedRows(
+			ctx,
+			tbl.txnTable.store.txn,
+			pks,
+			nil,
+			true,
+			true,
+			objectio.BloomFilter{},
+			rowIDs,
+			common.WorkspaceAllocator,
+		)
+		if err != nil {
+			return
 		}
-		pkVec.Close()
 	}
 	return
 }
 
-func (tbl *baseTable) updateDedupedObjectHintAndBlockID(hint uint64, id *types.Blockid, isTombstone bool) {
+func (tbl *baseTable) updateDedupedObjectHintAndBlockID(hint uint64) {
 	if tbl.dedupedObjectHint == 0 {
 		tbl.dedupedObjectHint = hint
-		tbl.dedupedBlockID = id
 		return
 	}
 	if tbl.dedupedObjectHint > hint {
 		tbl.dedupedObjectHint = hint
 		tbl.dedupedObjectHint = hint
 		return
-	}
-	if tbl.dedupedObjectHint == hint && tbl.dedupedBlockID.Compare(*id) > 0 {
-		tbl.dedupedBlockID = id
 	}
 }
 
@@ -226,4 +308,40 @@ func (tbl *baseTable) PrePrepare() error {
 		return tbl.tableSpace.PrepareApply()
 	}
 	return nil
+}
+
+func quickSkipThisObject(
+	ctx context.Context,
+	keysZM index.ZM,
+	meta *catalog.ObjectEntry,
+) (ok bool, err error) {
+	zm, err := meta.GetPKZoneMap(ctx)
+	if err != nil {
+		return
+	}
+	ok = !zm.FastIntersect(keysZM)
+	return
+}
+
+func tryGetCurrentObjectBF(
+	ctx context.Context,
+	currLocation objectio.Location,
+	prevBF objectio.BloomFilter,
+	prevObjName *objectio.ObjectNameShort,
+	fs fileservice.FileService,
+) (currBf objectio.BloomFilter, err error) {
+	if len(currLocation) == 0 {
+		return
+	}
+	if objectio.IsSameObjectLocVsShort(currLocation, prevObjName) {
+		currBf = prevBF
+		return
+	}
+	currBf, err = objectio.FastLoadBF(
+		ctx,
+		currLocation,
+		false,
+		fs,
+	)
+	return
 }

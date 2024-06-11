@@ -66,10 +66,7 @@ type ObjectReader interface {
 	// GetByFilter(filter Filter, offsetOnly bool) (map[uint64]*batch.Batch, error)
 	String() string
 	GetMeta() any
-	GetByFilter(ctx context.Context, filter *Filter, mp *mpool.MPool) (uint16, uint32, error)
-	GetColumnDataByNames(ctx context.Context, blkID uint16, attrs []string, mp *mpool.MPool) (*containers.BlockView, error)
 	GetColumnDataByIds(ctx context.Context, blkID uint16, colIdxes []int, mp *mpool.MPool) (*containers.BlockView, error)
-	GetColumnDataByName(context.Context, uint16, string, *mpool.MPool) (*containers.ColumnView, error)
 	GetColumnDataById(context.Context, uint16, int, *mpool.MPool) (*containers.ColumnView, error)
 
 	GetRelation() Relation

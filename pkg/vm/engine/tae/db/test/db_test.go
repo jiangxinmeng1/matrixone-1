@@ -381,7 +381,7 @@ func TestCreateBlock(t *testing.T) {
 	schema := catalog.MockSchemaAll(13, 12)
 	rel, err := database.CreateRelation(schema)
 	assert.Nil(t, err)
-	_, err = rel.CreateObject(false, false)
+	_, err = rel.CreateObject(false)
 	assert.Nil(t, err)
 
 	t.Log(db.Catalog.SimplePPString(common.PPL1))
@@ -412,7 +412,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		rel, err := database.GetRelationByName(schema.Name)
 		readSchema := rel.Schema(false)
 		assert.Nil(t, err)
-		obj, err := rel.CreateNonAppendableObject(false, false, nil)
+		obj, err := rel.CreateNonAppendableObject(false, nil)
 		assert.Nil(t, err)
 		dataBlk := obj.GetMeta().(*catalog.ObjectEntry).GetObjectData()
 		sid := objectio.NewObjectid()
@@ -482,7 +482,7 @@ func TestCreateObject(t *testing.T) {
 	assert.Nil(t, err)
 	rel, err := db.CreateRelation(schema)
 	assert.Nil(t, err)
-	_, err = rel.CreateNonAppendableObject(false, false, nil)
+	_, err = rel.CreateNonAppendableObject(false, nil)
 	assert.Nil(t, err)
 	assert.Nil(t, txn.Commit(context.Background()))
 
@@ -1192,7 +1192,7 @@ func TestRollback1(t *testing.T) {
 	processor := new(catalog.LoopProcessor)
 	processor.ObjectFn = onSegFn
 	txn, rel := testutil.GetDefaultRelation(t, db, schema.Name)
-	_, err := rel.CreateObject(false, false)
+	_, err := rel.CreateObject(false)
 	assert.Nil(t, err)
 
 	tableMeta := rel.GetMeta().(*catalog.TableEntry)
@@ -1207,7 +1207,7 @@ func TestRollback1(t *testing.T) {
 	assert.Equal(t, objCnt, 0)
 
 	txn, rel = testutil.GetDefaultRelation(t, db, schema.Name)
-	obj, err := rel.CreateObject(false, false)
+	obj, err := rel.CreateObject(false)
 	assert.Nil(t, err)
 	objMeta := obj.GetMeta().(*catalog.ObjectEntry)
 	assert.Nil(t, txn.Commit(context.Background()))
@@ -7190,13 +7190,13 @@ func TestGCCatalog1(t *testing.T) {
 	tb3, err := db2.CreateRelation(schema3)
 	assert.Nil(t, err)
 
-	_, err = tb.CreateObject(false, false)
+	_, err = tb.CreateObject(false)
 	assert.Nil(t, err)
-	_, err = tb2.CreateObject(false, false)
+	_, err = tb2.CreateObject(false)
 	assert.Nil(t, err)
-	obj3, err := tb2.CreateObject(false, false)
+	obj3, err := tb2.CreateObject(false)
 	assert.Nil(t, err)
-	obj4, err := tb3.CreateObject(false, false)
+	obj4, err := tb3.CreateObject(false)
 	assert.Nil(t, err)
 
 	err = txn1.Commit(context.Background())

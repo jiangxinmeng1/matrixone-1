@@ -56,7 +56,7 @@ func TestTables1(t *testing.T) {
 	handle := table.GetHandle(false)
 	_, err := handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
-	obj, _ := rel.CreateObject(false, false)
+	obj, _ := rel.CreateObject(false)
 	id := obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender := handle.SetAppender(id)
 	assert.NotNil(t, appender)
@@ -75,7 +75,7 @@ func TestTables1(t *testing.T) {
 	_, err = handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
 
-	obj, _ = rel.CreateObject(false, false)
+	obj, _ = rel.CreateObject(false)
 	id = obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender = handle.SetAppender(id)
 
@@ -86,7 +86,7 @@ func TestTables1(t *testing.T) {
 	_, err = handle.GetAppender()
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound))
 
-	obj, _ = rel.CreateObject(false, false)
+	obj, _ = rel.CreateObject(false)
 
 	id = obj.GetMeta().(*catalog.ObjectEntry).AsCommonID()
 	appender = handle.SetAppender(id)
@@ -159,7 +159,7 @@ func TestTxn1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		_, err = rel.CreateObject(false, false)
+		_, err = rel.CreateObject(false)
 		assert.Nil(t, err)
 	}
 	{

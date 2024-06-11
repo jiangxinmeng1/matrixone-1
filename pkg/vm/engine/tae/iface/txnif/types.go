@@ -206,8 +206,6 @@ type BaseMVCCNode interface {
 	IsCommitting() bool
 	IsCommitted() bool
 	IsAborted() bool
-	Set1PC()
-	Is1PC() bool
 
 	GetEnd() types.TS
 	GetStart() types.TS
@@ -292,8 +290,8 @@ type TxnStore interface {
 	DatabaseNames() []string
 
 	GetObject(id *common.ID, isTombstone bool) (handle.Object, error)
-	CreateObject(dbId, tid uint64, is1PC, isTombstone bool) (handle.Object, error)
-	CreateNonAppendableObject(dbId, tid uint64, is1PC, isTombstone bool, opt *objectio.CreateObjOpt) (handle.Object, error)
+	CreateObject(dbId, tid uint64, isTombstone bool) (handle.Object, error)
+	CreateNonAppendableObject(dbId, tid uint64, isTombstone bool, opt *objectio.CreateObjOpt) (handle.Object, error)
 	SoftDeleteObject(isTombstone bool, id *common.ID) error
 
 	AddTxnEntry(TxnEntryType, TxnEntry)
@@ -332,6 +330,4 @@ type TxnEntry interface {
 	ApplyCommit(string) error
 	ApplyRollback() error
 	MakeCommand(uint32) (TxnCmd, error)
-	Is1PC() bool
-	Set1PC()
 }

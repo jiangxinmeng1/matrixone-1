@@ -608,20 +608,20 @@ func (store *txnStore) GetObject(id *common.ID, isTombstone bool) (obj handle.Ob
 	return db.GetObject(id, isTombstone)
 }
 
-func (store *txnStore) CreateObject(dbId, tid uint64, is1PC, isTombstone bool) (obj handle.Object, err error) {
+func (store *txnStore) CreateObject(dbId, tid uint64, isTombstone bool) (obj handle.Object, err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(dbId); err != nil {
 		return
 	}
-	return db.CreateObject(tid, is1PC, isTombstone)
+	return db.CreateObject(tid, isTombstone)
 }
 
-func (store *txnStore) CreateNonAppendableObject(dbId, tid uint64, isTombstone, is1PC bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (store *txnStore) CreateNonAppendableObject(dbId, tid uint64, isTombstone bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	var db *txnDB
 	if db, err = store.getOrSetDB(dbId); err != nil {
 		return
 	}
-	return db.CreateNonAppendableObject(tid, is1PC, opt, isTombstone)
+	return db.CreateNonAppendableObject(tid, opt, isTombstone)
 }
 
 func (store *txnStore) getOrSetDB(id uint64) (db *txnDB, err error) {
@@ -778,11 +778,6 @@ func (store *txnStore) PrepareWAL() (err error) {
 	}
 
 	t1 := time.Now()
-	for _, db := range store.dbs {
-		if err = db.Apply1PCCommit(); err != nil {
-			return
-		}
-	}
 	t2 := time.Now()
 	if t2.Sub(t1) > time.Millisecond*500 {
 		logutil.Warn(

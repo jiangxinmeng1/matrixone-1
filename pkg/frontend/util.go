@@ -32,6 +32,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
+
 	"github.com/matrixorigin/matrixone/pkg/common/log"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -1354,4 +1356,11 @@ func CancelCheck(Ctx context.Context) error {
 	default:
 		return nil
 	}
+}
+
+func checkMoreResultSet(status uint16, isLastStmt bool) uint16 {
+	if !isLastStmt {
+		status |= SERVER_MORE_RESULTS_EXISTS
+	}
+	return status
 }

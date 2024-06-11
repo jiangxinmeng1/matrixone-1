@@ -310,8 +310,6 @@ func (entry *flushTableTailEntry) MakeCommand(csn uint32) (cmd txnif.TxnCmd, err
 	return &flushTableTailCmd{}, nil
 }
 func (entry *flushTableTailEntry) IsAborted() bool { return false }
-func (entry *flushTableTailEntry) Set1PC()         {}
-func (entry *flushTableTailEntry) Is1PC() bool     { return false }
 
 ////////////////////////////////////////
 // flushTableTailCmd

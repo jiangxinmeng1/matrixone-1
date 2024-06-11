@@ -306,19 +306,19 @@ func (db *txnDB) GetObject(id *common.ID, isTombstone bool) (obj handle.Object, 
 	return table.GetObject(id.ObjectID(), isTombstone)
 }
 
-func (db *txnDB) CreateObject(tid uint64, is1PC bool, isTombstone bool) (obj handle.Object, err error) {
+func (db *txnDB) CreateObject(tid uint64, isTombstone bool) (obj handle.Object, err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(tid); err != nil {
 		return
 	}
-	return table.CreateObject(is1PC, isTombstone)
+	return table.CreateObject(isTombstone)
 }
-func (db *txnDB) CreateNonAppendableObject(tid uint64, is1PC bool, opt *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (db *txnDB) CreateNonAppendableObject(tid uint64, opt *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	var table *txnTable
 	if table, err = db.getOrSetTable(tid); err != nil {
 		return
 	}
-	return table.CreateNonAppendableObject(is1PC, opt, isTombstone)
+	return table.CreateNonAppendableObject(opt, isTombstone)
 }
 
 func (db *txnDB) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStats, isTombstone bool) error {
@@ -393,27 +393,10 @@ func (db *txnDB) WaitPrepared() (err error) {
 	}
 	return
 }
-func (db *txnDB) Apply1PCCommit() (err error) {
-	if db.createEntry != nil && db.createEntry.Is1PC() {
-		if err = db.createEntry.ApplyCommit(db.store.txn.GetID()); err != nil {
-			return
-		}
-	}
-	for _, table := range db.tables {
-		if err = table.Apply1PCCommit(); err != nil {
-			break
-		}
-	}
-	if db.dropEntry != nil && db.dropEntry.Is1PC() {
-		if err = db.dropEntry.ApplyCommit(db.store.txn.GetID()); err != nil {
-			return
-		}
-	}
-	return
-}
+
 func (db *txnDB) ApplyCommit() (err error) {
 	now := time.Now()
-	if db.createEntry != nil && !db.createEntry.Is1PC() {
+	if db.createEntry != nil {
 		if err = db.createEntry.ApplyCommit(db.store.txn.GetID()); err != nil {
 			return
 		}
@@ -423,7 +406,7 @@ func (db *txnDB) ApplyCommit() (err error) {
 			break
 		}
 	}
-	if db.dropEntry != nil && !db.dropEntry.Is1PC() {
+	if db.dropEntry != nil {
 		if err = db.dropEntry.ApplyCommit(db.store.txn.GetID()); err != nil {
 			return
 		}

@@ -19,6 +19,8 @@ import (
 	"sort"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -41,7 +43,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
-	"go.uber.org/zap"
 )
 
 // -----------------------------------------------------------------
@@ -139,6 +140,7 @@ func (mixin *withFilterMixin) getPKFilter(
 	// for other patterns, no filter is needed
 	ok, hasNull, filter := getNonCompositePKSearchFuncByExpr(
 		mixin.filterState.expr,
+		mixin.tableDef,
 		mixin.tableDef.Pkey.PkeyColName,
 		proc,
 	)
@@ -476,11 +478,13 @@ func newBlockMergeReader(
 	ts timestamp.Timestamp,
 	dirtyBlks []*objectio.BlockInfo,
 	filterExpr *plan.Expr,
+	txnOffset int, // Transaction writes offset used to specify the starting position for reading data.
 	fs fileservice.FileService,
 	proc *process.Process,
 ) *blockMergeReader {
 	r := &blockMergeReader{
-		table: txnTable,
+		table:     txnTable,
+		txnOffset: txnOffset,
 		blockReader: newBlockReader(
 			ctx,
 			txnTable.GetTableDef(ctx),
@@ -514,9 +518,9 @@ func (r *blockMergeReader) prefetchDeletes() error {
 				return nil
 			}
 			for _, bat := range bats {
-				vs := vector.MustStrCol(bat.GetVector(0))
-				for _, deltaLoc := range vs {
-					location, err := blockio.EncodeLocationFromString(deltaLoc)
+				vs, area := vector.MustVarlenaRawData(bat.GetVector(0))
+				for i := range vs {
+					location, err := blockio.EncodeLocationFromString(vs[i].UnsafeGetString(area))
 					if err != nil {
 						return err
 					}
@@ -607,12 +611,17 @@ func (r *blockMergeReader) loadDeletes(ctx context.Context, cols []string) error
 
 	iter.Close()
 
+	txnOffset := r.txnOffset
+	if r.table.db.op.IsSnapOp() {
+		txnOffset = r.table.getTxn().GetSnapshotWriteOffset()
+	}
+
 	//TODO:: if r.table.writes is a map , the time complexity could be O(1)
 	//load deletes from txn.writes for the specified block
 	r.table.getTxn().forEachTableWrites(
 		r.table.db.databaseId,
 		r.table.tableId,
-		r.table.getTxn().GetSnapshotWriteOffset(), func(entry Entry) {
+		txnOffset, func(entry Entry) {
 			if entry.isGeneratedByTruncate() {
 				return
 			}

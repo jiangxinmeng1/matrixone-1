@@ -180,6 +180,7 @@ func (task *mergeObjectsTask) GetMPool() *mpool.MPool {
 
 func (task *mergeObjectsTask) HostHintName() string { return "DN" }
 
+<<<<<<< HEAD
 func (task *mergeObjectsTask) PrepareData(ctx context.Context) ([]*batch.Batch, []*nulls.Nulls, func(), error) {
 	var err error
 	views := make([]*containers.BlockView, task.totalMergedBlkCnt)
@@ -257,6 +258,8 @@ func (task *mergeObjectsTask) PrepareData(ctx context.Context) ([]*batch.Batch, 
 	return batches, dels, releaseF, nil
 }
 
+=======
+>>>>>>> main
 func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) (*batch.Batch, *nulls.Nulls, func(), error) {
 	if objIdx >= uint32(len(task.mergedObjs)) {
 		panic("invalid objIdx")
@@ -381,7 +384,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 		sortkeyPos = schema.GetSingleSortKeyIdx()
 	}
 	phaseDesc = "1-DoMergeAndWrite"
-	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, int(schema.BlockMaxRows), task, task.isTombstone); err != nil {
+	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, task, task.isTombstone); err != nil {
 		return err
 	}
 
@@ -428,7 +431,11 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *
 	for _, stats := range entry.CreatedObjs {
 		stats := objectio.ObjectStats(stats)
 		objID := stats.ObjectName().ObjectId()
+<<<<<<< HEAD
 		obj, err := rel.CreateNonAppendableObject(false, isTombstone, new(objectio.CreateObjOpt).WithId(objID))
+=======
+		obj, err := rel.CreateNonAppendableObject(new(objectio.CreateObjOpt).WithId(objID))
+>>>>>>> main
 		if err != nil {
 			return nil, err
 		}

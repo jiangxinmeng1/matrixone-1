@@ -202,14 +202,6 @@ func handleStorageUsageResponse_V0(ctx context.Context, fs fileservice.FileServi
 		version := usage.CkpEntries[idx].Version
 		location := usage.CkpEntries[idx].Location
 
-		// storage usage was introduced after `CheckpointVersion9`
-		if version < logtail.CheckpointVersion9 {
-			// exist old version checkpoint which hasn't storage usage data in it,
-			// to avoid inaccurate info leading misunderstand, we chose to return empty result
-			logger.Info(ctx, "[storage usage]: found older ckp when handle storage usage response")
-			return map[int64]uint64{}, nil
-		}
-
 		ckpData, err := logtail.LoadSpecifiedCkpBatch(ctx, location, version, logtail.StorageUsageInsIDX, fs)
 		if err != nil {
 			return nil, err

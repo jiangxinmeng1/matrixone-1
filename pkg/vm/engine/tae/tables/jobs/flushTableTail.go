@@ -37,7 +37,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
@@ -166,7 +165,6 @@ func NewFlushTableTailTask(
 	}
 	task.schema = rel.Schema(false).(*catalog.Schema)
 
-	objSeen := make(map[*catalog.ObjectEntry]struct{})
 	for _, obj := range objs {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
@@ -470,7 +468,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		bat.AddVector(schema.ColDefs[colidx].Name, vec.TryConvertConst())
 	}
 
-	if isTombstone && deletes != nil {
+	if isTombstone && bat.Deletes != nil {
 		panic(fmt.Sprintf("logic err, tombstone %v has deletes", obj.GetID().String()))
 	}
 
@@ -565,16 +563,26 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	// prepare merge
 	// toLayout describes the layout of the output batch, i.e. [8192, 8192, 8192, 4242]
 	toLayout := make([]uint32, 0, len(readedBats))
+
+	totalRowCnt := 0
 	if sortKeyPos < 0 {
 		// no pk, just pick the first column to reshape
 		sortKeyPos = 0
 	}
 	for _, bat := range readedBats {
-		task.mergeRowsCnt += bat.Vecs[sortKeyPos].Length()
+		vec := bat.Vecs[sortKeyPos]
+		totalRowCnt += vec.Length()
 	}
-	task.mergeRowsCnt -= task.aObjDeletesCnt
+	if !isTombstone {
+		totalRowCnt -= task.aObjDeletesCnt
+	}
+	if isTombstone {
+		task.tombstoneMergeRowsCnt = totalRowCnt
+	} else {
+		task.mergeRowsCnt = totalRowCnt
+	}
 
-	if task.mergeRowsCnt == 0 {
+	if totalRowCnt == 0 {
 		// just soft delete all Objects
 		for _, obj := range objHandles {
 			tbl := obj.GetRelation()
@@ -586,27 +594,6 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 			mergesort.CleanTransMapping(task.transMappings)
 		}
 		return nil
-	}
-
-	// prepare merge
-	// fromLayout describes the layout of the input batch, which is a list of batch length
-	fromLayout := make([]uint32, 0, len(readedBats))
-	// toLayout describes the layout of the output batch, i.e. [8192, 8192, 8192, 4242]
-	toLayout := make([]uint32, 0, len(readedBats))
-	totalRowCnt := 0
-	if sortKeyPos < 0 {
-		// no pk, just pick the first column to reshape
-		sortKeyPos = 0
-	}
-	for _, bat := range readedBats {
-		vec := bat.Vecs[sortKeyPos]
-		fromLayout = append(fromLayout, uint32(vec.Length()))
-		totalRowCnt += vec.Length()
-	}
-	if isTombstone {
-		task.tombstoneMergeRowsCnt = totalRowCnt
-	} else {
-		task.mergeRowsCnt = totalRowCnt
 	}
 	rowsLeft := totalRowCnt
 	for rowsLeft > 0 {
@@ -648,7 +635,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		}
 		createdObjectHandle = task.createdTombstoneHandles
 	} else {
-		if task.createdObjHandles, err = task.rel.CreateNonAppendableObject(fisTombstone, nil); err != nil {
+		if task.createdObjHandles, err = task.rel.CreateNonAppendableObject(isTombstone, nil); err != nil {
 			return
 		}
 		createdObjectHandle = task.createdObjHandles
@@ -666,19 +653,10 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	} else if schema.HasSortKey() {
 		writer.SetSortKey(uint16(schema.GetSingleSortKeyIdx()))
 	}
-	if isTombstone {
-		for _, bat := range writtenBatches {
-			_, err = writer.WriteBatch(bat)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		for _, bat := range writtenBatches {
-			_, err = writer.WriteBatch(bat)
-			if err != nil {
-				return err
-			}
+	for _, bat := range writtenBatches {
+		_, err = writer.WriteBatch(bat)
+		if err != nil {
+			return err
 		}
 	}
 	_, _, err = writer.Sync(ctx)

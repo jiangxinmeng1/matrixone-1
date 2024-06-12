@@ -493,14 +493,14 @@ func (tbl *txnTable) CreateObject(isTombstone bool) (obj handle.Object, err erro
 	return tbl.createObject(catalog.ES_Appendable, nil, isTombstone)
 }
 
-func (tbl *txnTable) CreateNonAppendableObject( opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateNonAppendableObject(opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.CreateNonAppendable.Add(1)
 	})
 	return tbl.createObject(catalog.ES_NotAppendable, opts, isTombstone)
 }
 
-func (tbl *txnTable) createObject(state catalog.EntryState,opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) createObject(state catalog.EntryState, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	var factory catalog.ObjectDataFactory
 	if tbl.store.dataFactory != nil {
 		factory = tbl.store.dataFactory.MakeObjectFactory()

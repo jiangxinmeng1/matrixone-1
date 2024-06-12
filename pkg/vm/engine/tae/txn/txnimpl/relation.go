@@ -182,11 +182,11 @@ func (h *txnRelation) GetObject(id *types.Objectid, isTombstone bool) (obj handl
 	return h.Txn.GetStore().GetObject(fp, isTombstone)
 }
 
-func (h *txnRelation) CreateObject( isTombstone bool) (obj handle.Object, err error) {
-	return h.Txn.GetStore().CreateObject(h.table.entry.GetDB().ID, h.table.entry.GetID(),  isTombstone)
+func (h *txnRelation) CreateObject(isTombstone bool) (obj handle.Object, err error) {
+	return h.Txn.GetStore().CreateObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), isTombstone)
 }
 
-func (h *txnRelation) CreateNonAppendableObject( isTombstone bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
+func (h *txnRelation) CreateNonAppendableObject(isTombstone bool, opt *objectio.CreateObjOpt) (obj handle.Object, err error) {
 	return h.Txn.GetStore().CreateNonAppendableObject(h.table.entry.GetDB().ID, h.table.entry.GetID(), isTombstone, opt)
 }
 

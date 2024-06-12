@@ -290,8 +290,8 @@ type TxnStore interface {
 	DatabaseNames() []string
 
 	GetObject(id *common.ID, isTombstone bool) (handle.Object, error)
-	CreateObject(dbId, tid uint64,isTombstone bool) (handle.Object, error)
-	CreateNonAppendableObject(dbId, tid uint64,isTombstone bool, opt *objectio.CreateObjOpt) (handle.Object, error)
+	CreateObject(dbId, tid uint64, isTombstone bool) (handle.Object, error)
+	CreateNonAppendableObject(dbId, tid uint64, isTombstone bool, opt *objectio.CreateObjOpt) (handle.Object, error)
 	SoftDeleteObject(isTombstone bool, id *common.ID) error
 
 	AddTxnEntry(TxnEntryType, TxnEntry)

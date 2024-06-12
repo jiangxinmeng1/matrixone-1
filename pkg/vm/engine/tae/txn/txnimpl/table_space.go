@@ -171,7 +171,7 @@ func (space *tableSpace) prepareApplyANode(node *anode, startOffset uint32) erro
 	for appended < node.Rows() {
 		appender, err := space.tableHandle.GetAppender()
 		if moerr.IsMoErrCode(err, moerr.ErrAppendableObjectNotFound) {
-			objH, err := space.table.CreateObject(true, space.isTombstone)
+			objH, err := space.table.CreateObject(space.isTombstone)
 			if err != nil {
 				return err
 			}
@@ -263,7 +263,7 @@ func (space *tableSpace) prepareApplyObjectStats(stats objectio.ObjectStats) (er
 	}
 
 	if shouldCreateNewObj() {
-		space.nobj, err = space.table.CreateNonAppendableObject(false, new(objectio.CreateObjOpt).WithId(sid), space.isTombstone)
+		space.nobj, err = space.table.CreateNonAppendableObject(new(objectio.CreateObjOpt).WithId(sid), space.isTombstone)
 		if err != nil {
 			return
 		}

@@ -34,6 +34,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/pb/lock"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
+	"github.com/matrixorigin/matrixone/pkg/shardservice"
 	"github.com/matrixorigin/matrixone/pkg/sql/colexec/lockop"
 	"github.com/matrixorigin/matrixone/pkg/sql/parsers/tree"
 	plan2 "github.com/matrixorigin/matrixone/pkg/sql/plan"
@@ -841,24 +842,13 @@ func (s *Scope) CreateTable(c *Compile) error {
 			}
 			return nil
 		}
-		if qry.GetReplace() {
-			err := c.runSql(fmt.Sprintf("drop view if exists %s", tblName))
-			if err != nil {
-				c.proc.Info(c.ctx, "createTable",
-					zap.String("databaseName", c.db),
-					zap.String("tableName", qry.GetTableDef().GetName()),
-					zap.Error(err),
-				)
-				return err
-			}
-		} else {
-			c.proc.Info(c.ctx, "createTable",
-				zap.String("databaseName", c.db),
-				zap.String("tableName", qry.GetTableDef().GetName()),
-				zap.Error(err),
-			)
-			return moerr.NewTableAlreadyExists(c.ctx, tblName)
-		}
+
+		c.proc.Info(c.ctx, "createTable",
+			zap.String("databaseName", c.db),
+			zap.String("tableName", qry.GetTableDef().GetName()),
+			zap.Error(err),
+		)
+		return moerr.NewTableAlreadyExists(c.ctx, tblName)
 	}
 
 	// check in EntireEngine.TempEngine, notice that TempEngine may not init
@@ -1290,12 +1280,118 @@ func (s *Scope) CreateTable(c *Compile) error {
 
 	}
 
-	return maybeCreateAutoIncrement(
+	err = maybeCreateAutoIncrement(
 		c.ctx,
 		dbSource,
 		qry.GetTableDef(),
 		c.proc.TxnOperator,
-		nil)
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	if len(partitionTables) == 0 {
+		return nil
+	}
+
+	return shardservice.GetService().Create(
+		c.ctx,
+		qry.GetTableDef().TblId,
+		c.proc.TxnOperator,
+	)
+}
+
+func (s *Scope) CreateView(c *Compile) error {
+	qry := s.Plan.GetDdl().GetCreateView()
+
+	// convert the plan's cols to the execution's cols
+	planCols := qry.GetTableDef().GetCols()
+	exeCols := planColsToExeCols(planCols)
+
+	// convert the plan's defs to the execution's defs
+	exeDefs, err := planDefsToExeDefs(qry.GetTableDef())
+	if err != nil {
+		getLogger().Info("createView",
+			zap.String("databaseName", c.db),
+			zap.String("viewName", qry.GetTableDef().GetName()),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	dbName := c.db
+	if qry.GetDatabase() != "" {
+		dbName = qry.GetDatabase()
+	}
+	dbSource, err := c.e.Database(c.ctx, dbName, c.proc.TxnOperator)
+	if err != nil {
+		if dbName == "" {
+			return moerr.NewNoDB(c.ctx)
+		}
+		return err
+	}
+
+	viewName := qry.GetTableDef().GetName()
+	if _, err = dbSource.Relation(c.ctx, viewName, nil); err == nil {
+		if qry.GetIfNotExists() {
+			return nil
+		}
+
+		if qry.GetReplace() {
+			err = c.runSql(fmt.Sprintf("drop view if exists %s", viewName))
+			if err != nil {
+				getLogger().Info("createView",
+					zap.String("databaseName", c.db),
+					zap.String("viewName", qry.GetTableDef().GetName()),
+					zap.Error(err),
+				)
+				return err
+			}
+		} else {
+			getLogger().Info("createView",
+				zap.String("databaseName", c.db),
+				zap.String("viewName", qry.GetTableDef().GetName()),
+				zap.Error(err),
+			)
+			return moerr.NewTableAlreadyExists(c.ctx, viewName)
+		}
+	}
+
+	// check in EntireEngine.TempEngine, notice that TempEngine may not init
+	tmpDBSource, err := c.e.Database(c.ctx, defines.TEMPORARY_DBNAME, c.proc.TxnOperator)
+	if err == nil {
+		if _, err = tmpDBSource.Relation(c.ctx, engine.GetTempTableName(dbName, viewName), nil); err == nil {
+			if qry.GetIfNotExists() {
+				return nil
+			}
+			getLogger().Info("createView",
+				zap.String("databaseName", c.db),
+				zap.String("viewName", qry.GetTableDef().GetName()),
+				zap.Error(err),
+			)
+			return moerr.NewTableAlreadyExists(c.ctx, fmt.Sprintf("temporary '%s'", viewName))
+		}
+	}
+
+	if err = lockMoTable(c, dbName, viewName, lock.LockMode_Exclusive); err != nil {
+		getLogger().Info("createView",
+			zap.String("databaseName", c.db),
+			zap.String("viewName", qry.GetTableDef().GetName()),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	if err = dbSource.Create(context.WithValue(c.ctx, defines.SqlKey{}, c.sql), viewName, append(exeCols, exeDefs...)); err != nil {
+		getLogger().Info("createView",
+			zap.String("databaseName", c.db),
+			zap.String("viewName", qry.GetTableDef().GetName()),
+			zap.Error(err),
+		)
+		return err
+	}
+	return nil
 }
 
 func checkIndexInitializable(dbName string, tblName string) bool {
@@ -1942,14 +2038,26 @@ func (s *Scope) TruncateTable(c *Compile) error {
 	if isTemp {
 		oldId = rel.GetTableID(c.ctx)
 	}
-	err = incrservice.GetAutoIncrementService(c.ctx).Reset(
-		c.ctx,
-		oldId,
-		newId,
-		keepAutoIncrement,
-		c.proc.TxnOperator)
-	if err != nil {
-		return err
+
+	// check if contains any auto_increment column(include __mo_fake_pk_col), if so, reset the auto_increment value
+	tblDef := rel.GetTableDef(c.ctx)
+	var containAuto bool
+	for _, col := range tblDef.Cols {
+		if col.Typ.AutoIncr {
+			containAuto = true
+			break
+		}
+	}
+	if containAuto {
+		err = incrservice.GetAutoIncrementService(c.ctx).Reset(
+			c.ctx,
+			oldId,
+			newId,
+			keepAutoIncrement,
+			c.proc.TxnOperator)
+		if err != nil {
+			return err
+		}
 	}
 
 	// update index information in mo_catalog.mo_indexes
@@ -2141,11 +2249,29 @@ func (s *Scope) DropTable(c *Compile) error {
 		}
 
 		if dbName != catalog.MO_CATALOG && tblName != catalog.MO_INDEXES {
-			err := incrservice.GetAutoIncrementService(c.ctx).Delete(
+			tblDef := rel.GetTableDef(c.ctx)
+			var containAuto bool
+			for _, col := range tblDef.Cols {
+				if col.Typ.AutoIncr {
+					containAuto = true
+					break
+				}
+			}
+			if containAuto {
+				err := incrservice.GetAutoIncrementService(c.ctx).Delete(
+					c.ctx,
+					rel.GetTableID(c.ctx),
+					c.proc.TxnOperator)
+				if err != nil {
+					return err
+				}
+			}
+
+			if err := shardservice.GetService().Delete(
 				c.ctx,
 				rel.GetTableID(c.ctx),
-				c.proc.TxnOperator)
-			if err != nil {
+				c.proc.TxnOperator,
+			); err != nil {
 				return err
 			}
 		}
@@ -2168,12 +2294,30 @@ func (s *Scope) DropTable(c *Compile) error {
 		}
 
 		if dbName != catalog.MO_CATALOG && tblName != catalog.MO_INDEXES {
-			// When drop table 'mo_catalog.mo_indexes', there is no need to delete the auto increment data
-			err := incrservice.GetAutoIncrementService(c.ctx).Delete(
+			tblDef := rel.GetTableDef(c.ctx)
+			var containAuto bool
+			for _, col := range tblDef.Cols {
+				if col.Typ.AutoIncr {
+					containAuto = true
+					break
+				}
+			}
+			if containAuto {
+				// When drop table 'mo_catalog.mo_indexes', there is no need to delete the auto increment data
+				err := incrservice.GetAutoIncrementService(c.ctx).Delete(
+					c.ctx,
+					rel.GetTableID(c.ctx),
+					c.proc.TxnOperator)
+				if err != nil {
+					return err
+				}
+			}
+
+			if err := shardservice.GetService().Delete(
 				c.ctx,
 				rel.GetTableID(c.ctx),
-				c.proc.TxnOperator)
-			if err != nil {
+				c.proc.TxnOperator,
+			); err != nil {
 				return err
 			}
 		}

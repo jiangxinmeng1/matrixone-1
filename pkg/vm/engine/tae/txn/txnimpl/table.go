@@ -486,21 +486,21 @@ func (tbl *txnTable) SoftDeleteObject(id *types.Objectid, isTombstone bool) (err
 	return
 }
 
-func (tbl *txnTable) CreateObject(is1PC bool, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateObject(isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.Create.Add(1)
 	})
-	return tbl.createObject(catalog.ES_Appendable, is1PC, nil, isTombstone)
+	return tbl.createObject(catalog.ES_Appendable, nil, isTombstone)
 }
 
-func (tbl *txnTable) CreateNonAppendableObject(is1PC bool, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) CreateNonAppendableObject(opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.CreateNonAppendable.Add(1)
 	})
-	return tbl.createObject(catalog.ES_NotAppendable, is1PC, opts, isTombstone)
+	return tbl.createObject(catalog.ES_NotAppendable, opts, isTombstone)
 }
 
-func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
+func (tbl *txnTable) createObject(state catalog.EntryState, opts *objectio.CreateObjOpt, isTombstone bool) (obj handle.Object, err error) {
 	var factory catalog.ObjectDataFactory
 	if tbl.store.dataFactory != nil {
 		factory = tbl.store.dataFactory.MakeObjectFactory()
@@ -512,9 +512,6 @@ func (tbl *txnTable) createObject(state catalog.EntryState, is1PC bool, opts *ob
 	obj = newObject(tbl, meta)
 	tbl.store.IncreateWriteCnt()
 	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
-	if is1PC {
-		meta.Set1PC()
-	}
 	tbl.txnEntries.Append(meta)
 	return
 }
@@ -1644,9 +1641,6 @@ func (tbl *txnTable) ApplyCommit() (err error) {
 		if tbl.txnEntries.IsDeleted(idx) {
 			continue
 		}
-		if node.Is1PC() {
-			continue
-		}
 		if err = node.ApplyCommit(tbl.store.txn.GetID()); err != nil {
 			if moerr.IsMoErrCode(err, moerr.ErrTxnNotFound) {
 				var buf bytes.Buffer
@@ -1687,60 +1681,10 @@ func (tbl *txnTable) ApplyCommit() (err error) {
 	return
 }
 
-func (tbl *txnTable) Apply1PCCommit() (err error) {
-	for idx, node := range tbl.txnEntries.entries {
-		if tbl.txnEntries.IsDeleted(idx) {
-			continue
-		}
-		if !node.Is1PC() {
-			continue
-		}
-		if err = node.ApplyCommit(tbl.store.txn.GetID()); err != nil {
-			if moerr.IsMoErrCode(err, moerr.ErrTxnNotFound) {
-				var buf bytes.Buffer
-				buf.WriteString(fmt.Sprintf("%d/%d No Txn, node type %T, ", idx, len(tbl.txnEntries.entries), node))
-				obj, ok := node.(*catalog.ObjectEntry)
-				if ok {
-					buf.WriteString(fmt.Sprintf("obj %v, ", obj.StringWithLevel(3)))
-				}
-				for idx2, node2 := range tbl.txnEntries.entries {
-					buf.WriteString(fmt.Sprintf("%d. node type %T, ", idx2, node2))
-					obj, ok := node2.(*catalog.ObjectEntry)
-					if ok {
-						buf.WriteString(fmt.Sprintf("obj %v, ", obj.StringWithLevel(3)))
-					}
-				}
-				tbl.dumpCore(buf.String())
-			}
-			if moerr.IsMoErrCode(err, moerr.ErrMissingTxn) {
-				var buf bytes.Buffer
-				buf.WriteString(fmt.Sprintf("%d/%d missing txn, node type %T, ", idx, len(tbl.txnEntries.entries), node))
-				obj, ok := node.(*catalog.ObjectEntry)
-				if ok {
-					buf.WriteString(fmt.Sprintf("obj %v, ", obj.StringWithLevel(3)))
-				}
-				for idx2, node2 := range tbl.txnEntries.entries {
-					buf.WriteString(fmt.Sprintf("%d. node type %T, ", idx2, node2))
-					obj, ok := node2.(*catalog.ObjectEntry)
-					if ok {
-						buf.WriteString(fmt.Sprintf("obj %v, ", obj.StringWithLevel(3)))
-					}
-				}
-				tbl.dumpCore(buf.String())
-			}
-			break
-		}
-		tbl.csnStart++
-	}
-	return
-}
 func (tbl *txnTable) ApplyRollback() (err error) {
 	csn := tbl.csnStart
 	for idx, node := range tbl.txnEntries.entries {
 		if tbl.txnEntries.IsDeleted(idx) {
-			continue
-		}
-		if node.Is1PC() {
 			continue
 		}
 		if err = node.ApplyRollback(); err != nil {

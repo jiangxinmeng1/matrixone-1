@@ -163,9 +163,6 @@ func (entry *mergeObjectsEntry) MakeCommand(csn uint32) (cmd txnif.TxnCmd, err e
 	return
 }
 
-func (entry *mergeObjectsEntry) Set1PC()     {}
-func (entry *mergeObjectsEntry) Is1PC() bool { return false }
-
 // ATTENTION !!! (from, to] !!!
 func (entry *mergeObjectsEntry) transferObjectDeletes(
 	dropped *catalog.ObjectEntry,

@@ -180,83 +180,6 @@ func (task *mergeObjectsTask) GetMPool() *mpool.MPool {
 
 func (task *mergeObjectsTask) HostHintName() string { return "DN" }
 
-func (task *mergeObjectsTask) PrepareData(ctx context.Context) ([]*batch.Batch, []*nulls.Nulls, func(), error) {
-	var err error
-	views := make([]*containers.BlockView, task.totalMergedBlkCnt)
-	releaseF := func() {
-		for _, view := range views {
-			if view != nil {
-				view.Close()
-			}
-		}
-	}
-	defer func() {
-		if err != nil {
-			releaseF()
-		}
-	}()
-	schema := task.rel.Schema(task.isTombstone).(*catalog.Schema)
-	idxs := make([]int, 0, len(schema.ColDefs)-1)
-	attrs := make([]string, 0, len(schema.ColDefs)-1)
-	for _, def := range schema.ColDefs {
-		if def.IsPhyAddr() {
-			continue
-		}
-		idxs = append(idxs, def.Idx)
-		attrs = append(attrs, def.Name)
-	}
-	for i, obj := range task.mergedObjsHandle {
-
-		maxBlockOffset := task.totalMergedBlkCnt
-		if i != len(task.mergedObjs)-1 {
-			maxBlockOffset = task.mergedBlkCnt[i+1]
-		}
-		minBlockOffset := task.mergedBlkCnt[i]
-
-		for j := 0; j < maxBlockOffset-minBlockOffset; j++ {
-			if views[minBlockOffset+j], err = obj.GetColumnDataByIds(ctx, uint16(j), idxs, common.MergeAllocator); err != nil {
-				return nil, nil, nil, err
-			}
-			// if the object is dropped, skip the tombstone row
-			if task.isTombstone {
-				view := views[minBlockOffset+j]
-				tbl := task.rel.GetMeta().(*catalog.TableEntry)
-				rowidVec := view.Columns[0].GetData()
-				rowidVec.Foreach(func(v any, isNull bool, row int) error {
-					rowID := v.(types.Rowid)
-					objectID := rowID.BorrowObjectID()
-					obj, err := tbl.GetObjectByID(objectID, false)
-					if err != nil {
-						panic(err)
-					}
-					if obj.HasDropCommitted() {
-						view.DeleteMask.Add(uint64(row))
-					}
-					return nil
-				}, nil)
-				view.ApplyDeletes()
-			}
-		}
-	}
-
-	batches := make([]*batch.Batch, 0, task.totalMergedBlkCnt)
-	dels := make([]*nulls.Nulls, 0, task.totalMergedBlkCnt)
-	for _, view := range views {
-		batch := batch.New(true, attrs)
-		if len(attrs) != len(view.Columns) {
-			panic(fmt.Sprintf("mismatch %v, %v, %v", attrs, len(attrs), len(view.Columns)))
-		}
-		for i, col := range view.Columns {
-			batch.Vecs[i] = col.GetData().GetDownstreamVector()
-		}
-		batch.SetRowCount(view.Columns[0].Length())
-		batches = append(batches, batch)
-		dels = append(dels, view.DeleteMask)
-	}
-
-	return batches, dels, releaseF, nil
-}
-
 func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) (*batch.Batch, *nulls.Nulls, func(), error) {
 	if objIdx >= uint32(len(task.mergedObjs)) {
 		panic("invalid objIdx")
@@ -381,7 +304,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 		sortkeyPos = schema.GetSingleSortKeyIdx()
 	}
 	phaseDesc = "1-DoMergeAndWrite"
-	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, int(schema.BlockMaxRows), task, task.isTombstone); err != nil {
+	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, task, task.isTombstone); err != nil {
 		return err
 	}
 
@@ -428,7 +351,7 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *
 	for _, stats := range entry.CreatedObjs {
 		stats := objectio.ObjectStats(stats)
 		objID := stats.ObjectName().ObjectId()
-		obj, err := rel.CreateNonAppendableObject(false, isTombstone, new(objectio.CreateObjOpt).WithId(objID))
+		obj, err := rel.CreateNonAppendableObject(isTombstone, new(objectio.CreateObjOpt).WithId(objID))
 		if err != nil {
 			return nil, err
 		}

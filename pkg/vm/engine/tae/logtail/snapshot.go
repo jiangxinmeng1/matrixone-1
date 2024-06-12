@@ -253,26 +253,27 @@ func (sm *SnapshotMeta) Update(data *CheckpointData) *SnapshotMeta {
 			zap.String("object name", objectStats.ObjectName().String()))
 		delete(sm.objects[table], objectStats.ObjectName().SegmentId())
 	}
-	del, delTxn, _, _ := data.GetBlkBatchs()
-	delBlockIDs := vector.MustFixedCol[types.Blockid](del.GetVectorByName(catalog2.BlockMeta_ID).GetDownstreamVector())
-	delTableIDs := vector.MustFixedCol[uint64](delTxn.GetVectorByName(SnapshotAttr_TID).GetDownstreamVector())
-	for i := 0; i < del.Length(); i++ {
-		blockID := delBlockIDs[i]
-		tableID := delTableIDs[i]
-		deltaLoc := objectio.Location(del.GetVectorByName(catalog2.BlockMeta_DeltaLoc).Get(i).([]byte))
-		if _, ok := sm.tides[tableID]; !ok {
-			continue
-		}
-		if sm.objects[tableID] == nil {
-			panic(any(fmt.Sprintf("tableID %d not found", tableID)))
-		}
-		if sm.objects[tableID][*blockID.Segment()] != nil {
-			if sm.objects[tableID][*blockID.Segment()].deltaLocation == nil {
-				sm.objects[tableID][*blockID.Segment()].deltaLocation = make(map[uint32]*objectio.Location)
-			}
-			sm.objects[tableID][*blockID.Segment()].deltaLocation[uint32(blockID.Sequence())] = &deltaLoc
-		}
-	}
+	// TODO
+	// del, delTxn, _, _ := data.GetBlkBatchs()
+	// delBlockIDs := vector.MustFixedCol[types.Blockid](del.GetVectorByName(catalog2.BlockMeta_ID).GetDownstreamVector())
+	// delTableIDs := vector.MustFixedCol[uint64](delTxn.GetVectorByName(SnapshotAttr_TID).GetDownstreamVector())
+	// for i := 0; i < del.Length(); i++ {
+	// 	blockID := delBlockIDs[i]
+	// 	tableID := delTableIDs[i]
+	// 	deltaLoc := objectio.Location(del.GetVectorByName(catalog2.BlockMeta_DeltaLoc).Get(i).([]byte))
+	// 	if _, ok := sm.tides[tableID]; !ok {
+	// 		continue
+	// 	}
+	// 	if sm.objects[tableID] == nil {
+	// 		panic(any(fmt.Sprintf("tableID %d not found", tableID)))
+	// 	}
+	// 	if sm.objects[tableID][*blockID.Segment()] != nil {
+	// 		if sm.objects[tableID][*blockID.Segment()].deltaLocation == nil {
+	// 			sm.objects[tableID][*blockID.Segment()].deltaLocation = make(map[uint32]*objectio.Location)
+	// 		}
+	// 		sm.objects[tableID][*blockID.Segment()].deltaLocation[uint32(blockID.Sequence())] = &deltaLoc
+	// 	}
+	// }
 	return nil
 }
 

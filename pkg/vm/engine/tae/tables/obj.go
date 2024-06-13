@@ -54,7 +54,11 @@ func (obj *object) Init() (err error) {
 }
 
 func (obj *object) PrepareCompact() bool {
-	return obj.meta.PrepareCompact()
+	prepareCompact := obj.meta.PrepareCompact()
+	if !prepareCompact && obj.meta.CheckPrintPrepareCompact() {
+		obj.meta.PrintPrepareCompactDebugLog()
+	}
+	return prepareCompact
 }
 
 func (obj *object) PrepareCompactInfo() (result bool, reason string) {

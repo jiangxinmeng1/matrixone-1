@@ -59,23 +59,23 @@ func resetGenerateSeriesState(proc *process.Process, arg *Argument) error {
 		}()
 
 		if len(arg.ctr.executorsForArgs) == 1 {
-			endVec, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch})
+			endVec, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch}, nil)
 			if err != nil {
 				return err
 			}
 			startVec, err = vector.NewConstFixed(types.T_int64.ToType(), int64(1), 1, proc.Mp())
 		} else {
-			startVec, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch})
+			startVec, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch}, nil)
 			if err != nil {
 				return err
 			}
-			endVec, err = arg.ctr.executorsForArgs[1].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch})
+			endVec, err = arg.ctr.executorsForArgs[1].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch}, nil)
 		}
 		if err != nil {
 			return err
 		}
 		if len(arg.Args) == 3 {
-			stepVec, err = arg.ctr.executorsForArgs[2].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch})
+			stepVec, err = arg.ctr.executorsForArgs[2].Eval(proc, []*batch.Batch{batch.EmptyForConstFoldBatch}, nil)
 			if err != nil {
 				return err
 			}
@@ -107,13 +107,13 @@ func resetGenerateSeriesState(proc *process.Process, arg *Argument) error {
 			if stepVec == nil {
 				return moerr.NewInvalidInput(proc.Ctx, "generate_series datetime must specify step")
 			}
-			arg.generateSeries.step = stepVec.UnsafeGetStringAt(0)
+			arg.generateSeries.step = stepVec.GetStringAt(0)
 		case types.T_varchar:
 			if stepVec == nil {
 				return moerr.NewInvalidInput(proc.Ctx, "generate_series must specify step")
 			}
-			startStr := startVec.UnsafeGetStringAt(0)
-			endStr := endVec.UnsafeGetStringAt(0)
+			startStr := startVec.GetStringAt(0)
+			endStr := endVec.GetStringAt(0)
 			scale := int32(findScale(startStr, endStr))
 			startTmp, err := types.ParseDatetime(startStr, scale)
 			if err != nil {
@@ -137,7 +137,7 @@ func resetGenerateSeriesState(proc *process.Process, arg *Argument) error {
 			arg.generateSeries.start = newStartSlice[0]
 			arg.generateSeries.end = newEndSlice[0]
 			arg.generateSeries.last = newEndSlice[0]
-			arg.generateSeries.step = stepVec.UnsafeGetStringAt(0)
+			arg.generateSeries.step = stepVec.GetStringAt(0)
 		default:
 			return moerr.NewNotSupported(proc.Ctx, "generate_series not support type %s", arg.generateSeries.startVecType.Oid.String())
 

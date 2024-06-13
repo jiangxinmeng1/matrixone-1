@@ -61,11 +61,11 @@ func metadataScan(_ int, proc *process.Process, arg *Argument, result *vm.CallRe
 		return true, nil
 	}
 
-	source, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{bat})
+	source, err = arg.ctr.executorsForArgs[0].Eval(proc, []*batch.Batch{bat}, nil)
 	if err != nil {
 		return false, err
 	}
-	col, err = arg.ctr.executorsForArgs[1].Eval(proc, []*batch.Batch{bat})
+	col, err = arg.ctr.executorsForArgs[1].Eval(proc, []*batch.Batch{bat}, nil)
 	if err != nil {
 		return false, err
 	}
@@ -105,11 +105,11 @@ func handleDataSource(source, col *vector.Vector) (string, string, string, error
 	if source.Length() != 1 || col.Length() != 1 {
 		return "", "", "", moerr.NewInternalErrorNoCtx("wrong input len")
 	}
-	strs := strings.Split(source.UnsafeGetStringAt(0), ".")
+	strs := strings.Split(source.GetStringAt(0), ".")
 	if len(strs) != 2 {
 		return "", "", "", moerr.NewInternalErrorNoCtx("wrong len of db and tbl input")
 	}
-	return strs[0], strs[1], col.UnsafeGetStringAt(0), nil
+	return strs[0], strs[1], col.GetStringAt(0), nil
 }
 
 func genRetBatch(proc process.Process, arg *Argument, metaInfos []*plan.MetadataScanInfo) (*batch.Batch, error) {

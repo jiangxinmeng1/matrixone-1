@@ -665,65 +665,34 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 	pks := tbl.store.rt.VectorPool.Small.GetVector(pkType)
 	defer pks.Close()
 	pks.Append(filter.Val, false)
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-	defer rowIDs.Close()
-	rowIDs.Append(nil, true)
-	pksZM := index.NewZM(pkType.Oid, pkType.Scale)
-	if err = index.BatchUpdateZM(pksZM, pks.GetDownstreamVector()); err != nil {
+	rowIDs, err := tbl.dataTable.getRowsByPK(ctx, pks, false, false)
+	if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
 		return
 	}
-	h := newRelation(tbl)
-	blockIt := h.MakeObjectIt(false, false)
-	for blockIt.Valid() {
-		h := blockIt.GetObject()
-		defer h.Close()
-		if h.IsUncommitted() {
-			blockIt.Next()
-			continue
-		}
-		obj := h.GetMeta().(*catalog.ObjectEntry)
-		obj.RLock()
-		shouldSkip := obj.IsCreatingOrAbortedLocked()
-		obj.RUnlock()
-		if shouldSkip {
-			continue
-		}
-		objData := obj.GetObjectData()
-		if err = objData.GetDuplicatedRows(
-			context.Background(),
-			tbl.store.txn,
-			pks,
-			pksZM,
-			false,
-			false,
-			objectio.BloomFilter{},
-			rowIDs,
-			common.WorkspaceAllocator,
-		); err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
-			return
-		}
-		err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, false)
-		if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
-			return
-		}
-		if !rowIDs.IsNull(0) {
-			rowID := rowIDs.Get(0).(types.Rowid)
-			id = obj.AsCommonID()
-			id.SetBlockOffset(rowID.GetBlockOffset())
-			offset = rowID.GetRowOffset()
-			var deleted bool
-			deleted, err = tbl.IsDeletedInWorkSpace(id.BlockID, offset)
-			if err != nil {
-				return nil, 0, err
-			}
-			if deleted {
-				break
-			}
-			return
-		}
-		blockIt.Next()
+	defer rowIDs.Close()
+	if rowIDs.IsNull(0) {
+		err = moerr.NewNotFoundNoCtx()
+		return
 	}
-	if err == nil {
+	err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, false)
+	if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+		return
+	}
+	if rowIDs.IsNull(0) {
+		err = moerr.NewNotFoundNoCtx()
+		return
+	}
+	rowID := rowIDs.Get(0).(types.Rowid)
+	id = tbl.entry.AsCommonID()
+	id.BlockID = *rowID.BorrowBlockID()
+	offset = rowID.GetRowOffset()
+	var deleted bool
+	deleted, err = tbl.IsDeletedInWorkSpace(id.BlockID, offset)
+	if err != nil {
+		return
+	}
+	if deleted {
+		id = nil
 		err = moerr.NewNotFoundNoCtx()
 	}
 	return
@@ -842,7 +811,7 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, dedupAfterSnapshotTS bool, isTombstone bool) (err error) {
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
-	rowIDs, err := tbl.getBaseTable(isTombstone).getRowsByPK(ctx, keys, dedupAfterSnapshotTS)
+	rowIDs, err := tbl.getBaseTable(isTombstone).getRowsByPK(ctx, keys, dedupAfterSnapshotTS, true)
 	if err != nil {
 		return
 	}
@@ -1034,7 +1003,10 @@ func (tbl *txnTable) DoBatchDedup(key containers.Vector) (err error) {
 		return
 	}
 
-	tbl.DedupWorkSpace(key, false)
+	err = tbl.DedupWorkSpace(key, false)
+	if err != nil {
+		return
+	}
 	//Check whether primary key is duplicated in txn's snapshot data.
 	err = tbl.DedupSnapByPK(context.Background(), key, false, false)
 	return

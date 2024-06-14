@@ -142,7 +142,7 @@ func (tbl *baseTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obj
 	}
 	return tbl.tableSpace.AddObjsWithMetaLoc(pkVecs, stats)
 }
-func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, dedupAfterSnapshotTS bool) (rowIDs containers.Vector, err error) {
+func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, dedupAfterSnapshotTS bool, checkWW bool) (rowIDs containers.Vector, err error) {
 	it := newObjectItOnSnap(tbl.txnTable, tbl.isTombstone)
 	rowIDs = tbl.txnTable.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	pkType := pks.GetType()
@@ -207,8 +207,8 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 			tbl.txnTable.store.txn,
 			pks,
 			nil,
-			true,
-			true,
+			false,
+			checkWW,
 			objectio.BloomFilter{},
 			rowIDs,
 			common.WorkspaceAllocator,

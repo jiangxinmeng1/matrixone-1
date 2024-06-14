@@ -292,8 +292,8 @@ func (entry *TableEntry) GetLastestSchemaLocked(isTombstone bool) *Schema {
 
 // GetLastestSchema returns the latest committed schema with entry locked
 func (entry *TableEntry) GetLastestSchema(isTombstone bool) *Schema {
-	entry.Lock()
-	defer entry.Unlock()
+	entry.RLock()
+	defer entry.RUnlock()
 
 	return entry.GetLastestSchemaLocked(isTombstone)
 }

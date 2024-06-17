@@ -388,7 +388,11 @@ func (node *memoryNode) CollectAppendInRange(
 	node.object.RLock()
 	minRow, maxRow, commitTSVec, abortVec, abortedMap :=
 		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
-	batWithVer, err = node.getDataWindowOnWriteSchemaLocked(minRow, maxRow, mp)
+	if commitTSVec == nil || abortVec == nil {
+		node.object.RUnlock()
+		return nil, nil
+	}
+	batWithVer, err = node.GetDataWindowOnWriteSchema(minRow, maxRow, mp)
 	if err != nil {
 		node.object.RUnlock()
 		return nil, err

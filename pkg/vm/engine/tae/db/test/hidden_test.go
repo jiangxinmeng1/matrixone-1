@@ -80,7 +80,7 @@ func TestHiddenWithPK1(t *testing.T) {
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
 		blk := testutil.GetOneObject(rel)
-		view, err := blk.GetColumnDataByName(context.Background(), 0, catalog.PhyAddrColumnName, common.DefaultAllocator)
+		view, err := blk.GetColumnDataById(context.Background(), 0, schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
 		offsets := make([]uint32, 0)
@@ -123,7 +123,7 @@ func TestHiddenWithPK1(t *testing.T) {
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := blk.GetColumnDataByName(context.Background(), uint16(j), catalog.PhyAddrColumnName, common.DefaultAllocator)
+				view, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer view.Close()
 				offsets := make([]uint32, 0)
@@ -167,7 +167,7 @@ func TestHiddenWithPK1(t *testing.T) {
 			blk := it.GetObject()
 			objIdx++
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := blk.GetColumnDataByName(context.Background(), uint16(j), catalog.PhyAddrColumnName, common.DefaultAllocator)
+				view, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer view.Close()
 				offsets := make([]uint32, 0)

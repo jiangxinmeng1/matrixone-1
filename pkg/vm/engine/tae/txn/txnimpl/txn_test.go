@@ -170,15 +170,15 @@ func TestTable(t *testing.T) {
 		assert.Nil(t, err)
 		err = tbl.RangeDeleteLocalRows(1024*10+38, 1024*40+40)
 		assert.Nil(t, err)
-		assert.True(t, tbl.IsLocalDeleted(1024+20))
-		assert.True(t, tbl.IsLocalDeleted(1024+30))
-		assert.True(t, tbl.IsLocalDeleted(1024*10+38))
-		assert.True(t, tbl.IsLocalDeleted(1024*40+40))
-		assert.True(t, tbl.IsLocalDeleted(1024*30+40))
-		assert.False(t, tbl.IsLocalDeleted(1024+19))
-		assert.False(t, tbl.IsLocalDeleted(1024+31))
-		assert.False(t, tbl.IsLocalDeleted(1024*10+37))
-		assert.False(t, tbl.IsLocalDeleted(1024*40+41))
+		assert.True(t, tbl.dataTable.tableSpace.IsDeleted(1024+20))
+		assert.True(t, tbl.dataTable.tableSpace.IsDeleted(1024+30))
+		assert.True(t, tbl.dataTable.tableSpace.IsDeleted(1024*10+38))
+		assert.True(t, tbl.dataTable.tableSpace.IsDeleted(1024*40+40))
+		assert.True(t, tbl.dataTable.tableSpace.IsDeleted(1024*30+40))
+		assert.False(t, tbl.dataTable.tableSpace.IsDeleted(1024+19))
+		assert.False(t, tbl.dataTable.tableSpace.IsDeleted(1024+31))
+		assert.False(t, tbl.dataTable.tableSpace.IsDeleted(1024*10+37))
+		assert.False(t, tbl.dataTable.tableSpace.IsDeleted(1024*40+41))
 		err = txn.Commit(context.Background())
 		assert.Nil(t, err)
 	}
@@ -214,8 +214,8 @@ func TestAppend(t *testing.T) {
 	assert.Nil(t, err)
 	err = tbl.Append(context.Background(), bats[0])
 	assert.Nil(t, err)
-	assert.Equal(t, int(brows), int(tbl.UncommittedRows()))
-	assert.Equal(t, int(brows), int(tbl.tableSpace.index.Count()))
+	assert.Equal(t, int(brows), int(tbl.dataTable.tableSpace.Rows()))
+	assert.Equal(t, int(brows), int(tbl.dataTable.tableSpace.index.Count()))
 
 	err = tbl.BatchDedupLocal(bats[0])
 	assert.NotNil(t, err)
@@ -224,15 +224,15 @@ func TestAppend(t *testing.T) {
 	assert.Nil(t, err)
 	err = tbl.Append(context.Background(), bats[1])
 	assert.Nil(t, err)
-	assert.Equal(t, 2*int(brows), int(tbl.UncommittedRows()))
-	assert.Equal(t, 2*int(brows), int(tbl.tableSpace.index.Count()))
+	assert.Equal(t, 2*int(brows), int(tbl.dataTable.tableSpace.Rows()))
+	assert.Equal(t, 2*int(brows), int(tbl.dataTable.tableSpace.index.Count()))
 
 	err = tbl.BatchDedupLocal(bats[2])
 	assert.Nil(t, err)
 	err = tbl.Append(context.Background(), bats[2])
 	assert.Nil(t, err)
-	assert.Equal(t, 3*int(brows), int(tbl.UncommittedRows()))
-	assert.Equal(t, 3*int(brows), int(tbl.tableSpace.index.Count()))
+	assert.Equal(t, 3*int(brows), int(tbl.dataTable.tableSpace.Rows()))
+	assert.Equal(t, 3*int(brows), int(tbl.dataTable.tableSpace.index.Count()))
 	assert.NoError(t, txn.Commit(context.Background()))
 }
 
@@ -329,7 +329,7 @@ func TestLoad(t *testing.T) {
 	err := tbl.Append(context.Background(), bats[0])
 	assert.NoError(t, err)
 
-	v, _, err := tbl.GetLocalValue(100, 0)
+	v, _, err := tbl.dataTable.tableSpace.GetValue(100, 0)
 	assert.NoError(t, err)
 	t.Logf("Row %d, Col %d, Val %v", 100, 0, v)
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -364,7 +364,7 @@ func TestNodeCommand(t *testing.T) {
 	err = tbl.RangeDeleteLocalRows(100, 200)
 	assert.NoError(t, err)
 
-	for i, inode := range tbl.tableSpace.nodes {
+	for i, inode := range tbl.dataTable.tableSpace.nodes {
 		cmd, err := inode.MakeCommand(uint32(i))
 		assert.NoError(t, err)
 		assert.NotNil(t, cmd.(*AppendCmd).Data)

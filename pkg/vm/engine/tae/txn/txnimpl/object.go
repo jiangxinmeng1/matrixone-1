@@ -121,10 +121,11 @@ func newObjectIt(table *txnTable, reverse bool, isTombstone bool) handle.ObjectI
 		curr.RUnlock()
 		it.linkIt.Next()
 	}
-	if table.tableSpace != nil {
+	if table.getBaseTable(isTombstone).tableSpace != nil &&
+		len(table.getBaseTable(isTombstone).tableSpace.nodes) != 0 {
 		cit := &composedObjectIt{
 			ObjectIt:    it,
-			uncommitted: table.tableSpace.entry,
+			uncommitted: table.getBaseTable(isTombstone).tableSpace.entry,
 		}
 		return cit
 	}
@@ -271,7 +272,7 @@ func (obj *txnObject) Prefetch(idxes []int) error {
 		seqnums = append(seqnums, schema.ColDefs[idx].SeqNum)
 	}
 	if obj.IsUncommitted() {
-		return obj.table.tableSpace.Prefetch(obj.entry, seqnums)
+		return obj.table.dataTable.tableSpace.Prefetch(obj.entry, seqnums)
 	}
 	for i := 0; i < obj.entry.BlockCnt(); i++ {
 		err := obj.entry.GetObjectData().Prefetch(seqnums, uint16(i))
@@ -294,7 +295,7 @@ func (obj *txnObject) GetColumnDataById(
 	ctx context.Context, blkID uint16, colIdx int, mp *mpool.MPool,
 ) (*containers.ColumnView, error) {
 	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
+		return obj.table.dataTable.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
 	}
 	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdx, mp)
 }
@@ -303,34 +304,9 @@ func (obj *txnObject) GetColumnDataByIds(
 	ctx context.Context, blkID uint16, colIdxes []int, mp *mpool.MPool,
 ) (*containers.BlockView, error) {
 	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataByIds(obj.entry, colIdxes, mp)
+		return obj.table.dataTable.tableSpace.GetColumnDataByIds(obj.entry, colIdxes, mp)
 	}
 	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
-}
-
-func (obj *txnObject) GetColumnDataByName(
-	ctx context.Context, blkID uint16, attr string, mp *mpool.MPool,
-) (*containers.ColumnView, error) {
-	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
-	colIdx := schema.GetColIdx(attr)
-	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, schema, blkID, colIdx, mp)
-}
-
-func (obj *txnObject) GetColumnDataByNames(
-	ctx context.Context, blkID uint16, attrs []string, mp *mpool.MPool,
-) (*containers.BlockView, error) {
-	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
-	attrIds := make([]int, len(attrs))
-	for i, attr := range attrs {
-		attrIds[i] = schema.GetColIdx(attr)
-	}
-	if obj.entry.IsLocal {
-		return obj.table.tableSpace.GetColumnDataByIds(obj.entry, attrIds, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, schema, blkID, attrIds, mp)
 }
 
 func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) error {

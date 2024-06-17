@@ -226,18 +226,19 @@ func (e *TestEngine) TryAppend(bat *containers.Batch) {
 func (e *TestEngine) DeleteAll(skipConflict bool) error {
 	txn, rel := e.GetRelation()
 	schema := rel.GetMeta().(*catalog.TableEntry).GetLastestSchemaLocked(false)
-	pkName := schema.GetPrimaryKey().Name
+	pkIdx := schema.GetPrimaryKey().Idx
+	rowIDIdx := schema.GetColIdx(catalog.PhyAddrColumnName)
 	it := rel.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		defer blk.Close()
 		blkCnt := uint16(blk.BlkCnt())
 		for i := uint16(0); i < blkCnt; i++ {
-			view, err := blk.GetColumnDataByName(context.Background(), i, catalog.PhyAddrColumnName, common.DefaultAllocator)
+			view, err := blk.GetColumnDataById(context.Background(), i, rowIDIdx, common.DefaultAllocator)
 			assert.NoError(e.t, err)
 			defer view.Close()
 			view.ApplyDeletes()
-			pkView, err := blk.GetColumnDataByName(context.Background(), i, pkName, common.DefaultAllocator)
+			pkView, err := blk.GetColumnDataById(context.Background(), i, pkIdx, common.DefaultAllocator)
 			assert.NoError(e.t, err)
 			defer pkView.Close()
 			pkView.ApplyDeletes()
@@ -721,7 +722,7 @@ func (e *TestEngine) CheckReadCNCheckpoint() {
 	}
 }
 
-func (e *TestEngine) CheckCollectDeleteInRange() {
+func (e *TestEngine) CheckCollectTombstoneInRange() {
 	txn, rel := e.GetRelation()
 	ForEachTombstone(rel, func(obj handle.Object) error {
 		meta := obj.GetMeta().(*catalog.ObjectEntry)

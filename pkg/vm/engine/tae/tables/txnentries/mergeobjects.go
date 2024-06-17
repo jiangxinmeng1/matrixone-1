@@ -170,11 +170,12 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 	blkOffsetBase int) (transCnt int, collect, transfer time.Duration, err error) {
 
 	inst := time.Now()
-	bat, _, err := dropped.CollectDeleteInRange(
+	bat, _, err := dropped.CollectTombstoneInRange(
 		entry.txn.GetContext(),
 		from.Next(),
 		to,
 		common.MergeAllocator,
+		entry.rt.VectorPool.Small,
 	)
 	if err != nil {
 		return

@@ -36,7 +36,7 @@ import (
 )
 
 type ObjectDataFactory = func(meta *ObjectEntry) data.Object
-type TombstoneFactory = func(meta *ObjectEntry) data.Tombstone
+
 type ObjectEntry struct {
 	ID     types.Objectid
 	blkCnt int
@@ -649,14 +649,15 @@ func (entry *ObjectEntry) GetPKZoneMap(
 	return stats.SortKeyZoneMap(), nil
 }
 
-func (entry *ObjectEntry) CollectDeleteInRange(
+func (entry *ObjectEntry) CollectTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
 	mp *mpool.MPool,
+	vpool *containers.VectorPool,
 ) (bat *containers.Batch, emtpyDelBlkIdx *bitmap.Bitmap, err error) {
 	emtpyDelBlkIdx = &bitmap.Bitmap{}
 	emtpyDelBlkIdx.InitWithSize(int64(entry.BlockCnt()))
-	deletes, err := entry.GetTable().CollectDeleteInRange(ctx, start, end, entry.ID, mp)
+	deletes, err := entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
 	if deletes == nil {
 		return nil, nil, nil
 	}

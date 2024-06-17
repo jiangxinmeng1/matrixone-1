@@ -110,37 +110,6 @@ func (node *persistedNode) ContainsKey(ctx context.Context, key any, blkID uint3
 	return
 }
 
-func (node *persistedNode) Foreach(
-	ctx context.Context,
-	readSchema *catalog.Schema,
-	blkID uint16,
-	colIdx int,
-	op func(v any, isNull bool, row int) error,
-	sel []uint32,
-	mp *mpool.MPool,
-) (err error) {
-	var data containers.Vector
-	if data, err = node.object.LoadPersistedColumnData(
-		ctx,
-		readSchema,
-		colIdx,
-		mp,
-		blkID,
-	); err != nil {
-		return
-	}
-	defer data.Close()
-	for _, row := range sel {
-		val := data.Get(int(row))
-		isNull := data.IsNull(int(row))
-		err := op(val, isNull, int(row))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (node *persistedNode) GetDataWindow(
 	readSchema *catalog.Schema, colIdxes []int, from, to uint32, mp *mpool.MPool,
 ) (bat *containers.Batch, err error) {

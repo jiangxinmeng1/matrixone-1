@@ -106,6 +106,10 @@ func (space *tableSpace) registerANode() {
 	space.nodes = append(space.nodes, n)
 }
 
+func (tbl *txnTable) NeedRollback() bool {
+	return tbl.createEntry != nil && tbl.dropEntry != nil
+}
+
 // ApplyAppend applies all the anodes into appendable blocks
 // and un-reference the appendable blocks which had been referenced when PrepareApply.
 func (space *tableSpace) ApplyAppend() (err error) {

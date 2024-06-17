@@ -30,6 +30,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/moprobe"
+	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
@@ -39,16 +40,14 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
-)
-
-var (
-	ErrDuplicateNode = moerr.NewInternalErrorNoCtx("tae: duplicate node")
 )
 
 type txnEntries struct {
@@ -89,24 +88,17 @@ func (entries *txnEntries) Close() {
 }
 
 type txnTable struct {
-	store           *txnStore
-	createEntry     txnif.TxnEntry
-	dropEntry       txnif.TxnEntry
-	entry           *catalog.TableEntry
-	schema          *catalog.Schema
-	tombstoneSchema *catalog.Schema
-	logs            []wal.LogEntry
+	store *txnStore
 
-	tableSpace        *tableSpace
-	dedupedObjectHint uint64
-	dedupedBlockID    *types.Blockid
+	createEntry txnif.TxnEntry
+	dropEntry   txnif.TxnEntry
+	entry       *catalog.TableEntry
+	logs        []wal.LogEntry
+	txnEntries  *txnEntries
+	csnStart    uint32
 
-	tombstoneTableSpace        *tableSpace
-	tombstoneDedupedObjectHint uint64
-	tombstoneDedupedBlockID    *types.Blockid
-
-	txnEntries *txnEntries
-	csnStart   uint32
+	dataTable      *baseTable
+	tombstoneTable *baseTable
 
 	idx int
 }
@@ -117,14 +109,21 @@ func newTxnTable(store *txnStore, entry *catalog.TableEntry) (*txnTable, error) 
 		return nil, moerr.NewInternalErrorNoCtx("No visible schema for ts %s", store.txn.GetStartTS().ToString())
 	}
 	tbl := &txnTable{
-		store:           store,
-		entry:           entry,
-		schema:          schema,
-		tombstoneSchema: tombstoneSchema,
-		logs:            make([]wal.LogEntry, 0),
-		txnEntries:      newTxnEntries(),
+		store:      store,
+		entry:      entry,
+		logs:       make([]wal.LogEntry, 0),
+		txnEntries: newTxnEntries(),
 	}
+	tbl.dataTable = newBaseTable(schema, false, tbl)
+	tbl.tombstoneTable = newBaseTable(tombstoneSchema, true, tbl)
 	return tbl, nil
+}
+
+func (tbl *txnTable) getBaseTable(isTombstone bool) *baseTable {
+	if isTombstone {
+		return tbl.tombstoneTable
+	}
+	return tbl.dataTable
 }
 func (tbl *txnTable) PrePreareTransfer(phase string, ts types.TS) (err error) {
 	return tbl.TransferDeletes(ts, phase)
@@ -169,12 +168,12 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	if tbl.store.rt.TransferTable == nil {
 		return
 	}
-	if tbl.tombstoneTableSpace == nil {
+	if tbl.tombstoneTable.tableSpace == nil {
 		return
 	}
 	// transfer deltaloc
 	id := tbl.entry.AsCommonID()
-	for offset, objID := range tbl.tombstoneTableSpace.objs {
+	for offset, objID := range tbl.tombstoneTable.tableSpace.objs {
 		id.SetObjectID(objID)
 		if err = tbl.store.warChecker.checkOne(
 			id,
@@ -186,8 +185,8 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 		if !moerr.IsMoErrCode(err, moerr.ErrTxnRWConflict) {
 			return
 		}
-		stats := tbl.tombstoneTableSpace.stats[offset]
-		loc := catalog.BuildLocation(stats, id.BlockID.Sequence(), tbl.schema.BlockMaxRows)
+		stats := tbl.tombstoneTable.tableSpace.stats[offset]
+		loc := catalog.BuildLocation(stats, id.BlockID.Sequence(), tbl.dataTable.schema.BlockMaxRows)
 		vectors, closeFunc, err := blockio.LoadColumns2(
 			tbl.store.ctx,
 			[]uint16{0, 1},
@@ -223,20 +222,20 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 		readObjID.BlockID = blkID2
 		tbl.store.warChecker.Delete(readObjID)
 		closeFunc()
-		if offset == len(tbl.tombstoneTableSpace.stats)-1 {
-			tbl.tombstoneTableSpace.stats = tbl.tombstoneTableSpace.stats[:offset]
+		if offset == len(tbl.tombstoneTable.tableSpace.stats)-1 {
+			tbl.tombstoneTable.tableSpace.stats = tbl.tombstoneTable.tableSpace.stats[:offset]
 		} else {
-			tbl.tombstoneTableSpace.stats =
-				append(tbl.tombstoneTableSpace.stats[:offset], tbl.tombstoneTableSpace.stats[offset+1:]...)
+			tbl.tombstoneTable.tableSpace.stats =
+				append(tbl.tombstoneTable.tableSpace.stats[:offset], tbl.tombstoneTable.tableSpace.stats[offset+1:]...)
 		}
 
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
-	if len(tbl.tombstoneTableSpace.nodes) == 0 {
+	if len(tbl.tombstoneTable.tableSpace.nodes) == 0 {
 		return
 	}
-	deletes := tbl.tombstoneTableSpace.nodes[0].(*anode).data
+	deletes := tbl.tombstoneTable.tableSpace.nodes[0].(*anode).data
 	for i := 0; i < deletes.Length(); i++ {
 		rowID := deletes.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 		id.SetObjectID(rowID.BorrowObjectID())
@@ -315,7 +314,7 @@ func (tbl *txnTable) recurTransferDelete(
 	//otherwise recursively transfer the deletes to the next target block.
 	err := tbl.store.warChecker.checkOne(newID, ts)
 	if err == nil {
-		pkType := tbl.schema.GetSingleSortKeyType()
+		pkType := tbl.dataTable.schema.GetSingleSortKeyType()
 		pkVec := tbl.store.rt.VectorPool.Small.GetVector(&pkType)
 		pkVec.Append(pk, false)
 		defer pkVec.Close()
@@ -326,7 +325,7 @@ func (tbl *txnTable) recurTransferDelete(
 		common.DoIfInfoEnabled(func() {
 			logutil.Infof("depth-%d %s transfer delete from blk-%s row-%d to blk-%s row-%d",
 				depth,
-				tbl.schema.Name,
+				tbl.dataTable.schema.Name,
 				id.BlockID.String(),
 				row,
 				blockID.String(),
@@ -447,16 +446,11 @@ func (tbl *txnTable) CollectCmd(cmdMgr *commandManager) (err error) {
 		}
 		cmdMgr.AddCmd(cmd)
 	}
-	if tbl.tableSpace != nil {
-		if err = tbl.tableSpace.CollectCmd(cmdMgr); err != nil {
-			return
-		}
+	err = tbl.dataTable.collectCmd(cmdMgr)
+	if err != nil {
+		return
 	}
-	if tbl.tombstoneTableSpace != nil {
-		if err = tbl.tombstoneTableSpace.CollectCmd(cmdMgr); err != nil {
-			return
-		}
-	}
+	err = tbl.tombstoneTable.collectCmd(cmdMgr)
 	return
 }
 
@@ -577,9 +571,9 @@ func (tbl *txnTable) IsDeleted() bool {
 // latest schema in TableEntry
 func (tbl *txnTable) GetLocalSchema(isTombstone bool) *catalog.Schema {
 	if isTombstone {
-		return tbl.tombstoneSchema
+		return tbl.tombstoneTable.schema
 	}
-	return tbl.schema
+	return tbl.dataTable.schema
 }
 
 func (tbl *txnTable) GetMeta() *catalog.TableEntry {
@@ -592,56 +586,59 @@ func (tbl *txnTable) GetID() uint64 {
 
 func (tbl *txnTable) Close() error {
 	var err error
-	if tbl.tableSpace != nil {
-		if err = tbl.tableSpace.Close(); err != nil {
-			return err
-		}
-		tbl.tableSpace = nil
+	err = tbl.dataTable.Close()
+	if err != nil {
+		return err
 	}
-	if tbl.tombstoneTableSpace != nil {
-		if err = tbl.tombstoneTableSpace.Close(); err != nil {
-			return err
-		}
-		tbl.tombstoneTableSpace = nil
+	err = tbl.tombstoneTable.Close()
+	if err != nil {
+		return err
 	}
 	tbl.logs = nil
 	tbl.txnEntries = nil
 	return nil
 }
-
-func (tbl *txnTable) Append(ctx context.Context, data *containers.Batch) (err error) {
-	if tbl.schema.HasPK() && !tbl.schema.IsSecondaryIndexTable() {
-		dedupType := tbl.store.txn.GetDedupType()
-		if dedupType == txnif.FullDedup {
-			//do PK deduplication check against txn's work space.
-			if err = tbl.DedupWorkSpace(
-				data.Vecs[tbl.schema.GetSingleSortKeyIdx()], false); err != nil {
-				return
-			}
-			//do PK deduplication check against txn's snapshot data.
-			if err = tbl.DedupSnapByPK(
-				ctx,
-				data.Vecs[tbl.schema.GetSingleSortKeyIdx()], false, false); err != nil {
-				return
-			}
-		} else if dedupType == txnif.FullSkipWorkSpaceDedup {
-			if err = tbl.DedupSnapByPK(
-				ctx,
-				data.Vecs[tbl.schema.GetSingleSortKeyIdx()], false, false); err != nil {
-				return
-			}
-		} else if dedupType == txnif.IncrementalDedup {
-			if err = tbl.DedupSnapByPK(
-				ctx,
-				data.Vecs[tbl.schema.GetSingleSortKeyIdx()], true, false); err != nil {
-				return
-			}
+func (tbl *txnTable) dedup(ctx context.Context, pk containers.Vector, isTombstone bool) (err error) {
+	dedupType := tbl.store.txn.GetDedupType()
+	if dedupType == txnif.FullDedup {
+		//do PK deduplication check against txn's work space.
+		if err = tbl.DedupWorkSpace(
+			pk, isTombstone); err != nil {
+			return
+		}
+		//do PK deduplication check against txn's snapshot data.
+		if err = tbl.DedupSnapByPK(
+			ctx,
+			pk, false, isTombstone); err != nil {
+			return
+		}
+	} else if dedupType == txnif.FullSkipWorkSpaceDedup {
+		if err = tbl.DedupSnapByPK(
+			ctx,
+			pk, false, isTombstone); err != nil {
+			return
+		}
+	} else if dedupType == txnif.IncrementalDedup {
+		if err = tbl.DedupSnapByPK(
+			ctx,
+			pk, true, isTombstone); err != nil {
+			return
 		}
 	}
-	if tbl.tableSpace == nil {
-		tbl.tableSpace = newTableSpace(tbl, false)
+	return
+}
+func (tbl *txnTable) Append(ctx context.Context, data *containers.Batch) (err error) {
+	schema := tbl.dataTable.schema
+	if schema.HasPK() && !schema.IsSecondaryIndexTable() {
+		err = tbl.dedup(ctx, data.Vecs[schema.GetSingleSortKeyIdx()], false)
+		if err != nil {
+			return err
+		}
 	}
-	return tbl.tableSpace.Append(data)
+	if tbl.dataTable.tableSpace == nil {
+		tbl.dataTable.tableSpace = newTableSpace(tbl, false)
+	}
+	return tbl.dataTable.tableSpace.Append(data)
 }
 func (tbl *txnTable) AddObjsWithMetaLoc(ctx context.Context, stats containers.Vector) (err error) {
 	return stats.Foreach(func(v any, isNull bool, row int) error {
@@ -650,224 +647,64 @@ func (tbl *txnTable) AddObjsWithMetaLoc(ctx context.Context, stats containers.Ve
 	}, nil)
 }
 func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.ObjectStats, isTombstone bool) (err error) {
-	var pkVecs []containers.Vector
-	var closeFuncs []func()
-	defer func() {
-		for _, v := range pkVecs {
-			v.Close()
-		}
-		for _, f := range closeFuncs {
-			f()
-		}
-	}()
-	var tableSpace *tableSpace
 	if isTombstone {
-		tableSpace = tbl.tombstoneTableSpace
+		return tbl.tombstoneTable.addObjsWithMetaLoc(ctx, stats)
 	} else {
-		tableSpace = tbl.tableSpace
+		return tbl.dataTable.addObjsWithMetaLoc(ctx, stats)
 	}
-	if tableSpace != nil && tableSpace.isStatsExisted(stats) {
-		return nil
-	}
-	metaLocs := make([]objectio.Location, 0)
-	blkCount := stats.BlkCnt()
-	totalRow := stats.Rows()
-	blkMaxRows := tbl.schema.BlockMaxRows
-	for i := uint16(0); i < uint16(blkCount); i++ {
-		var blkRow uint32
-		if totalRow > blkMaxRows {
-			blkRow = blkMaxRows
-		} else {
-			blkRow = totalRow
-		}
-		totalRow -= blkRow
-		metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
-
-		metaLocs = append(metaLocs, metaloc)
-	}
-	schema := tbl.schema
-	if isTombstone {
-		schema = tbl.tombstoneSchema
-	}
-	if schema.HasPK() && !tbl.schema.IsSecondaryIndexTable() {
-		dedupType := tbl.store.txn.GetDedupType()
-		if dedupType == txnif.FullDedup {
-			//TODO::parallel load pk.
-			for _, loc := range metaLocs {
-				var vectors []containers.Vector
-				var closeFunc func()
-				//Extend lifetime of vectors is within the function.
-				//No NeedCopy. closeFunc is required after use.
-				//VectorPool is nil.
-				if isTombstone {
-					vectors, closeFunc, err = blockio.LoadColumns2(
-						ctx,
-						[]uint16{uint16(schema.GetSingleSortKeyIdx())},
-						nil,
-						tbl.store.rt.Fs.Service,
-						loc,
-						fileservice.Policy(0),
-						false,
-						nil,
-					)
-				} else {
-					vectors, closeFunc, err = blockio.LoadColumns2(
-						ctx,
-						[]uint16{uint16(schema.GetSingleSortKeyIdx())},
-						nil,
-						tbl.store.rt.Fs.Service,
-						loc,
-						fileservice.Policy(0),
-						false,
-						nil,
-					)
-				}
-				if err != nil {
-					return err
-				}
-				closeFuncs = append(closeFuncs, closeFunc)
-				pkVecs = append(pkVecs, vectors[0])
-			}
-			for _, v := range pkVecs {
-				//do PK deduplication check against txn's work space.
-				if err = tbl.DedupWorkSpace(v, isTombstone); err != nil {
-					return
-				}
-				//do PK deduplication check against txn's snapshot data.
-				if err = tbl.DedupSnapByPK(ctx, v, false, isTombstone); err != nil {
-					return
-				}
-			}
-		} else if dedupType == txnif.FullSkipWorkSpaceDedup {
-			//do PK deduplication check against txn's snapshot data.
-			if err = tbl.DedupSnapByMetaLocs(ctx, metaLocs, false, isTombstone); err != nil {
-				return
-			}
-		} else if dedupType == txnif.IncrementalDedup {
-			//do PK deduplication check against txn's snapshot data.
-			if err = tbl.DedupSnapByMetaLocs(ctx, metaLocs, true, isTombstone); err != nil {
-				return
-			}
-		}
-	}
-	if isTombstone {
-		if tbl.tombstoneTableSpace == nil {
-			tbl.tombstoneTableSpace = newTableSpace(tbl, isTombstone)
-			tableSpace = tbl.tombstoneTableSpace
-		}
-	} else {
-		if tbl.tableSpace == nil {
-			tbl.tableSpace = newTableSpace(tbl, isTombstone)
-			tableSpace = tbl.tableSpace
-		}
-	}
-	return tableSpace.AddObjsWithMetaLoc(pkVecs, stats)
-}
-
-func (tbl *txnTable) LocalDeletesToString() string {
-	s := fmt.Sprintf("<txnTable-%d>[LocalDeletes]:\n", tbl.GetID())
-	if tbl.tableSpace != nil {
-		s = fmt.Sprintf("%s%s", s, tbl.tableSpace.DeletesToString())
-	}
-	return s
-}
-
-func (tbl *txnTable) IsLocalDeleted(row uint32) bool {
-	if tbl.tableSpace == nil {
-		return false
-	}
-	return tbl.tableSpace.IsDeleted(row)
 }
 
 func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id *common.ID, offset uint32, err error) {
 	if filter.Op != handle.FilterEq {
 		panic("logic error")
 	}
-	if tbl.tableSpace != nil {
-		id, offset, err = tbl.tableSpace.GetByFilter(filter)
+	if tbl.dataTable.tableSpace != nil {
+		id, offset, err = tbl.dataTable.tableSpace.GetByFilter(filter)
 		if err == nil {
 			return
 		}
 		err = nil
 	}
-	pkType := &tbl.schema.GetPrimaryKey().Type
+	pkType := &tbl.dataTable.schema.GetPrimaryKey().Type
 	pks := tbl.store.rt.VectorPool.Small.GetVector(pkType)
 	defer pks.Close()
 	pks.Append(filter.Val, false)
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-	defer rowIDs.Close()
-	rowIDs.Append(nil, true)
-	pksZM := index.NewZM(pkType.Oid, pkType.Scale)
-	if err = index.BatchUpdateZM(pksZM, pks.GetDownstreamVector()); err != nil {
+	rowIDs, err := tbl.dataTable.getRowsByPK(ctx, pks, false, false)
+	if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
 		return
 	}
-	h := newRelation(tbl)
-	blockIt := h.MakeObjectIt(false, false)
-	for blockIt.Valid() {
-		h := blockIt.GetObject()
-		defer h.Close()
-		if h.IsUncommitted() {
-			blockIt.Next()
-			continue
-		}
-		obj := h.GetMeta().(*catalog.ObjectEntry)
-		obj.RLock()
-		shouldSkip := obj.IsCreatingOrAbortedLocked()
-		obj.RUnlock()
-		if shouldSkip {
-			continue
-		}
-		objData := obj.GetObjectData()
-		if err = objData.GetDuplicatedRows(
-			context.Background(),
-			tbl.store.txn,
-			pks,
-			pksZM,
-			false,
-			false,
-			objectio.BloomFilter{},
-			rowIDs,
-			common.WorkspaceAllocator,
-		); err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
-			return
-		}
-		err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, false)
-		if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
-			return
-		}
-		if !rowIDs.IsNull(0) {
-			rowID := rowIDs.Get(0).(types.Rowid)
-			id = obj.AsCommonID()
-			id.SetBlockOffset(rowID.GetBlockOffset())
-			offset = rowID.GetRowOffset()
-			var deleted bool
-			deleted, err = tbl.IsDeletedInWorkSpace(id.BlockID, offset)
-			if err != nil {
-				return nil, 0, err
-			}
-			if deleted {
-				break
-			}
-			return
-		}
-		blockIt.Next()
+	defer rowIDs.Close()
+	if rowIDs.IsNull(0) {
+		err = moerr.NewNotFoundNoCtx()
+		return
 	}
-	if err == nil {
+	err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, false)
+	if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+		return
+	}
+	if rowIDs.IsNull(0) {
+		err = moerr.NewNotFoundNoCtx()
+		return
+	}
+	rowID := rowIDs.Get(0).(types.Rowid)
+	id = tbl.entry.AsCommonID()
+	id.BlockID = *rowID.BorrowBlockID()
+	offset = rowID.GetRowOffset()
+	var deleted bool
+	deleted, err = tbl.IsDeletedInWorkSpace(id.BlockID, offset)
+	if err != nil {
+		return
+	}
+	if deleted {
+		id = nil
 		err = moerr.NewNotFoundNoCtx()
 	}
 	return
 }
 
-func (tbl *txnTable) GetLocalValue(row uint32, col uint16) (v any, isNull bool, err error) {
-	if tbl.tableSpace == nil {
-		return
-	}
-	return tbl.tableSpace.GetValue(row, col)
-}
-
 func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, col uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
-	if tbl.tableSpace != nil && id.ObjectID().Eq(tbl.tableSpace.entry.ID) {
-		return tbl.tableSpace.GetValue(row, col)
+	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(tbl.dataTable.tableSpace.entry.ID) {
+		return tbl.dataTable.tableSpace.GetValue(row, col)
 	}
 	meta, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
@@ -928,38 +765,20 @@ func (tbl *txnTable) AlterTable(ctx context.Context, req *apipb.AlterTableReq) e
 		}
 	}
 
-	tbl.schema = newSchema // update new schema to txn local schema
+	tbl.dataTable.schema = newSchema // update new schema to txn local schema
 	//TODO(aptend): handle written data in localobj, keep the batch aligned with the new schema
 	return err
 }
 
-func (tbl *txnTable) UncommittedRows() uint32 {
-	if tbl.tableSpace == nil {
-		return 0
-	}
-	return tbl.tableSpace.Rows()
-}
-func (tbl *txnTable) NeedRollback() bool {
-	return tbl.createEntry != nil && tbl.dropEntry != nil
-}
-
 // PrePrepareDedup do deduplication check for 1PC Commit or 2PC Prepare
 func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err error) {
-	var tableSpace *tableSpace
-	var schema *catalog.Schema
-	if isTombstone {
-		tableSpace = tbl.tombstoneTableSpace
-		schema = tbl.tombstoneSchema
-	} else {
-		tableSpace = tbl.tableSpace
-		schema = tbl.schema
-	}
-	if tableSpace == nil || !schema.HasPK() || tbl.schema.IsSecondaryIndexTable() {
+	baseTable := tbl.getBaseTable(isTombstone)
+	if baseTable.tableSpace == nil || !baseTable.schema.HasPK() || baseTable.schema.IsSecondaryIndexTable() {
 		return
 	}
 	var zm index.ZM
-	pkColPos := schema.GetSingleSortKeyIdx()
-	for _, node := range tableSpace.nodes {
+	pkColPos := baseTable.schema.GetSingleSortKeyIdx()
+	for _, node := range baseTable.tableSpace.nodes {
 		if node.IsPersisted() {
 			err = tbl.DoPrecommitDedupByNode(ctx, node, isTombstone)
 			if err != nil {
@@ -990,157 +809,17 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 	return
 }
 
-func (tbl *txnTable) updateDedupedObjectHintAndBlockID(hint uint64, id *types.Blockid, isTombstone bool) {
-	if isTombstone {
-		if tbl.tombstoneDedupedObjectHint == 0 {
-			tbl.tombstoneDedupedObjectHint = hint
-			tbl.tombstoneDedupedBlockID = id
-			return
-		}
-		if tbl.tombstoneDedupedObjectHint > hint {
-			tbl.tombstoneDedupedObjectHint = hint
-			tbl.tombstoneDedupedObjectHint = hint
-			return
-		}
-		if tbl.tombstoneDedupedObjectHint == hint && tbl.tombstoneDedupedBlockID.Compare(*id) > 0 {
-			tbl.tombstoneDedupedBlockID = id
-		}
-	} else {
-		if tbl.dedupedObjectHint == 0 {
-			tbl.dedupedObjectHint = hint
-			tbl.dedupedBlockID = id
-			return
-		}
-		if tbl.dedupedObjectHint > hint {
-			tbl.dedupedObjectHint = hint
-			tbl.dedupedObjectHint = hint
-			return
-		}
-		if tbl.dedupedObjectHint == hint && tbl.dedupedBlockID.Compare(*id) > 0 {
-			tbl.dedupedBlockID = id
-		}
-	}
-}
-
-func (tbl *txnTable) quickSkipThisObject(
-	ctx context.Context,
-	keysZM index.ZM,
-	meta *catalog.ObjectEntry,
-) (ok bool, err error) {
-	zm, err := meta.GetPKZoneMap(ctx)
-	if err != nil {
-		return
-	}
-	ok = !zm.FastIntersect(keysZM)
-	return
-}
-
-func (tbl *txnTable) tryGetCurrentObjectBF(
-	ctx context.Context,
-	currLocation objectio.Location,
-	prevBF objectio.BloomFilter,
-	prevObjName *objectio.ObjectNameShort,
-) (currBf objectio.BloomFilter, err error) {
-	if len(currLocation) == 0 {
-		return
-	}
-	if objectio.IsSameObjectLocVsShort(currLocation, prevObjName) {
-		currBf = prevBF
-		return
-	}
-	currBf, err = objectio.FastLoadBF(
-		ctx,
-		currLocation,
-		false,
-		tbl.store.rt.Fs.Service,
-	)
-	return
-}
-
 // DedupSnapByPK 1. checks whether these primary keys exist in the list of block
 // which are visible and not dropped at txn's snapshot timestamp.
 // 2. It is called when appending data into this table.
 func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, dedupAfterSnapshotTS bool, isTombstone bool) (err error) {
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
-	it := newObjectItOnSnap(tbl, isTombstone)
-	maxObjectHint := uint64(0)
-	pkType := keys.GetType()
-	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
-	if err = index.BatchUpdateZM(keysZM, keys.GetDownstreamVector()); err != nil {
+	rowIDs, err := tbl.getBaseTable(isTombstone).getRowsByPK(ctx, keys, dedupAfterSnapshotTS, true)
+	if err != nil {
 		return
 	}
-	var (
-		name objectio.ObjectNameShort
-		bf   objectio.BloomFilter
-	)
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	defer rowIDs.Close()
-	if err = vector.AppendMultiFixed[types.Rowid](
-		rowIDs.GetDownstreamVector(),
-		types.EmptyRowid,
-		true,
-		keys.Length(),
-		common.WorkspaceAllocator,
-	); err != nil {
-		return
-	}
-	maxBlockID := &types.Blockid{}
-	for it.Valid() {
-		objH := it.GetObject()
-		obj := objH.GetMeta().(*catalog.ObjectEntry)
-		objH.Close()
-		ObjectHint := obj.SortHint
-		if ObjectHint > maxObjectHint {
-			maxObjectHint = ObjectHint
-		}
-		objData := obj.GetObjectData()
-		if objData == nil {
-			it.Next()
-			continue
-		}
-		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
-			it.Next()
-			continue
-		}
-		stats := obj.GetObjectStats()
-		if !stats.ObjectLocation().IsEmpty() {
-			var skip bool
-			if skip, err = tbl.quickSkipThisObject(ctx, keysZM, obj); err != nil {
-				return
-			} else if skip {
-				it.Next()
-				continue
-			}
-		}
-		if obj.HasCommittedPersistedData() {
-			if bf, err = tbl.tryGetCurrentObjectBF(
-				ctx,
-				stats.ObjectLocation(),
-				bf,
-				&name,
-			); err != nil {
-				return
-			}
-		}
-		name = *stats.ObjectShortName()
-
-		if err = objData.GetDuplicatedRows(
-			ctx,
-			tbl.store.txn,
-			keys,
-			keysZM,
-			false,
-			true,
-			bf,
-			rowIDs,
-			common.WorkspaceAllocator,
-		); err != nil {
-			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
-			return
-		}
-		it.Next()
-	}
 	if !isTombstone {
 		err = tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, false)
 		if err != nil {
@@ -1148,19 +827,12 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		}
 	}
 	for i := 0; i < rowIDs.Length(); i++ {
-		var colName string
-		if isTombstone {
-			colName = tbl.tombstoneSchema.GetPrimaryKey().Name
-		} else {
-			colName = tbl.schema.GetPrimaryKey().Name
-		}
+		colName := tbl.getBaseTable(isTombstone).schema.GetPrimaryKey().Name
 		if !rowIDs.IsNull(i) {
 			entry := common.TypeStringValue(*keys.GetType(), keys.Get(i), false)
 			return moerr.NewDuplicateEntryNoCtx(entry, colName)
 		}
 	}
-
-	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID, isTombstone)
 	return
 }
 func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, dedupAfterSnapshotTS, isCommitting bool) (err error) {
@@ -1197,7 +869,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		stats := obj.GetObjectStats()
 		if !stats.ObjectLocation().IsEmpty() {
 			var skip bool
-			if skip, err = tbl.quickSkipThisObject(ctx, keysZM, obj); err != nil {
+			if skip, err = quickSkipThisObject(ctx, keysZM, obj); err != nil {
 				return
 			} else if skip {
 				continue
@@ -1220,107 +892,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	return
 }
 
-// DedupSnapByMetaLocs 1. checks whether the Primary Key of all the input blocks exist in the list of block
-// which are visible and not dropped at txn's snapshot timestamp.
-// 2. It is called when appending blocks into this table.
-func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objectio.Location, dedupAfterSnapshotTS bool, isTombstone bool) (err error) {
-	maxObjectHint := uint64(0)
-	maxBlockID := &types.Blockid{}
-	for _, loc := range metaLocs {
-		//TODO::laod zm index first, then load pk column if necessary.
-		//Extend lifetime of vectors is within the function.
-		//No NeedCopy. closeFunc is required after use.
-		//VectorPool is nil.
-		vectors, closeFunc, err2 := blockio.LoadColumns2(
-			ctx,
-			[]uint16{uint16(tbl.schema.GetSingleSortKeyIdx())},
-			nil,
-			tbl.store.rt.Fs.Service,
-			loc,
-			fileservice.Policy(0),
-			false,
-			nil,
-		)
-		if err2 != nil {
-			return err2
-		}
-		defer closeFunc()
-		keys := vectors[0]
-		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-		defer rowIDs.Close()
-		if err = vector.AppendMultiFixed[types.Rowid](
-			rowIDs.GetDownstreamVector(),
-			types.EmptyRowid,
-			true,
-			keys.Length(),
-			common.WorkspaceAllocator,
-		); err != nil {
-			return
-		}
-		it := newObjectItOnSnap(tbl, isTombstone)
-		for it.Valid() {
-			obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
-			ObjectHint := obj.SortHint
-			if ObjectHint > maxObjectHint {
-				maxObjectHint = ObjectHint
-			}
-			objData := obj.GetObjectData()
-			if objData == nil {
-				it.Next()
-				continue
-			}
-
-			// if it is in the incremental deduplication scenario
-			// coarse check whether all rows in this block are committed before the snapshot timestamp
-			// if true, skip this block's deduplication
-			if dedupAfterSnapshotTS &&
-				objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
-				it.Next()
-				continue
-			}
-
-			if err = objData.GetDuplicatedRows(
-				ctx,
-				tbl.store.txn,
-				keys,
-				nil,
-				false,
-				true,
-				objectio.BloomFilter{},
-				rowIDs,
-				common.WorkspaceAllocator,
-			); err != nil {
-				// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
-				keys.Close()
-				return
-			}
-			if !isTombstone {
-				err = tbl.findDeletes(ctx, rowIDs, dedupAfterSnapshotTS, false)
-				if err != nil {
-					return
-				}
-			}
-			for i := 0; i < rowIDs.Length(); i++ {
-				var colName string
-				if isTombstone {
-					colName = tbl.tombstoneSchema.GetPrimaryKey().Name
-				} else {
-					colName = tbl.schema.GetPrimaryKey().Name
-				}
-				if !rowIDs.IsNull(i) {
-					entry := common.TypeStringValue(*keys.GetType(), keys.Get(i), false)
-					keys.Close()
-					return moerr.NewDuplicateEntryNoCtx(entry, colName)
-				}
-			}
-			keys.Close()
-			it.Next()
-		}
-		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID, isTombstone)
-	}
-	return
-}
-
 // DoPrecommitDedupByPK 1. it do deduplication by traversing all the Objects/blocks, and
 // skipping over some blocks/Objects which being active or drop-committed or aborted;
 //  2. it is called when txn dequeues from preparing queue.
@@ -1328,89 +899,41 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 //     TODO::it would be used to do deduplication with the logtail.
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM, isTombstone bool) (err error) {
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
-		rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-		defer rowIDs.Close()
-		if err = vector.AppendMultiFixed[types.Rowid](
-			rowIDs.GetDownstreamVector(),
-			types.EmptyRowid,
-			true,
-			pks.Length(),
-			common.WorkspaceAllocator,
-		); err != nil {
+		var rowIDs containers.Vector
+		rowIDs, err = tbl.getBaseTable(isTombstone).preCommitGetRowsByPK(tbl.store.ctx, pks)
+		if err != nil {
 			return
 		}
-		objIt := tbl.entry.MakeObjectIt(false, isTombstone)
-		for objIt.Valid() {
-			obj := objIt.Get().GetPayload()
-			dedupedHint := tbl.dedupedObjectHint
-			if isTombstone {
-				dedupedHint = tbl.tombstoneDedupedObjectHint
-			}
-			if obj.SortHint < dedupedHint {
-				break
-			}
-			{
-				obj.RLock()
-				//FIXME:: Why need to wait committing here? waiting had happened at Dedup.
-				//needwait, txnToWait := obj.NeedWaitCommitting(tbl.store.txn.GetStartTS())
-				//if needwait {
-				//	obj.RUnlock()
-				//	txnToWait.GetTxnState(true)
-				//	obj.RLock()
-				//}
-				shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
-				obj.RUnlock()
-				if shouldSkip {
-					objIt.Next()
-					continue
-				}
-			}
-			objData := obj.GetObjectData()
-			if err = objData.GetDuplicatedRows(
-				context.Background(),
-				tbl.store.txn,
-				pks,
-				pksZM,
-				true,
-				true,
-				objectio.BloomFilter{},
-				rowIDs,
-				common.WorkspaceAllocator,
-			); err != nil {
+		defer rowIDs.Close()
+		if !isTombstone {
+			err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
+			if err != nil {
 				return
 			}
-			if !isTombstone {
-				err = tbl.findDeletes(tbl.store.ctx, rowIDs, false, true)
-				if err != nil {
-					return
-				}
+		}
+		for i := 0; i < rowIDs.Length(); i++ {
+			var colName string
+			if isTombstone {
+				colName = tbl.tombstoneTable.schema.GetPrimaryKey().Name
+			} else {
+				colName = tbl.dataTable.schema.GetPrimaryKey().Name
 			}
-			for i := 0; i < rowIDs.Length(); i++ {
-				var colName string
-				if isTombstone {
-					colName = tbl.tombstoneSchema.GetPrimaryKey().Name
-				} else {
-					colName = tbl.schema.GetPrimaryKey().Name
-				}
-				if !rowIDs.IsNull(i) {
-					entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
-					err = moerr.NewDuplicateEntryNoCtx(entry, colName)
-					return
-				}
+			if !rowIDs.IsNull(i) {
+				entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
+				err = moerr.NewDuplicateEntryNoCtx(entry, colName)
+				return
 			}
-			objIt.Next()
 		}
 	})
 	return
 }
 
 func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode, isTombstone bool) (err error) {
-	objIt := tbl.entry.MakeObjectIt(false, isTombstone)
 	var pks containers.Vector
 	//loaded := false
 	//TODO::load ZM/BF index first, then load PK column if necessary.
 	if pks == nil {
-		colV, err := node.GetColumnDataById(ctx, tbl.schema.GetSingleSortKeyIdx(), common.WorkspaceAllocator)
+		colV, err := node.GetColumnDataById(ctx, tbl.dataTable.schema.GetSingleSortKeyIdx(), common.WorkspaceAllocator)
 		if err != nil {
 			return err
 		}
@@ -1418,67 +941,37 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 		pks = colV.Orphan()
 		defer pks.Close()
 	}
-	rowIDs := tbl.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-	defer rowIDs.Close()
-	if err = vector.AppendMultiFixed[types.Rowid](
-		rowIDs.GetDownstreamVector(),
-		types.EmptyRowid,
-		true,
-		pks.Length(),
-		common.WorkspaceAllocator,
-	); err != nil {
+	var rowIDs containers.Vector
+	if isTombstone {
+		rowIDs, err = tbl.tombstoneTable.preCommitGetRowsByPK(ctx, pks)
+	} else {
+
+		rowIDs, err = tbl.dataTable.preCommitGetRowsByPK(ctx, pks)
+	}
+	if err != nil {
 		return
 	}
-	for objIt.Valid() {
-		obj := objIt.Get().GetPayload()
-		dedupedHint := tbl.dedupedObjectHint
-		if isTombstone {
-			dedupedHint = tbl.tombstoneDedupedObjectHint
+	defer rowIDs.Close()
+	if !isTombstone {
+		err = tbl.findDeletes(ctx, rowIDs, true, true)
+	}
+	if err != nil {
+		return
+	}
+	for i := 0; i < rowIDs.Length(); i++ {
+		if !rowIDs.IsNull(i) {
+			colName := tbl.getSchema(false).GetPrimaryKey().Name
+			entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
+			err = moerr.NewDuplicateEntryNoCtx(entry, colName)
 		}
-		if obj.SortHint < dedupedHint {
-			break
-		}
-		{
-			obj.RLock()
-			//FIXME:: Why need to wait committing here? waiting had happened at Dedup.
-			//needwait, txnToWait := obj.NeedWaitCommitting(tbl.store.txn.GetStartTS())
-			//if needwait {
-			//	obj.RUnlock()
-			//	txnToWait.GetTxnState(true)
-			//	obj.RLock()
-			//}
-			shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
-			obj.RUnlock()
-			if shouldSkip {
-				objIt.Next()
-				continue
-			}
-		}
-
-		err = nil
-		objData := obj.GetObjectData()
-		if err = objData.GetDuplicatedRows(
-			context.Background(),
-			tbl.store.txn,
-			pks,
-			nil,
-			true,
-			true,
-			objectio.BloomFilter{},
-			rowIDs,
-			common.WorkspaceAllocator,
-		); err != nil {
-			return err
-		}
-		objIt.Next()
 	}
 	return
 }
 func (tbl *txnTable) getSchema(isTombstone bool) *catalog.Schema {
 	if isTombstone {
-		return tbl.tombstoneSchema
+		return tbl.tombstoneTable.schema
 	} else {
-		return tbl.schema
+		return tbl.dataTable.schema
 	}
 }
 func (tbl *txnTable) DedupWorkSpace(key containers.Vector, isTombstone bool) (err error) {
@@ -1494,26 +987,18 @@ func (tbl *txnTable) DedupWorkSpace(key containers.Vector, isTombstone bool) (er
 		return
 	}
 
-	var tableSpace *tableSpace
 	if isTombstone {
-		tableSpace = tbl.tombstoneTableSpace
+		return tbl.tombstoneTable.DedupWorkSpace(key)
 	} else {
-		tableSpace = tbl.tableSpace
+		return tbl.dataTable.DedupWorkSpace(key)
 	}
-	if tableSpace != nil {
-		//Check whether primary key is duplicated in txn's workspace.
-		if err = tableSpace.BatchDedup(key); err != nil {
-			return
-		}
-	}
-	return
 }
 
 func (tbl *txnTable) DoBatchDedup(key containers.Vector) (err error) {
 	index := NewSimpleTableIndex()
 	//Check whether primary key is duplicated.
 	if err = index.BatchInsert(
-		tbl.schema.GetSingleSortKey().Name,
+		tbl.dataTable.schema.GetSingleSortKey().Name,
 		key,
 		0,
 		key.Length(),
@@ -1522,11 +1007,9 @@ func (tbl *txnTable) DoBatchDedup(key containers.Vector) (err error) {
 		return
 	}
 
-	if tbl.tableSpace != nil {
-		//Check whether primary key is duplicated in txn's workspace.
-		if err = tbl.tableSpace.BatchDedup(key); err != nil {
-			return
-		}
+	err = tbl.DedupWorkSpace(key, false)
+	if err != nil {
+		return
 	}
 	//Check whether primary key is duplicated in txn's snapshot data.
 	err = tbl.DedupSnapByPK(context.Background(), key, false, false)
@@ -1534,10 +1017,7 @@ func (tbl *txnTable) DoBatchDedup(key containers.Vector) (err error) {
 }
 
 func (tbl *txnTable) BatchDedupLocal(bat *containers.Batch) (err error) {
-	if tbl.tableSpace == nil || !tbl.schema.HasPK() {
-		return
-	}
-	err = tbl.tableSpace.BatchDedup(bat.Vecs[tbl.schema.GetSingleSortKeyIdx()])
+	err = tbl.dataTable.BatchDedupLocal(bat)
 	return
 }
 
@@ -1554,28 +1034,24 @@ func (tbl *txnTable) PrepareRollback() (err error) {
 }
 
 func (tbl *txnTable) ApplyAppend() (err error) {
-	if tbl.tableSpace != nil {
-		err = tbl.tableSpace.ApplyAppend()
+	if tbl.dataTable.tableSpace != nil {
+		err = tbl.dataTable.tableSpace.ApplyAppend()
 	}
 	if err != nil {
 		return
 	}
-	if tbl.tombstoneTableSpace != nil {
-		err = tbl.tombstoneTableSpace.ApplyAppend()
+	if tbl.tombstoneTable.tableSpace != nil {
+		err = tbl.tombstoneTable.tableSpace.ApplyAppend()
 	}
 	return
 }
 
 func (tbl *txnTable) PrePrepare() (err error) {
-	if tbl.tableSpace != nil {
-		err = tbl.tableSpace.PrepareApply()
-	}
+	err = tbl.dataTable.PrePrepare()
 	if err != nil {
 		return
 	}
-	if tbl.tombstoneTableSpace != nil {
-		err = tbl.tombstoneTableSpace.PrepareApply()
-	}
+	err = tbl.tombstoneTable.PrePrepare()
 	return
 }
 
@@ -1696,10 +1172,363 @@ func (tbl *txnTable) ApplyRollback() (err error) {
 }
 
 func (tbl *txnTable) CleanUp() {
-	if tbl.tableSpace != nil {
-		tbl.tableSpace.CloseAppends()
+	tbl.dataTable.CleanUp()
+	tbl.tombstoneTable.CleanUp()
+}
+
+func (tbl *txnTable) RangeDeleteLocalRows(start, end uint32) (err error) {
+	if tbl.dataTable.tableSpace != nil {
+		err = tbl.dataTable.tableSpace.RangeDelete(start, end)
 	}
-	if tbl.tombstoneTableSpace != nil {
-		tbl.tombstoneTableSpace.CloseAppends()
+	return
+}
+
+// RangeDelete delete block rows in range [start, end]
+func (tbl *txnTable) RangeDelete(
+	id *common.ID,
+	start,
+	end uint32,
+	pk containers.Vector,
+	dt handle.DeleteType) (err error) {
+	defer func() {
+		if err == nil {
+			return
+		}
+		// if moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+		// 	moerr.NewTxnWriteConflictNoCtx("table-%d blk-%d delete rows from %d to %d",
+		// 		id.TableID,
+		// 		id.BlockID,
+		// 		start,
+		// 		end)
+		// }
+		// This err also captured by txn's write conflict check.
+		if err != nil {
+			if moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+				err = moerr.NewTxnWWConflictNoCtx(id.TableID, pk.PPString(int(end-start+1)))
+			}
+
+			logutil.Debugf("[ts=%s]: table-%d blk-%s delete rows from %d to %d %v",
+				tbl.store.txn.GetStartTS().ToString(),
+				id.TableID,
+				id.BlockID.String(),
+				start,
+				end,
+				err)
+			if tbl.store.rt.Options.IncrementalDedup && moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
+				logutil.Warnf("[txn%X,ts=%s]: table-%d blk-%s delete rows [%d,%d] pk %s",
+					tbl.store.txn.GetID(),
+					tbl.store.txn.GetStartTS().ToString(),
+					id.TableID,
+					id.BlockID.String(),
+					start, end,
+					pk.PPString(int(start-end+1)),
+				)
+			}
+		}
+	}()
+	deleteBatch := tbl.createTombstoneBatch(id, start, end, pk)
+	defer func() {
+		for _, attr := range deleteBatch.Attrs {
+			if attr == catalog.AttrPKVal {
+				// not close pk
+				continue
+			}
+			deleteBatch.GetVectorByName(attr).Close()
+		}
+	}()
+
+	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(tbl.dataTable.tableSpace.entry.ID) {
+		err = tbl.RangeDeleteLocalRows(start, end)
+		return
 	}
+	err = tbl.dedup(tbl.store.ctx, deleteBatch.GetVectorByName(catalog.AttrRowID), true)
+	if err != nil {
+		return
+	}
+	if tbl.tombstoneTable.tableSpace == nil {
+		tbl.tombstoneTable.tableSpace = newTableSpace(tbl, true)
+	}
+	err = tbl.tombstoneTable.tableSpace.Append(deleteBatch)
+	if err != nil {
+		return
+	}
+	if dt == handle.DT_MergeCompact {
+		anode := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+		anode.isMergeCompact = true
+		if tbl.store.txn.GetTxnState(false) != txnif.TxnStateActive {
+			startOffset := anode.data.Length() - deleteBatch.Length()
+			tbl.tombstoneTable.tableSpace.prepareApplyANode(anode, uint32(startOffset))
+		}
+	}
+	obj, err := tbl.store.warChecker.CacheGet(
+		tbl.entry.GetDB().ID,
+		id.TableID, id.ObjectID(),
+		false)
+	if err != nil {
+		return
+	}
+	tbl.store.warChecker.Insert(obj)
+	return
+}
+func (tbl *txnTable) contains(
+	ctx context.Context,
+	keys containers.Vector,
+	keysZM index.ZM, mp *mpool.MPool) (err error) {
+	if tbl.tombstoneTable.tableSpace == nil {
+		return
+	}
+	if len(tbl.tombstoneTable.tableSpace.nodes) > 0 {
+		workspaceDeleteBatch := tbl.tombstoneTable.tableSpace.nodes[0].(*anode).data
+		for j := 0; j < keys.Length(); j++ {
+			if keys.IsNull(j) {
+				continue
+			}
+			rid := keys.Get(j).(types.Rowid)
+			for i := 0; i < workspaceDeleteBatch.Length(); i++ {
+				rowID := workspaceDeleteBatch.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+				if rid == rowID {
+					containers.UpdateValue(keys.GetDownstreamVector(), uint32(j), nil, true, mp)
+				}
+			}
+		}
+	}
+	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneTable.schema.BlockMaxRows
+		tombStoneZM := stats.SortKeyZoneMap()
+		var skip bool
+		if skip = !tombStoneZM.FastIntersect(keysZM); skip {
+			continue
+		}
+		var bf objectio.BloomFilter
+		bf, err = objectio.FastLoadBF(ctx, stats.ObjectLocation(), false, tbl.store.rt.Fs.Service)
+		if err != nil {
+			return
+		}
+		idx := indexwrapper.NewImmutIndex(stats.SortKeyZoneMap(), bf, stats.ObjectLocation())
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			sel, err := idx.BatchDedup(ctx, keys, keysZM, tbl.store.rt, uint32(i))
+			if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
+				continue
+			}
+
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			vectors, closeFunc, err := blockio.LoadColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneTable.schema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				metaloc,
+				fileservice.Policy(0),
+				false,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			data := vector.MustFixedCol[types.Rowid](vectors[0].GetDownstreamVector())
+			containers.ForeachVector(keys,
+				func(id types.Rowid, isNull bool, row int) error {
+					if keys.IsNull(row) {
+						return nil
+					}
+					if _, existed := compute.GetOffsetWithFunc(
+						data,
+						id,
+						types.CompareRowidRowidAligned,
+						nil,
+					); existed {
+						keys.Update(row, nil, true)
+					}
+					return nil
+				}, sel)
+			closeFunc()
+		}
+	}
+	return nil
+}
+func (tbl *txnTable) createTombstoneBatch(
+	id *common.ID,
+	start,
+	end uint32,
+	pk containers.Vector) *containers.Batch {
+	if pk.Length() != int(end-start+1) {
+		panic(fmt.Sprintf("logic err, invalid pkVec length, pk length = %d, start = %d, end = %d", pk.Length(), start, end))
+	}
+	bat := catalog.NewTombstoneBatchWithPKVector(pk, common.WorkspaceAllocator)
+	for row := start; row <= end; row++ {
+		rowID := objectio.NewRowid(&id.BlockID, row)
+		bat.GetVectorByName(catalog.AttrRowID).Append(*rowID, false)
+	}
+	return bat
+}
+func (tbl *txnTable) TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Location) (ok bool, err error) {
+	stats := tbl.deltaloc2ObjectStat(deltaloc, tbl.store.rt.Fs.Service)
+	err = tbl.addObjsWithMetaLoc(tbl.store.ctx, stats, true)
+	if err == nil {
+		tbl.tombstoneTable.tableSpace.objs = append(tbl.tombstoneTable.tableSpace.objs, id.ObjectID())
+		ok = true
+	}
+	return
+}
+
+func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.FileService) objectio.ObjectStats {
+	stats := *objectio.NewObjectStats()
+	objMeta, err := objectio.FastLoadObjectMeta(context.Background(), &loc, false, fs)
+	if err != nil {
+		panic(err)
+	}
+	objectio.SetObjectStatsObjectName(&stats, loc.Name())
+	objectio.SetObjectStatsExtent(&stats, loc.Extent())
+	objectDataMeta := objMeta.MustTombstoneMeta()
+	objectio.SetObjectStatsRowCnt(&stats, objectDataMeta.BlockHeader().Rows())
+	objectio.SetObjectStatsBlkCnt(&stats, objectDataMeta.BlockCount())
+	objectio.SetObjectStatsSize(&stats, loc.Extent().End()+objectio.FooterSize)
+	schema := tbl.tombstoneTable.schema
+	originSize := uint32(0)
+	for _, col := range schema.ColDefs {
+		if col.IsPhyAddr() {
+			continue
+		}
+		colmata := objectDataMeta.MustGetColumn(uint16(col.SeqNum))
+		originSize += colmata.Location().OriginSize()
+	}
+	objectio.SetObjectStatsOriginSize(&stats, originSize)
+	if schema.HasSortKey() {
+		col := schema.GetSingleSortKey()
+		objectio.SetObjectStatsSortKeyZoneMap(&stats, objectDataMeta.MustGetColumn(col.SeqNum).ZoneMap())
+	}
+	return stats
+}
+
+func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
+	if tbl.tombstoneTable.tableSpace == nil {
+		return nil
+	}
+	if len(tbl.tombstoneTable.tableSpace.nodes) != 0 {
+		node := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+		for i := 0; i < node.data.Length(); i++ {
+			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+			if *rowID.BorrowBlockID() == blkID {
+				_, row := rowID.Decode()
+				if view.DeleteMask == nil {
+					view.DeleteMask = &nulls.Nulls{}
+				}
+				view.DeleteMask.Add(uint64(row))
+			}
+		}
+	}
+	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
+		metaLocs := make([]objectio.Location, 0)
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneTable.schema.BlockMaxRows
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			metaLocs = append(metaLocs, metaloc)
+		}
+		for _, loc := range metaLocs {
+			vectors, closeFunc, err := blockio.LoadColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneTable.schema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				loc,
+				fileservice.Policy(0),
+				false,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			for i := 0; i < vectors[0].Length(); i++ {
+				rowID := vectors[0].Get(i).(types.Rowid)
+				if *rowID.BorrowBlockID() == blkID {
+					_, row := rowID.Decode()
+					if view.DeleteMask == nil {
+						view.DeleteMask = &nulls.Nulls{}
+					}
+					view.DeleteMask.Add(uint64(row))
+				}
+			}
+			closeFunc()
+		}
+	}
+	return nil
+}
+
+func (tbl *txnTable) IsDeletedInWorkSpace(blkID objectio.Blockid, row uint32) (bool, error) {
+	if tbl.tombstoneTable.tableSpace == nil {
+		return false, nil
+	}
+	if len(tbl.tombstoneTable.tableSpace.nodes) != 0 {
+		node := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+		for i := 0; i < node.data.Length(); i++ {
+			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
+			blk, rowOffset := rowID.Decode()
+			if blk == blkID && row == rowOffset {
+				return true, nil
+			}
+		}
+	}
+
+	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
+		metaLocs := make([]objectio.Location, 0)
+		blkCount := stats.BlkCnt()
+		totalRow := stats.Rows()
+		blkMaxRows := tbl.tombstoneTable.schema.BlockMaxRows
+		for i := uint16(0); i < uint16(blkCount); i++ {
+			var blkRow uint32
+			if totalRow > blkMaxRows {
+				blkRow = blkMaxRows
+			} else {
+				blkRow = totalRow
+			}
+			totalRow -= blkRow
+			metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+			metaLocs = append(metaLocs, metaloc)
+		}
+		for _, loc := range metaLocs {
+			vectors, closeFunc, err := blockio.LoadColumns2(
+				tbl.store.ctx,
+				[]uint16{uint16(tbl.tombstoneTable.schema.GetSingleSortKeyIdx())},
+				nil,
+				tbl.store.rt.Fs.Service,
+				loc,
+				fileservice.Policy(0),
+				false,
+				nil,
+			)
+			if err != nil {
+				return false, err
+			}
+			defer closeFunc()
+			for i := 0; i < vectors[0].Length(); i++ {
+				rowID := vectors[0].Get(i).(types.Rowid)
+				blk, rowOffset := rowID.Decode()
+				if blk == blkID && row == rowOffset {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }

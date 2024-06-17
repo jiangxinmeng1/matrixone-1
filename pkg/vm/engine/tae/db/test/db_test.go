@@ -50,6 +50,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -1348,7 +1349,7 @@ func TestMVCC2(t *testing.T) {
 		it := rel.MakeObjectIt(false, true)
 		for it.Valid() {
 			obj := it.GetObject()
-			view, err := obj.GetColumnDataByName(context.Background(), 0, schema.GetSingleSortKey().Name, common.DefaultAllocator)
+			view, err := obj.GetColumnDataById(context.Background(), 0, schema.GetSingleSortKey().Idx, common.DefaultAllocator)
 			assert.Nil(t, err)
 			assert.Nil(t, view.DeleteMask)
 			assert.Equal(t, bats[1].Vecs[0].Length()*2-1, view.Length())
@@ -1394,7 +1395,7 @@ func TestUnload1(t *testing.T) {
 			for it.Valid() {
 				blk := it.GetObject()
 				for j := 0; j < blk.BlkCnt(); j++ {
-					view, err := blk.GetColumnDataByName(context.Background(), uint16(j), schema.GetSingleSortKey().Name, common.DefaultAllocator)
+					view, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.GetSingleSortKey().Idx, common.DefaultAllocator)
 					assert.Nil(t, err)
 					defer view.Close()
 					assert.Equal(t, int(schema.BlockMaxRows), view.Length())
@@ -1703,17 +1704,18 @@ func TestSystemDB1(t *testing.T) {
 	table, err := db.GetRelationByName(pkgcatalog.MO_DATABASE)
 	assert.Nil(t, err)
 	it := table.MakeObjectIt(false, true)
+	tableSchema := table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	for it.Valid() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemDBAttr_Name, common.DefaultAllocator)
+		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_Name), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		assert.Equal(t, 3, view.Length())
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemDBAttr_CatalogName, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CatalogName), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		assert.Equal(t, 3, view.Length())
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemDBAttr_CreateSQL, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CreateSQL), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		assert.Equal(t, 3, view.Length())
@@ -1723,16 +1725,17 @@ func TestSystemDB1(t *testing.T) {
 	table, err = db.GetRelationByName(pkgcatalog.MO_TABLES)
 	assert.Nil(t, err)
 	it = table.MakeObjectIt(false, true)
+	tableSchema = table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	for it.Valid() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemRelAttr_Name, common.DefaultAllocator)
+		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Name), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		assert.Equal(t, 4, view.Length())
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemRelAttr_Persistence, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Persistence), common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemRelAttr_Kind, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Kind), common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
 		it.Next()
@@ -1745,35 +1748,36 @@ func TestSystemDB1(t *testing.T) {
 	defer bat.Close()
 	// schema2 := table.GetMeta().(*catalog.TableEntry).GetSchema()
 	// bat := containers.BuildBatch(schema2.AllNames(), schema2.AllTypes(), schema2.AllNullables(), 0)
+	tableSchema = table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	it = table.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_DBName, common.DefaultAllocator)
+		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_DBName), common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
 		bat.AddVector(pkgcatalog.SystemColAttr_DBName, view.Orphan())
 
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_RelName, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_RelName), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		bat.AddVector(pkgcatalog.SystemColAttr_RelName, view.Orphan())
 
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_Name, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Name), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		bat.AddVector(pkgcatalog.SystemColAttr_Name, view.Orphan())
 
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_ConstraintType, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_ConstraintType), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		t.Log(view.GetData().String())
 		bat.AddVector(pkgcatalog.SystemColAttr_ConstraintType, view.Orphan())
 
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_Type, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Type), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		t.Log(view.GetData().String())
-		view, err = blk.GetColumnDataByName(context.Background(), 0, pkgcatalog.SystemColAttr_Num, common.DefaultAllocator)
+		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Num), common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		t.Log(view.GetData().String())
@@ -4191,28 +4195,28 @@ func TestCollectInsert(t *testing.T) {
 	blkit := rel.MakeObjectIt(false, true)
 	blkdata := blkit.GetObject().GetMeta().(*catalog.ObjectEntry).GetObjectData()
 
-	batch, err := blkdata.CollectAppendInRange(types.TS{}, p1, true, common.DefaultAllocator)
+	batch, err := blkdata.CollectAppendInRange(ctx, types.TS{}, p1, true, false, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 6, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(types.TS{}, p2, true, common.DefaultAllocator)
+	batch, err = blkdata.CollectAppendInRange(ctx, types.TS{}, p2, true, false, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 9, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(p1.Next(), p2, true, common.DefaultAllocator)
+	batch, err = blkdata.CollectAppendInRange(ctx, p1.Next(), p2, true, false, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 3, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(p1.Next(), p3, true, common.DefaultAllocator)
+	batch, err = blkdata.CollectAppendInRange(ctx, p1.Next(), p3, true, false, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
@@ -5035,11 +5039,11 @@ func TestMergeBlocks3(t *testing.T) {
 		objHandle, err := rel.GetObject(&obj1.ID, false)
 		require.NoError(t, err)
 
-		view, err := objHandle.GetColumnDataByName(context.Background(), 0, catalog.PhyAddrColumnName, common.DefaultAllocator)
+		view, err := objHandle.GetColumnDataById(context.Background(), 0, schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
 		view.GetData()
 		require.NoError(t, err)
 		pkDef := schema.GetPrimaryKey()
-		pkView, err := objHandle.GetColumnDataByName(context.Background(), 0, pkDef.Name, common.DefaultAllocator)
+		pkView, err := objHandle.GetColumnDataById(context.Background(), 0, pkDef.Idx, common.DefaultAllocator)
 		pkView.GetData()
 		require.NoError(t, err)
 		err = rel.DeleteByPhyAddrKeys(view.GetData(), pkView.GetData())
@@ -5354,7 +5358,7 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	{
 		txn, rel := tae.GetRelation()
 		meta := testutil.GetOneTombstoneMeta(rel)
-		bat, err := meta.GetObjectData().CollectAppendInRange(types.TS{}, types.MaxTs(), false, common.DefaultAllocator)
+		bat, err := meta.GetObjectData().CollectAppendInRange(ctx, types.TS{}, types.MaxTs(), false, false, common.DefaultAllocator)
 		require.NoError(t, err)
 		require.Equal(t, 10, bat.Length())
 		require.NoError(t, txn.Commit(ctx))
@@ -6321,13 +6325,16 @@ func TestAlterFakePk(t *testing.T) {
 		// check non-exist column foreach
 		newSchema := obj.GetRelation().Schema(false)
 		blkdata := obj.GetMeta().(*catalog.ObjectEntry).GetObjectData()
-		sels := []uint32{1, 3}
+		sels := &nulls.Nulls{}
+		sels.Add(1)
+		sels.Add(3)
 		rows := make([]int, 0, 4)
-		blkdata.Foreach(context.Background(), newSchema, 0, 1 /*"add1" column*/, func(v any, isnull bool, row int) error {
+		view, err := blkdata.GetColumnDataById(ctx, txn, newSchema, 0, 1, common.DebugAllocator)
+		view.GetData().Foreach(func(v any, isNull bool, row int) error {
 			require.True(t, true)
 			rows = append(rows, row)
 			return nil
-		}, sels, common.DefaultAllocator)
+		}, sels)
 		require.Equal(t, []int{1, 3}, rows)
 		require.NoError(t, err)
 		require.NoError(t, txn.Commit(context.Background()))
@@ -8542,7 +8549,7 @@ func TestCollectDeletesInRange1(t *testing.T) {
 	err = txn.Commit(context.Background())
 	assert.NoError(t, err)
 
-	tae.CheckCollectDeleteInRange()
+	tae.CheckCollectTombstoneInRange()
 }
 
 func TestCollectDeletesInRange2(t *testing.T) {
@@ -8577,8 +8584,8 @@ func TestCollectDeletesInRange2(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err := blk.GetMeta().(*catalog.ObjectEntry).CollectDeleteInRange(
-		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
+	deletes, _, err := blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
+		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, deletes.Length())
@@ -8593,8 +8600,8 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err = blk.GetMeta().(*catalog.ObjectEntry).CollectDeleteInRange(
-		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator,
+	deletes, _, err = blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
+		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 5, deletes.Length())

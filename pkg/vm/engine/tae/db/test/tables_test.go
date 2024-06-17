@@ -415,7 +415,7 @@ func TestTxn6(t *testing.T) {
 			for it.Valid() {
 				obj := it.GetObject()
 				for j := 0; j < obj.BlkCnt(); j++ {
-					view, err := obj.GetColumnDataByName(context.Background(), uint16(j), schema.ColDefs[3].Name, common.DefaultAllocator)
+					view, err := obj.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[3].Idx, common.DefaultAllocator)
 					assert.Nil(t, err)
 					defer view.Close()
 					assert.NotEqual(t, bats[0].Length(), view.Length())

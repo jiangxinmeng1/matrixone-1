@@ -78,10 +78,6 @@ type Object interface {
 	GetColumnDataByIds(
 		ctx context.Context, txn txnif.TxnReader, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
 	) (*containers.BlockView, error)
-	GetAllColumns(
-		ctx context.Context,
-		readSchema any,
-		mp *mpool.MPool) (bat *containers.Batch, err error)
 	Prefetch(idxes []uint16, blkID uint16) error
 	GetMeta() any
 
@@ -115,21 +111,12 @@ type Object interface {
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
 	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
-	Foreach(
-		ctx context.Context,
-		readSchema any,
-		blkID uint16,
-		colIdx int,
-		op func(v any, isNull bool, row int) error,
-		sels []uint32,
-		mp *mpool.MPool,
-	) error
 	PPString(level common.PPLevel, depth int, prefix string, blkid int) string
 	EstimateMemSize() (int, int)
 	GetRuntime() *dbutils.Runtime
 
 	Init() error
-	CollectAppendInRange(start, end types.TS, withAborted bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
+	CollectAppendInRange(ctx context.Context, start, end types.TS, withAborted, withPersistedData bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 
@@ -142,26 +129,4 @@ type Object interface {
 		bf objectio.BloomFilter,
 		mp *mpool.MPool) (err error)
 	Close()
-}
-
-type Tombstone interface {
-	EstimateMemSizeLocked() (dsize int)
-	GetChangeIntentionCntLocked() uint32
-	GetDeleteCnt() uint32
-	GetDeletesListener() func(uint64, types.TS) error
-	// GetOrCreateDeleteChain(blkID uint16) *updates.MVCCHandle
-	HasDeleteIntentsPreparedIn(from types.TS, to types.TS) (found bool, isPersist bool)
-	HasInMemoryDeleteIntentsPreparedInByBlock(blockID uint16, from, to types.TS) (bool, bool)
-	SetDeletesListener(l func(uint64, types.TS) error)
-	StringLocked(level common.PPLevel, depth int, prefix string) string
-	String(level common.PPLevel, depth int, prefix string) string
-	// TryGetDeleteChain(blkID uint16) *updates.MVCCHandle
-	UpgradeDeleteChain(blkID uint16)
-	UpgradeDeleteChainByTSLocked(ts types.TS)
-	VisitDeletes(ctx context.Context, start, end types.TS, bat, tnBatch *containers.Batch, skipMemory bool) (*containers.Batch, int, int, error)
-	GetObject() any
-	InMemoryDeletesExistedLocked() bool
-	// for test
-	GetLatestDeltaloc(uint16) objectio.Location
-	CheckTombstone()
 }

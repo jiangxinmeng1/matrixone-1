@@ -98,15 +98,6 @@ type TableEntry struct {
 	tombstoneObjects *TableObjects
 }
 
-type DeleteEntry struct {
-	ObjectID objectio.ObjectId
-	data.Tombstone
-}
-
-func (d DeleteEntry) Less(o DeleteEntry) bool {
-	return bytes.Compare(d.ObjectID[:], o.ObjectID[:]) < 0
-}
-
 func genTblFullName(tenantID uint32, name string) string {
 	if name == pkgcatalog.MO_DATABASE || name == pkgcatalog.MO_TABLES || name == pkgcatalog.MO_COLUMNS {
 		tenantID = 0
@@ -301,8 +292,8 @@ func (entry *TableEntry) GetLastestSchemaLocked(isTombstone bool) *Schema {
 
 // GetLastestSchema returns the latest committed schema with entry locked
 func (entry *TableEntry) GetLastestSchema(isTombstone bool) *Schema {
-	entry.Lock()
-	defer entry.Unlock()
+	entry.RLock()
+	defer entry.RUnlock()
 
 	return entry.GetLastestSchemaLocked(isTombstone)
 }

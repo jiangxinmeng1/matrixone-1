@@ -156,11 +156,12 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			continue
 		}
 		var bat *containers.Batch
-		bat, _, err = blk.CollectDeleteInRange(
+		bat, _, err = blk.CollectTombstoneInRange(
 			entry.txn.GetContext(),
 			from.Next(), // NOTE HERE
 			to,
 			common.MergeAllocator,
+			entry.rt.VectorPool.Small,
 		)
 		if err != nil {
 			return

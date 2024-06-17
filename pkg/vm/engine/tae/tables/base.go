@@ -114,24 +114,6 @@ func (blk *baseObject) Rows() (int, error) {
 		return int(rows), err
 	}
 }
-func (blk *baseObject) Foreach(
-	ctx context.Context,
-	readSchema any,
-	blkID uint16,
-	colIdx int,
-	op func(v any, isNull bool, row int) error,
-	sels []uint32,
-	mp *mpool.MPool,
-) error {
-	node := blk.PinNode()
-	defer node.Unref()
-	schema := readSchema.(*catalog.Schema)
-	if !node.IsPersisted() {
-		return node.MustMNode().Foreach(schema, blkID, colIdx, op, sels, mp)
-	} else {
-		return node.MustPNode().Foreach(ctx, schema, blkID, colIdx, op, sels, mp)
-	}
-}
 
 func (blk *baseObject) TryUpgrade() (err error) {
 	node := blk.node.Load()
@@ -546,48 +528,6 @@ func (blk *baseObject) CollectAppendInRange(
 	start, end types.TS, withAborted bool, mp *mpool.MPool,
 ) (*containers.BatchWithVersion, error) {
 	return nil, nil
-}
-
-func (blk *baseObject) GetAllColumns(
-	ctx context.Context,
-	readSchema any,
-	mp *mpool.MPool) (bat *containers.Batch, err error) {
-	node := blk.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.MustMNode().getAllColumns(ctx, readSchema.(*catalog.Schema)), nil
-
-	} else {
-		id := blk.meta.AsCommonID()
-		stats, err := blk.meta.MustGetObjectStats()
-		if err != nil {
-			return nil, err
-		}
-		blkCnt := stats.BlkCnt()
-		for i := 0; i < int(blkCnt); i++ {
-			id.SetBlockOffset(uint16(i))
-			location, err := blk.buildMetalocation(uint16(i))
-			if err != nil {
-				return nil, err
-			}
-			vecs, err := LoadPersistedColumnDatas(ctx, readSchema.(*catalog.Schema), blk.rt, id, catalog.TombstoneBatchIdxes, location, mp)
-			if err != nil {
-				return nil, err
-			}
-			if bat == nil {
-				bat = containers.NewBatch()
-				for i, vec := range vecs {
-					bat.AddVector(readSchema.(*catalog.Schema).ColDefs[i].Name, vec)
-				}
-			} else {
-				for i, vec := range vecs {
-					bat.Vecs[i].Extend(vec)
-					vec.Close()
-				}
-			}
-		}
-		return bat, err
-	}
 }
 
 func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {

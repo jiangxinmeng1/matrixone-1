@@ -132,43 +132,6 @@ func (node *memoryNode) getDuplicatedRowsLocked(
 	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
 }
 
-func (node *memoryNode) Foreach(
-	readSchema *catalog.Schema,
-	blkID uint16,
-	colIdx int,
-	op func(v any, isNull bool, row int) error,
-	sels []uint32,
-	mp *mpool.MPool,
-) error {
-	node.object.RLock()
-	defer node.object.RUnlock()
-	if node.data == nil {
-		return nil
-	}
-	idx, ok := node.writeSchema.SeqnumMap[readSchema.ColDefs[colIdx].SeqNum]
-	if !ok {
-		v := containers.NewConstNullVector(readSchema.ColDefs[colIdx].Type, int(node.data.Length()), mp)
-		for _, row := range sels {
-			val := v.Get(int(row))
-			isNull := v.IsNull(int(row))
-			err := op(val, isNull, int(row))
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	for _, row := range sels {
-		val := node.data.Vecs[idx].Get(int(row))
-		isNull := node.data.Vecs[idx].IsNull(int(row))
-		err := op(val, isNull, int(row))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (node *memoryNode) GetRowsByKeyLocked(key any) (rows []uint32, err error) {
 	return node.pkIndex.GetActiveRow(key)
 }
@@ -484,15 +447,6 @@ func (node *memoryNode) fillDeletes(txn txnif.TxnReader, baseView *containers.Ba
 		}
 	}
 	return
-}
-
-func (node *memoryNode) getAllColumns(
-	ctx context.Context,
-	readSchema *catalog.Schema) (bat *containers.Batch) {
-	node.object.RLock()
-	defer node.object.RUnlock()
-	length := node.data.Length()
-	return node.data.CloneWindow(0, length)
 }
 
 // Note: With PinNode Context

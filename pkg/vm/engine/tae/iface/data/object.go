@@ -78,10 +78,6 @@ type Object interface {
 	GetColumnDataByIds(
 		ctx context.Context, txn txnif.TxnReader, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
 	) (*containers.BlockView, error)
-	GetAllColumns(
-		ctx context.Context,
-		readSchema any,
-		mp *mpool.MPool) (bat *containers.Batch, err error)
 	Prefetch(idxes []uint16, blkID uint16) error
 	GetMeta() any
 
@@ -115,15 +111,6 @@ type Object interface {
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
 	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
-	Foreach(
-		ctx context.Context,
-		readSchema any,
-		blkID uint16,
-		colIdx int,
-		op func(v any, isNull bool, row int) error,
-		sels []uint32,
-		mp *mpool.MPool,
-	) error
 	PPString(level common.PPLevel, depth int, prefix string, blkid int) string
 	EstimateMemSize() (int, int)
 	GetRuntime() *dbutils.Runtime

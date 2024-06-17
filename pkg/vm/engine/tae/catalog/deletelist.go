@@ -25,7 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
-func (entry *TableEntry) CollectDeleteInRange(
+func (entry *TableEntry) CollectTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
 	objectID objectio.ObjectId,
@@ -53,7 +53,7 @@ func (entry *TableEntry) CollectDeleteInRange(
 			}
 			// TODO: Bloomfilter
 		}
-		deletes, err := tombstone.collectDeleteInRange(ctx, objectID, start, end, mp, vpool)
+		deletes, err := tombstone.collectTombstoneInRange(ctx, objectID, start, end, mp, vpool)
 		if err != nil {
 			return nil, err
 		}

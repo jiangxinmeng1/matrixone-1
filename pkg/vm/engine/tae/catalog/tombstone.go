@@ -27,7 +27,7 @@ import (
 )
 
 // for each tombstone in range [start,end]
-func (entry *ObjectEntry) collectDeleteInRange(
+func (entry *ObjectEntry) collectTombstoneInRange(
 	ctx context.Context,
 	objID types.Objectid,
 	start, end types.TS,

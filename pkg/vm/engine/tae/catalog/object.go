@@ -21,7 +21,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
@@ -654,22 +653,20 @@ func (entry *ObjectEntry) CollectTombstoneInRange(
 	start, end types.TS,
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
-) (bat *containers.Batch, emtpyDelBlkIdx *bitmap.Bitmap, err error) {
-	emtpyDelBlkIdx = &bitmap.Bitmap{}
-	emtpyDelBlkIdx.InitWithSize(int64(entry.BlockCnt()))
-	deletes, err := entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
-	if deletes == nil {
-		return nil, nil, nil
+) (ret *containers.Batch, err error) {
+	tombstones, err := entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
+	if tombstones == nil {
+		return nil, nil
 	}
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	if bat == nil {
-		pkType := deletes.GetVectorByName(AttrPKVal).GetType()
-		bat = NewTombstoneBatch(*pkType, mp)
+	if ret == nil {
+		pkType := tombstones.GetVectorByName(AttrPKVal).GetType()
+		ret = NewTombstoneBatch(*pkType, mp)
 	}
-	bat.Extend(deletes)
-	deletes.Close()
+	ret.Extend(tombstones)
+	tombstones.Close()
 	return
 }
 

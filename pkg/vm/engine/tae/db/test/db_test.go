@@ -8584,7 +8584,7 @@ func TestCollectDeletesInRange2(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err := blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
+	deletes, err := blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
 		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
@@ -8600,7 +8600,7 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, _, err = blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
+	deletes, err = blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
 		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)

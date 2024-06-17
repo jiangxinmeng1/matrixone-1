@@ -15,7 +15,6 @@
 package jobs
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -87,7 +86,7 @@ type flushTableTailTask struct {
 	createdMergedTombstoneName string
 
 	mergeRowsCnt, aObjDeletesCnt, tombstoneMergeRowsCnt int
-	createAt time.Time
+	createAt                                            time.Time
 }
 
 // A note about flush start timestamp
@@ -348,9 +347,11 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	phaseDesc = "1-merge aobjects"
 	// merge aobjects, no need to wait, it is a sync procedure, that is why put it
 	// after flushAObjsForSnapshot
+	inst = time.Now()
 	if err = task.mergeAObjs(ctx, false); err != nil {
 		return
 	}
+	statMergeAobj := time.Since(inst)
 
 	if v := ctx.Value(TestFlushBailoutPos1{}); v != nil {
 		err = moerr.NewInternalErrorNoCtx("test merge bail out")
@@ -395,7 +396,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	if err = task.waitFlushAObjForSnapshot(ctx, tombstoneSnapshotSubtasks, true); err != nil {
 		return
 	}
-	statWaitDels := time.Since(inst)
+	statWaitTombstones := time.Since(inst)
 
 	phaseDesc = "1-wait LogTxnEntry"
 	inst = time.Now()
@@ -441,8 +442,8 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 
 	if time.Since(task.createAt) > SlowFlushTaskOverall {
 		logutil.Infof(
-			"slowflush: task %d: wait %v, createFlushAobj %v, createFlushDels %v, merge %v, wait aobj %v, wait dels %v, new entry %v",
-			task.ID(), statWait, statFlushAobj, statFlushDel, statMergeAobj, statWaitAobj, statWaitDels, statNewFlushEntry)
+			"slowflush: task %d: wait %v, createFlushAobj %v, createFlushAtombstone %v, merge data %v, merge tombstone %v, wait aobj %v, wait tombstone %v, new entry %v",
+			task.ID(), statWait, statFlushAobj, statFlushTombStone, statMergeAobj, statMergeATombstones, statWaitAobj, statWaitTombstones, statNewFlushEntry)
 	}
 
 	sleep, name, exist := fault.TriggerFault("slow_flush")

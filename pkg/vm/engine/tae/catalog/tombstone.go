@@ -64,6 +64,9 @@ func (entry *ObjectEntry) foreachATombstoneInRange(
 	if err != nil {
 		return err
 	}
+	if bat == nil {
+		return nil
+	}
 	rowIDVec := bat.GetVectorByName(AttrRowID)
 	commitTSVec, err := entry.GetObjectData().GetCommitTSVectorInRange(start, end, mp)
 	if err != nil {

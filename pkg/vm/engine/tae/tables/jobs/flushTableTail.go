@@ -86,6 +86,7 @@ type flushTableTailTask struct {
 	createdMergedTombstoneName string
 
 	mergeRowsCnt, aObjDeletesCnt, tombstoneMergeRowsCnt int
+	createAt                                            time.Time
 }
 
 // A note about flush start timestamp
@@ -231,6 +232,7 @@ func NewFlushTableTailTask(
 
 	task.BaseTask = tasks.NewBaseTask(task, tasks.DataCompactionTask, ctx)
 
+	task.createAt = time.Now()
 	return
 }
 
@@ -285,6 +287,13 @@ func (task *flushTableTailTask) MarshalLogObject(enc zapcore.ObjectEncoder) (err
 	return
 }
 
+var (
+	SlowFlushIOTask      = 10 * time.Second
+	SlowFlushTaskOverall = 60 * time.Second
+	SlowDelCollect       = 10 * time.Second
+	SlowDelCollectNObj   = 10
+)
+
 func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	logutil.Info("[Start]", common.OperationField(task.Name()), common.OperandField(task),
 		common.OperandField(len(task.aObjHandles)+len(task.aTombstoneHandles)))
@@ -298,6 +307,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 			)
 		}
 	}()
+	statWait := time.Since(task.createAt)
 	now := time.Now()
 
 	/////////////////////
@@ -305,7 +315,9 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	///////////////////
 
 	phaseDesc = "1-flushing appendable objects for snapshot"
+	inst := time.Now()
 	snapshotSubtasks, err := task.flushAObjsForSnapshot(ctx, false)
+	statFlushAobj := time.Since(inst)
 	if err != nil {
 		return
 	}
@@ -318,7 +330,9 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	///////////////////
 
 	phaseDesc = "1-flushing appendable tombstones for snapshot"
+	inst = time.Now()
 	tombstoneSnapshotSubtasks, err := task.flushAObjsForSnapshot(ctx, true)
+	statFlushTombStone := time.Since(inst)
 	if err != nil {
 		return
 	}
@@ -333,9 +347,11 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	phaseDesc = "1-merge aobjects"
 	// merge aobjects, no need to wait, it is a sync procedure, that is why put it
 	// after flushAObjsForSnapshot
+	inst = time.Now()
 	if err = task.mergeAObjs(ctx, false); err != nil {
 		return
 	}
+	statMergeAobj := time.Since(inst)
 
 	if v := ctx.Value(TestFlushBailoutPos1{}); v != nil {
 		err = moerr.NewInternalErrorNoCtx("test merge bail out")
@@ -349,9 +365,11 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	phaseDesc = "1-merge atombstones"
 	// merge atombstones, no need to wait, it is a sync procedure, that is why put it
 	// after flushAObjsForSnapshot
+	inst = time.Now()
 	if err = task.mergeAObjs(ctx, true); err != nil {
 		return
 	}
+	statMergeATombstones := time.Since(inst)
 
 	if v := ctx.Value(TestFlushBailoutPos1{}); v != nil {
 		err = moerr.NewInternalErrorNoCtx("test merge bail out")
@@ -363,20 +381,25 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	///////////////////
 	phaseDesc = "1-waiting flushing appendable blocks for snapshot"
 	// wait flush tasks
+	inst = time.Now()
 	if err = task.waitFlushAObjForSnapshot(ctx, snapshotSubtasks, false); err != nil {
 		return
 	}
+	statWaitAobj := time.Since(inst)
 
 	/////////////////////
 	//// phase seperator
 	///////////////////
 
 	phaseDesc = "1-waiting flushing appendable tombstones for snapshot"
+	inst = time.Now()
 	if err = task.waitFlushAObjForSnapshot(ctx, tombstoneSnapshotSubtasks, true); err != nil {
 		return
 	}
+	statWaitTombstones := time.Since(inst)
 
 	phaseDesc = "1-wait LogTxnEntry"
+	inst = time.Now()
 	txnEntry, err := txnentries.NewFlushTableTailEntry(
 		task.txn,
 		task.ID(),
@@ -404,6 +427,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	); err != nil {
 		return
 	}
+	statNewFlushEntry := time.Since(inst)
 	/////////////////////
 
 	duration := time.Since(now)
@@ -414,8 +438,13 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 		zap.Int("tombstone-rows", task.tombstoneMergeRowsCnt),
 		common.DurationField(duration),
 		common.OperandField(task))
-
 	v2.TaskFlushTableTailDurationHistogram.Observe(duration.Seconds())
+
+	if time.Since(task.createAt) > SlowFlushTaskOverall {
+		logutil.Infof(
+			"slowflush: task %d: wait %v, createFlushAobj %v, createFlushAtombstone %v, merge data %v, merge tombstone %v, wait aobj %v, wait tombstone %v, new entry %v",
+			task.ID(), statWait, statFlushAobj, statFlushTombStone, statMergeAobj, statMergeATombstones, statWaitAobj, statWaitTombstones, statNewFlushEntry)
+	}
 
 	sleep, name, exist := fault.TriggerFault("slow_flush")
 	if exist && name == task.schema.Name {
@@ -739,6 +768,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 			data,
 			nil,
 			true,
+			task.ID(),
 		)
 		if err = task.rt.Scheduler.Schedule(aobjectTask); err != nil {
 			return

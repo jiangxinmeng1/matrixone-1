@@ -21,87 +21,53 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
-func (entry *ObjectEntry) foreachTombstoneInRange(
-	ctx context.Context,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	if entry.IsAppendable() {
-		return entry.foreachATombstoneInRange(ctx, start, end, mp, op)
-	}
-	bat, err := entry.GetObjectData().GetAllColumns(ctx, entry.GetTable().GetLastestSchema(true), mp)
-	if err != nil {
-		return err
-	}
-	rowIDVec := bat.GetVectorByName(AttrRowID).GetDownstreamVector()
-	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec)
-	entry.RLock()
-	createTS := entry.GetCreatedAtLocked()
-	entry.RUnlock()
-	for i := 0; i < bat.Length(); i++ {
-		pk := bat.GetVectorByName(AttrPKVal).Get(i)
-		goNext, err := op(rowIDs[i], createTS, false, pk)
-		if err != nil {
-			return err
-		}
-		if !goNext {
-			break
-		}
-	}
-	return nil
-}
-
-func (entry *ObjectEntry) foreachATombstoneInRange(
-	ctx context.Context,
-	start, end types.TS,
-	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	bat, err := entry.GetObjectData().CollectAppendInRange(start, end, true, mp)
-	if err != nil {
-		return err
-	}
-	rowIDVec := bat.GetVectorByName(AttrRowID)
-	commitTSVec, err := entry.GetObjectData().GetCommitTSVectorInRange(start, end, mp)
-	if err != nil {
-		return err
-	}
-	commitTSs := vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
-	for i := 0; i < bat.Length(); i++ {
-		pk := bat.GetVectorByName(AttrPKVal).Get(i)
-		commitTS := commitTSs[i]
-		if commitTS.Less(&start) || commitTS.Greater(&end) {
-			return nil
-		}
-		goNext, err := op(rowIDVec.Get(i).(types.Rowid), commitTS, false, pk)
-		if err != nil {
-			return err
-		}
-		if !goNext {
-			break
-		}
-	}
-	return nil
-}
-
 // for each tombstone in range [start,end]
-func (entry *ObjectEntry) foreachTombstoneInRangeWithObjectID(
+func (entry *ObjectEntry) collectDeleteInRange(
 	ctx context.Context,
-	blkID types.Objectid,
+	objID types.Objectid,
 	start, end types.TS,
 	mp *mpool.MPool,
-	op func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error)) error {
-	entry.foreachTombstoneInRange(ctx, start, end, mp,
-		func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-			if *rowID.BorrowObjectID() != blkID {
-				return true, nil
+	vpool *containers.VectorPool) (*containers.Batch, error) {
+	batWithVersion, err := entry.GetObjectData().CollectAppendInRange(ctx, start, end, false, true, mp)
+	if err != nil {
+		return nil, err
+	}
+	if batWithVersion == nil {
+		return nil, nil
+	}
+
+	var rowIDVec, pkVec, commitTSVec containers.Vector
+	srcRowIDVec := batWithVersion.Batch.GetVectorByName(AttrRowID)
+	rowIDs := vector.MustFixedCol[types.Rowid](srcRowIDVec.GetDownstreamVector())
+	srcCommitTSVec := batWithVersion.Batch.GetVectorByName(AttrCommitTs)
+	commitTSs := vector.MustFixedCol[types.TS](srcCommitTSVec.GetDownstreamVector())
+	srcPKVec := batWithVersion.Batch.GetVectorByName(AttrPKVal)
+	for i := 0; i < batWithVersion.Batch.Length(); i++ {
+		if *rowIDs[i].BorrowObjectID() == objID {
+			if rowIDVec == nil {
+				rowIDVec = vpool.GetVector(&objectio.RowidType)
+				pkVec = vpool.GetVector(srcPKVec.GetType())
+				commitTSType := types.T_TS.ToType()
+				commitTSVec = vpool.GetVector(&commitTSType)
 			}
-			return op(rowID, commitTS, aborted, pk)
-		})
-	return nil
+			rowIDVec.Append(rowIDs[i], false)
+			commitTSVec.Append(commitTSs[i], false)
+			pkVec.Append(srcPKVec.Get(i), false)
+		}
+	}
+	if rowIDVec == nil {
+		return nil, nil
+	}
+	bat := containers.NewBatch()
+	bat.AddVector(AttrRowID, rowIDVec)
+	bat.AddVector(AttrPKVal, pkVec)
+	bat.AddVector(AttrCommitTs, commitTSVec)
+	return bat, nil
 }
 
 func (entry *ObjectEntry) fillDeletes(

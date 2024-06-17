@@ -20,6 +20,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -284,4 +285,69 @@ func (obj *object) GetRowsOnReplay() uint64 {
 	fileRows := uint64(obj.meta.GetLatestCommittedNodeLocked().
 		BaseNode.ObjectStats.Rows())
 	return fileRows
+}
+
+func (obj *object) CollectAppendInRange(
+	ctx context.Context,
+	start, end types.TS,
+	withAborted bool,
+	withPersistedData bool,
+	mp *mpool.MPool,
+) (*containers.BatchWithVersion, error) {
+	if !withPersistedData {
+		return nil, nil
+	}
+	if !obj.meta.IsTombstone {
+		panic("not support")
+	}
+	obj.meta.RLock()
+	commitTS := obj.meta.GetCreatedAtLocked()
+	obj.meta.RUnlock()
+	if commitTS.Less(&start) || commitTS.Greater(&end) {
+		return nil, nil
+	}
+	var bat *containers.Batch
+	readSchema := obj.meta.GetTable().GetLastestSchema(true)
+	id := obj.meta.AsCommonID()
+	for blkID := uint16(0); blkID < uint16(obj.meta.BlockCnt()); blkID++ {
+		id.SetBlockOffset(blkID)
+		location, err := obj.buildMetalocation(uint16(0))
+		if err != nil {
+			return nil, err
+		}
+		vecs, err := LoadPersistedColumnDatas(ctx, readSchema, obj.rt, id, catalog.TombstoneBatchIdxes, location, mp)
+		if err != nil {
+			return nil, err
+		}
+		typ := types.T_TS.ToType()
+		commitTSVec := obj.rt.VectorPool.Small.GetVector(&typ)
+		vector.AppendMultiFixed[types.TS](
+			commitTSVec.GetDownstreamVector(),
+			commitTS,
+			true,
+			vecs[0].Length(),
+			mp,
+		)
+
+		if bat == nil {
+			bat = containers.NewBatch()
+			bat.AddVector(catalog.AttrRowID, vecs[0])
+			bat.AddVector(catalog.AttrPKVal, vecs[1])
+			bat.AddVector(catalog.AttrCommitTs, commitTSVec)
+		} else {
+			bat.GetVectorByName(catalog.AttrRowID).Extend(vecs[0])
+			vecs[0].Close()
+			bat.GetVectorByName(catalog.AttrPKVal).Extend(vecs[1])
+			vecs[1].Close()
+			bat.GetVectorByName(catalog.AttrCommitTs).Extend(commitTSVec)
+			commitTSVec.Close()
+		}
+	}
+	batchWithVersion := &containers.BatchWithVersion{
+		Version:    readSchema.Version,
+		NextSeqnum: uint16(readSchema.Extra.NextColSeqnum),
+		Seqnums:    readSchema.AllSeqnums(),
+		Batch:      bat,
+	}
+	return batchWithVersion, nil
 }

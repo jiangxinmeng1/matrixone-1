@@ -175,6 +175,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 		from.Next(),
 		to,
 		common.MergeAllocator,
+		entry.rt.VectorPool.Small,
 	)
 	if err != nil {
 		return

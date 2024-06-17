@@ -653,10 +653,11 @@ func (entry *ObjectEntry) CollectDeleteInRange(
 	ctx context.Context,
 	start, end types.TS,
 	mp *mpool.MPool,
+	vpool *containers.VectorPool,
 ) (bat *containers.Batch, emtpyDelBlkIdx *bitmap.Bitmap, err error) {
 	emtpyDelBlkIdx = &bitmap.Bitmap{}
 	emtpyDelBlkIdx.InitWithSize(int64(entry.BlockCnt()))
-	deletes, err := entry.GetTable().CollectDeleteInRange(ctx, start, end, entry.ID, mp)
+	deletes, err := entry.GetTable().CollectDeleteInRange(ctx, start, end, entry.ID, mp, vpool)
 	if deletes == nil {
 		return nil, nil, nil
 	}

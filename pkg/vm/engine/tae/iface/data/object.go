@@ -129,7 +129,7 @@ type Object interface {
 	GetRuntime() *dbutils.Runtime
 
 	Init() error
-	CollectAppendInRange(start, end types.TS, withAborted bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
+	CollectAppendInRange(ctx context.Context, start, end types.TS, withAborted, withPersistedData bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 

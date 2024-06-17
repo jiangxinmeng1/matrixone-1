@@ -161,6 +161,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			from.Next(), // NOTE HERE
 			to,
 			common.MergeAllocator,
+			entry.rt.VectorPool.Small,
 		)
 		if err != nil {
 			return

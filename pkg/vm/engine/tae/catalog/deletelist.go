@@ -30,6 +30,7 @@ func (entry *TableEntry) CollectDeleteInRange(
 	start, end types.TS,
 	objectID objectio.ObjectId,
 	mp *mpool.MPool,
+	vpool *containers.VectorPool,
 ) (bat *containers.Batch, err error) {
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
@@ -52,20 +53,18 @@ func (entry *TableEntry) CollectDeleteInRange(
 			}
 			// TODO: Bloomfilter
 		}
-		err := tombstone.foreachTombstoneInRangeWithObjectID(ctx, objectID, start, end, mp,
-			func(rowID types.Rowid, commitTS types.TS, aborted bool, pk any) (goNext bool, err error) {
-				if bat == nil {
-					pkType := entry.GetLastestSchema(false).GetPrimaryKey().Type
-					bat = NewTombstoneBatch(pkType, mp)
-				}
-				bat.GetVectorByName(AttrRowID).Append(rowID, false)
-				bat.GetVectorByName(AttrCommitTs).Append(commitTS, false)
-				bat.GetVectorByName(AttrPKVal).Append(pk, false)
-				bat.GetVectorByName(AttrAborted).Append(aborted, false)
-				return true, nil
-			})
+		deletes, err := tombstone.collectDeleteInRange(ctx, objectID, start, end, mp, vpool)
 		if err != nil {
 			return nil, err
+		}
+		if deletes == nil {
+			continue
+		}
+		if bat == nil {
+			bat = deletes
+		} else {
+			bat.Extend(deletes)
+			deletes.Close()
 		}
 	}
 	return

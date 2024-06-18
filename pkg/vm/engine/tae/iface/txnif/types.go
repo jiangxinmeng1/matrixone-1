@@ -311,7 +311,7 @@ type TxnStore interface {
 		visitAppend func(bat any, isTombstone bool))
 	GetTransactionType() TxnType
 	UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error
-	FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error
+	FillInWorkspaceDeletes(id *common.ID, deletes **nulls.Nulls) error
 	IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error)
 }
 

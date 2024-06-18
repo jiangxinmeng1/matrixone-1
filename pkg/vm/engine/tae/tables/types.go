@@ -18,9 +18,12 @@ import (
 	"context"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
+
 	// "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
@@ -62,6 +65,18 @@ type NodeT interface {
 	CollectAppendInRange(
 		start, end types.TS, withAborted bool, mp *mpool.MPool,
 	) (batWithVer *containers.BatchWithVersion, err error)
+	Scan(
+		txn txnif.TxnReader,
+		readSchema *catalog.Schema,
+		blkID uint16,
+		colIdxes []int,
+		mp *mpool.MPool,
+	) (bat *containers.Batch, err error)
+	FillBlockTombstones(
+		txn txnif.TxnReader,
+		blkID *objectio.Blockid,
+		deletes **nulls.Nulls,
+		mp *mpool.MPool) error
 }
 
 type Node struct {

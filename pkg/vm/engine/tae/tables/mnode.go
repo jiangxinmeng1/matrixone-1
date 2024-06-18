@@ -21,6 +21,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -435,7 +436,7 @@ func (node *memoryNode) fillDeletes(txn txnif.TxnReader, baseView *containers.Ba
 		return
 	}
 	id := node.object.meta.AsCommonID()
-	err = txn.GetStore().FillInWorkspaceDeletes(id, baseView)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &baseView.DeleteMask)
 	if err != nil {
 		return
 	}
@@ -550,4 +551,58 @@ func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {
 	node.object.RLock()
 	defer node.object.RUnlock()
 	return node.object.appendMVCC.AllAppendsCommittedBeforeLocked(ts)
+}
+
+func (node *memoryNode) Scan(
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	blkID uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (bat *containers.Batch, err error) {
+	if blkID != 0 {
+		panic("logic err")
+	}
+	node.object.RLock()
+	defer node.object.RUnlock()
+	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(txn.GetContext(), txn)
+	if !visible || err != nil {
+		// blk.RUnlock()
+		return
+	}
+	bat, err = node.getDataWindowLocked(
+		readSchema,
+		colIdxes,
+		0,
+		maxRow,
+		mp,
+	)
+	return
+}
+
+func (node *memoryNode) FillBlockTombstones(
+	txn txnif.TxnReader,
+	blkID *objectio.Blockid,
+	deletes **nulls.Nulls,
+	mp *mpool.MPool) error {
+	node.object.RLock()
+	defer node.object.RUnlock()
+	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(txn.GetContext(), txn)
+	if !visible || err != nil {
+		// blk.RUnlock()
+		return err
+	}
+	rowIDVec := node.data.GetVectorByName(catalog.AttrRowID)
+	rowIDs := vector.MustFixedCol[types.Rowid](rowIDVec.GetDownstreamVector())
+	for i := 0; i < int(maxRow); i++ {
+		rowID := rowIDs[i]
+		if types.PrefixCompare(rowID[:], blkID[:]) == 0 {
+			if *deletes == nil {
+				*deletes = &nulls.Nulls{}
+			}
+			offset := rowID.GetRowOffset()
+			(*deletes).Add(uint64(offset))
+		}
+	}
+	return nil
 }

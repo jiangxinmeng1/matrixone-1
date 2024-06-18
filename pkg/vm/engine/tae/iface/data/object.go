@@ -20,6 +20,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -129,4 +130,16 @@ type Object interface {
 		bf objectio.BloomFilter,
 		mp *mpool.MPool) (err error)
 	Close()
+	Scan(
+		txn txnif.TxnReader,
+		readSchema any,
+		blkID uint16,
+		colIdxes []int,
+		mp *mpool.MPool,
+	) (bat *containers.Batch, err error)
+	FillBlockTombstones(
+		txn txnif.TxnReader,
+		blkID *objectio.Blockid,
+		deletes **nulls.Nulls,
+		mp *mpool.MPool) error
 }

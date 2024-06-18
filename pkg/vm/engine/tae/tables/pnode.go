@@ -20,7 +20,9 @@ import (
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -195,7 +197,7 @@ func (node *persistedNode) GetRowByFilter(
 		}
 		id := node.object.meta.AsCommonID()
 		id.SetBlockOffset(blkID)
-		err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+		err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
 		if err != nil {
 			return
 		}
@@ -228,4 +230,96 @@ func (node *persistedNode) CollectAppendInRange(
 ) (bat *containers.BatchWithVersion, err error) {
 	// logtail should have sent metaloc
 	return nil, nil
+}
+
+func (node *persistedNode) Scan(
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	blkID uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (bat *containers.Batch, err error) {
+	id := node.object.meta.AsCommonID()
+	id.SetBlockOffset(uint16(blkID))
+	location, err := node.object.buildMetalocation(uint16(blkID))
+	if err != nil {
+		return nil, err
+	}
+	vecs, err := LoadPersistedColumnDatas(
+		txn.GetContext(), readSchema, node.object.rt, id, colIdxes, location, mp,
+	)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: check visibility
+	if bat == nil {
+		bat = containers.NewBatch()
+		for i, idx := range colIdxes {
+			attr := readSchema.ColDefs[idx].Name
+			bat.AddVector(attr, vecs[i])
+		}
+	} else {
+		for i, idx := range colIdxes {
+			attr := readSchema.ColDefs[idx].Name
+			bat.GetVectorByName(attr).Extend(vecs[i])
+		}
+	}
+	return
+}
+
+func (node *persistedNode) FillBlockTombstones(
+	txn txnif.TxnReader,
+	blkID *objectio.Blockid,
+	deletes **nulls.Nulls,
+	mp *mpool.MPool) error {
+	startTS := txn.GetStartTS()
+	if !node.object.meta.IsAppendable() {
+		node.object.RLock()
+		createAt := node.object.meta.GetCreatedAtLocked()
+		node.object.RUnlock()
+		if createAt.Greater(&startTS) {
+			return nil
+		}
+	}
+	id := node.object.meta.AsCommonID()
+	readSchema := node.object.meta.GetTable().GetLastestSchema(true)
+	for tombstoneBlkID := 0; tombstoneBlkID < node.object.meta.BlockCnt(); tombstoneBlkID++ {
+		id.SetBlockOffset(uint16(tombstoneBlkID))
+		location, err := node.object.buildMetalocation(uint16(tombstoneBlkID))
+		if err != nil {
+			return err
+		}
+		vecs, err := LoadPersistedColumnDatas(
+			txn.GetContext(), readSchema, node.object.rt, id, []int{0}, location, mp,
+		)
+		if err != nil {
+			return err
+		}
+		var commitTSs []types.TS
+		if node.object.meta.IsAppendable() {
+			commitTSVec, err := node.object.LoadPersistedCommitTS(uint16(tombstoneBlkID))
+			if err != nil {
+				return err
+			}
+			commitTSs = vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
+		}
+		rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
+		// TODO: biselect, check visibility
+		for i := 0; i < len(rowIDs); i++ {
+			if node.object.meta.IsAppendable() {
+				if commitTSs[i].Greater(&startTS) {
+					continue
+				}
+			}
+			rowID := rowIDs[i]
+			if types.PrefixCompare(rowID[:], blkID[:]) == 0 {
+				if *deletes == nil {
+					*deletes = &nulls.Nulls{}
+				}
+				offset := rowID.GetRowOffset()
+				(*deletes).Add(uint64(offset))
+			}
+		}
+	}
+	return nil
 }

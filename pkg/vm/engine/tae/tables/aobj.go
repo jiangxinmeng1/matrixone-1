@@ -170,14 +170,36 @@ func (obj *aobject) GetColumnDataByIds(
 	colIdxes []int,
 	mp *mpool.MPool,
 ) (view *containers.BlockView, err error) {
-	return obj.resolveColumnDatas(
-		ctx,
-		txn,
-		readSchema.(*catalog.Schema),
-		colIdxes,
-		false,
-		mp,
-	)
+	var bat *containers.Batch
+	if obj.meta.IsTombstone {
+		bat, err = obj.Scan(txn, readSchema, 0, colIdxes, mp)
+		if err != nil {
+			return
+		}
+		if bat == nil {
+			return
+		}
+		view = containers.NewBlockView()
+		for i, idx := range colIdxes {
+			view.SetData(idx, bat.Vecs[i])
+		}
+		return
+	}
+	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
+	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), colIdxes, blkID, mp)
+	if err != nil {
+		return
+	}
+	if bat == nil {
+		return
+	}
+	view = containers.NewBlockView()
+	for i, idx := range colIdxes {
+		view.SetData(idx, bat.Vecs[i])
+	}
+	view.DeleteMask = bat.Deletes
+	err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &view.DeleteMask)
+	return
 }
 
 func (obj *aobject) GetColumnDataById(
@@ -188,14 +210,32 @@ func (obj *aobject) GetColumnDataById(
 	col int,
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
-	return obj.resolveColumnData(
-		ctx,
-		txn,
-		readSchema.(*catalog.Schema),
-		col,
-		false,
-		mp,
-	)
+	var bat *containers.Batch
+	if obj.meta.IsTombstone {
+		bat, err = obj.Scan(txn, readSchema, 0, []int{col}, mp)
+		if err != nil {
+			return
+		}
+		if bat == nil {
+			return
+		}
+		view = containers.NewColumnView(col)
+		view.SetData(bat.Vecs[0])
+		return
+	}
+	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
+	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+	if err != nil {
+		return
+	}
+	if bat == nil {
+		return
+	}
+	view = containers.NewColumnView(col)
+	view.SetData(bat.Vecs[0])
+	view.DeleteMask = bat.Deletes
+	err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &view.DeleteMask)
+	return
 }
 func (obj *aobject) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
 	node := obj.PinNode()
@@ -215,37 +255,6 @@ func (obj *aobject) GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPoo
 	} else {
 		vec, err := obj.LoadPersistedCommitTS(0)
 		return vec, err
-	}
-}
-func (obj *aobject) resolveColumnDatas(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	colIdxes []int,
-	skipDeletes bool,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if obj.meta.IsTombstone {
-		skipDeletes = true
-	}
-
-	if !node.IsPersisted() {
-		return node.MustMNode().resolveInMemoryColumnDatas(
-			ctx,
-			txn, readSchema, colIdxes, skipDeletes, mp,
-		)
-	} else {
-		return obj.ResolvePersistedColumnDatas(
-			ctx,
-			txn,
-			readSchema,
-			0,
-			colIdxes,
-			skipDeletes,
-			mp,
-		)
 	}
 }
 
@@ -275,37 +284,8 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 func (obj *aobject) GetCommitVec() (containers.Vector, error) {
 	return nil, nil
 }
-func (obj *aobject) resolveColumnData(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	col int,
-	skipDeletes bool,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
 
-	if obj.meta.IsTombstone {
-		skipDeletes = true
-	}
-	if !node.IsPersisted() {
-		return node.MustMNode().resolveInMemoryColumnData(
-			txn, readSchema, col, skipDeletes, mp,
-		)
-	} else {
-		return obj.ResolvePersistedColumnData(
-			ctx,
-			txn,
-			readSchema,
-			0,
-			col,
-			skipDeletes,
-			mp,
-		)
-	}
-}
-
+// TODO: equal filter
 func (obj *aobject) GetValue(
 	ctx context.Context,
 	txn txnif.AsyncTxn,
@@ -315,16 +295,36 @@ func (obj *aobject) GetValue(
 	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	schema := readSchema.(*catalog.Schema)
-	if !node.IsPersisted() {
-		return node.MustMNode().getInMemoryValue(txn, schema, row, col, skipCheckDelete, mp)
-	} else {
-		return obj.getPersistedValue(
-			ctx, txn, schema, 0, row, col, true, skipCheckDelete, mp,
-		)
+	if !obj.meta.IsTombstone && !skipCheckDelete {
+		var bat *containers.Batch
+		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
+		err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		if err != nil {
+			return
+		}
+		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &bat.Deletes)
+		if err != nil {
+			return
+		}
+		if bat.Deletes != nil && bat.Deletes.Contains(uint64(row)) {
+			err = moerr.NewNotFoundNoCtx()
+			return
+		}
+		isNull = bat.Vecs[0].IsNull(row)
+		if !isNull {
+			v = bat.Vecs[0].Get(row)
+		}
+		return
 	}
+	bat, err := obj.Scan(txn, readSchema, 0, []int{col}, mp)
+	if err != nil {
+		return
+	}
+	isNull = bat.Vecs[0].IsNull(row)
+	if !isNull {
+		v = bat.Vecs[0].Get(row)
+	}
+	return
 }
 
 // GetByFilter will read pk column, which seqnum will not change, no need to pass the read schema.

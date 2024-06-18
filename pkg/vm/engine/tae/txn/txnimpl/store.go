@@ -23,6 +23,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/moprobe"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
@@ -824,12 +825,12 @@ func (store *txnStore) CleanUp() {
 		db.CleanUp()
 	}
 }
-func (store *txnStore) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error {
+func (store *txnStore) FillInWorkspaceDeletes(id *common.ID, deletes **nulls.Nulls) error {
 	db, err := store.getOrSetDB(id.DbID)
 	if err != nil {
 		return err
 	}
-	return db.FillInWorkspaceDeletes(id, view)
+	return db.FillInWorkspaceDeletes(id, deletes)
 }
 
 func (store *txnStore) IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error) {

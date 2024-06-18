@@ -139,3 +139,34 @@ func (entry *TableEntry) OnApplyDelete(
 	entry.RemoveRows(deleted)
 	return
 }
+
+func (entry *TableEntry) HybridScan(
+	txn txnif.TxnReader,
+	bat **containers.Batch,
+	readSchema *Schema,
+	colIdxs []int,
+	blkID *objectio.Blockid,
+	mp *mpool.MPool,
+) error {
+	dataObject, err := entry.GetObjectByID(blkID.Object(), false)
+	if err != nil {
+		return err
+	}
+	_, offset := blkID.Offsets()
+	*bat, err = dataObject.GetObjectData().Scan(txn, readSchema, offset, colIdxs, mp)
+	if err != nil {
+		return err
+	}
+	if *bat == nil {
+		return nil
+	}
+	it := entry.MakeObjectIt(false, true)
+	for ; it.Valid(); it.Next() {
+		tombstone := it.Get().GetPayload()
+		err := tombstone.GetObjectData().FillBlockTombstones(txn, blkID, &(*bat).Deletes, mp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

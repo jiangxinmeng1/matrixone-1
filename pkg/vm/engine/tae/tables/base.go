@@ -272,7 +272,7 @@ func (blk *baseObject) ResolvePersistedColumnDatas(
 	if err != nil {
 		return nil, err
 	}
-	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
 	return
 }
 
@@ -312,7 +312,7 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	}
 	id := blk.meta.AsCommonID()
 	id.SetBlockOffset(blkID)
-	err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
 	return
 }
 
@@ -491,7 +491,7 @@ func (blk *baseObject) getPersistedValue(
 		}
 		id := blk.meta.AsCommonID()
 		id.SetBlockOffset(blkID)
-		err = txn.GetStore().FillInWorkspaceDeletes(id, view.BaseView)
+		err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
 		if view.DeleteMask.Contains(uint64(row)) {
 			err = moerr.NewNotFoundNoCtx()
 			return
@@ -551,4 +551,29 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 		}
 	}
 	return s
+}
+
+func (blk *baseObject) Scan(
+	txn txnif.TxnReader,
+	readSchema any,
+	blkID uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (bat *containers.Batch, err error) {
+	node := blk.PinNode()
+	defer node.Unref()
+	return node.Scan(txn, readSchema.(*catalog.Schema), blkID, colIdxes, mp)
+}
+
+func (blk *baseObject) FillBlockTombstones(
+	txn txnif.TxnReader,
+	blkID *objectio.Blockid,
+	deletes **nulls.Nulls,
+	mp *mpool.MPool) error {
+	node := blk.PinNode()
+	defer node.Unref()
+	if !blk.meta.IsTombstone {
+		panic("logic err")
+	}
+	return node.FillBlockTombstones(txn, blkID, deletes, mp)
 }

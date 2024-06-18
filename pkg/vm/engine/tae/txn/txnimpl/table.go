@@ -1410,7 +1410,7 @@ func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.F
 	return stats
 }
 
-func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
+func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, deletes **nulls.Nulls) error {
 	if tbl.tombstoneTable.tableSpace == nil {
 		return nil
 	}
@@ -1420,10 +1420,10 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *container
 			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 			if *rowID.BorrowBlockID() == blkID {
 				_, row := rowID.Decode()
-				if view.DeleteMask == nil {
-					view.DeleteMask = &nulls.Nulls{}
+				if *deletes == nil {
+					*deletes = &nulls.Nulls{}
 				}
-				view.DeleteMask.Add(uint64(row))
+				(*deletes).Add(uint64(row))
 			}
 		}
 	}
@@ -1462,10 +1462,10 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, view *container
 				rowID := vectors[0].Get(i).(types.Rowid)
 				if *rowID.BorrowBlockID() == blkID {
 					_, row := rowID.Decode()
-					if view.DeleteMask == nil {
-						view.DeleteMask = &nulls.Nulls{}
+					if *deletes == nil {
+						*deletes = &nulls.Nulls{}
 					}
-					view.DeleteMask.Add(uint64(row))
+					(*deletes).Add(uint64(row))
 				}
 			}
 			closeFunc()

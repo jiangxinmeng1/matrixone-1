@@ -299,14 +299,17 @@ func (entry *TableEntry) GetLastestSchema(isTombstone bool) *Schema {
 }
 
 // GetVisibleSchema returns committed schema visible at the given txn
-func (entry *TableEntry) GetVisibleSchema(txn txnif.TxnReader) (schema, tombstoneSchema *Schema) {
+func (entry *TableEntry) GetVisibleSchema(txn txnif.TxnReader, isTombstone bool) (schema *Schema) {
 	entry.RLock()
 	defer entry.RUnlock()
 	node := entry.GetVisibleNodeLocked(txn)
 	if node != nil {
-		return node.BaseNode.Schema, node.BaseNode.GetTombstoneSchema()
+		if isTombstone {
+			return node.BaseNode.GetTombstoneSchema()
+		}
+		return node.BaseNode.Schema
 	}
-	return nil, nil
+	return nil
 }
 
 func (entry *TableEntry) GetVersionSchema(ver uint32) *Schema {

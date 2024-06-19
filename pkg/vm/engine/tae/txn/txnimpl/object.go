@@ -120,7 +120,7 @@ func newObjectIt(table *txnTable, reverse bool, isTombstone bool) handle.ObjectI
 		curr.RUnlock()
 		it.linkIt.Next()
 	}
-	if table.getBaseTable(isTombstone).tableSpace != nil &&
+	if table.getBaseTable(isTombstone) != nil && table.getBaseTable(isTombstone).tableSpace != nil &&
 		table.getBaseTable(isTombstone).tableSpace.node != nil {
 		cit := &composedObjectIt{
 			ObjectIt:    it,

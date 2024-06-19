@@ -104,7 +104,7 @@ type txnTable struct {
 }
 
 func newTxnTable(store *txnStore, entry *catalog.TableEntry) (*txnTable, error) {
-	schema, tombstoneSchema := entry.GetVisibleSchema(store.txn)
+	schema := entry.GetVisibleSchema(store.txn, false)
 	if schema == nil {
 		return nil, moerr.NewInternalErrorNoCtx("No visible schema for ts %s", store.txn.GetStartTS().ToString())
 	}
@@ -115,7 +115,6 @@ func newTxnTable(store *txnStore, entry *catalog.TableEntry) (*txnTable, error) 
 		txnEntries: newTxnEntries(),
 	}
 	tbl.dataTable = newBaseTable(schema, false, tbl)
-	tbl.tombstoneTable = newBaseTable(tombstoneSchema, true, tbl)
 	return tbl, nil
 }
 
@@ -168,7 +167,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	if tbl.store.rt.TransferTable == nil {
 		return
 	}
-	if tbl.tombstoneTable.tableSpace == nil {
+	if tbl.tombstoneTable == nil || tbl.tombstoneTable.tableSpace == nil {
 		return
 	}
 	// transfer deltaloc
@@ -450,7 +449,9 @@ func (tbl *txnTable) CollectCmd(cmdMgr *commandManager) (err error) {
 	if err != nil {
 		return
 	}
-	err = tbl.tombstoneTable.collectCmd(cmdMgr)
+	if tbl.tombstoneTable != nil {
+		err = tbl.tombstoneTable.collectCmd(cmdMgr)
+	}
 	return
 }
 
@@ -571,6 +572,9 @@ func (tbl *txnTable) IsDeleted() bool {
 // latest schema in TableEntry
 func (tbl *txnTable) GetLocalSchema(isTombstone bool) *catalog.Schema {
 	if isTombstone {
+		if tbl.tombstoneTable == nil {
+			tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
+		}
 		return tbl.tombstoneTable.schema
 	}
 	return tbl.dataTable.schema
@@ -590,9 +594,11 @@ func (tbl *txnTable) Close() error {
 	if err != nil {
 		return err
 	}
-	err = tbl.tombstoneTable.Close()
-	if err != nil {
-		return err
+	if tbl.tombstoneTable != nil {
+		err = tbl.tombstoneTable.Close()
+		if err != nil {
+			return err
+		}
 	}
 	tbl.logs = nil
 	tbl.txnEntries = nil
@@ -648,6 +654,9 @@ func (tbl *txnTable) AddObjsWithMetaLoc(ctx context.Context, stats containers.Ve
 }
 func (tbl *txnTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.ObjectStats, isTombstone bool) (err error) {
 	if isTombstone {
+		if tbl.tombstoneTable == nil {
+			tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
+		}
 		return tbl.tombstoneTable.addObjsWithMetaLoc(ctx, stats)
 	} else {
 		return tbl.dataTable.addObjsWithMetaLoc(ctx, stats)
@@ -773,7 +782,7 @@ func (tbl *txnTable) AlterTable(ctx context.Context, req *apipb.AlterTableReq) e
 // PrePrepareDedup do deduplication check for 1PC Commit or 2PC Prepare
 func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err error) {
 	baseTable := tbl.getBaseTable(isTombstone)
-	if baseTable.tableSpace == nil || !baseTable.schema.HasPK() || baseTable.schema.IsSecondaryIndexTable() {
+	if baseTable == nil || baseTable.tableSpace == nil || !baseTable.schema.HasPK() || baseTable.schema.IsSecondaryIndexTable() {
 		return
 	}
 	var zm index.ZM
@@ -1002,6 +1011,9 @@ func (tbl *txnTable) getSchema(isTombstone bool) *catalog.Schema {
 	}
 }
 func (tbl *txnTable) DedupWorkSpace(key containers.Vector, isTombstone bool) (err error) {
+	if tbl.getBaseTable(isTombstone) == nil {
+		return nil
+	}
 	index := NewSimpleTableIndex()
 	//Check whether primary key is duplicated.
 	if err = index.BatchInsert(
@@ -1067,7 +1079,7 @@ func (tbl *txnTable) ApplyAppend() (err error) {
 	if err != nil {
 		return
 	}
-	if tbl.tombstoneTable.tableSpace != nil {
+	if tbl.tombstoneTable != nil && tbl.tombstoneTable.tableSpace != nil {
 		err = tbl.tombstoneTable.tableSpace.ApplyAppend()
 	}
 	return
@@ -1078,7 +1090,9 @@ func (tbl *txnTable) PrePrepare() (err error) {
 	if err != nil {
 		return
 	}
-	err = tbl.tombstoneTable.PrePrepare()
+	if tbl.tombstoneTable != nil {
+		err = tbl.tombstoneTable.PrePrepare()
+	}
 	return
 }
 
@@ -1200,7 +1214,9 @@ func (tbl *txnTable) ApplyRollback() (err error) {
 
 func (tbl *txnTable) CleanUp() {
 	tbl.dataTable.CleanUp()
-	tbl.tombstoneTable.CleanUp()
+	if tbl.tombstoneTable != nil {
+		tbl.tombstoneTable.CleanUp()
+	}
 }
 
 func (tbl *txnTable) RangeDeleteLocalRows(start, end uint32) (err error) {
@@ -1268,6 +1284,9 @@ func (tbl *txnTable) RangeDelete(
 		err = tbl.RangeDeleteLocalRows(start, end)
 		return
 	}
+	if tbl.tombstoneTable == nil {
+		tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
+	}
 	err = tbl.dedup(tbl.store.ctx, deleteBatch.GetVectorByName(catalog.AttrRowID), true)
 	if err != nil {
 		return
@@ -1301,7 +1320,7 @@ func (tbl *txnTable) contains(
 	ctx context.Context,
 	keys containers.Vector,
 	keysZM index.ZM, mp *mpool.MPool) (err error) {
-	if tbl.tombstoneTable.tableSpace == nil {
+	if tbl.tombstoneTable == nil || tbl.tombstoneTable.tableSpace == nil {
 		return
 	}
 	if tbl.tombstoneTable.tableSpace.node != nil {
@@ -1399,6 +1418,9 @@ func (tbl *txnTable) createTombstoneBatch(
 	return bat
 }
 func (tbl *txnTable) TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Location) (ok bool, err error) {
+	if tbl.tombstoneTable == nil {
+		tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
+	}
 	stats := tbl.deltaloc2ObjectStat(deltaloc, tbl.store.rt.Fs.Service)
 	err = tbl.addObjsWithMetaLoc(tbl.store.ctx, stats, true)
 	if err == nil {
@@ -1438,7 +1460,7 @@ func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.F
 }
 
 func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, deletes **nulls.Nulls) error {
-	if tbl.tombstoneTable.tableSpace == nil {
+	if tbl.tombstoneTable == nil || tbl.tombstoneTable.tableSpace == nil {
 		return nil
 	}
 	if tbl.tombstoneTable.tableSpace.node != nil {
@@ -1502,7 +1524,7 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, deletes **nulls
 }
 
 func (tbl *txnTable) IsDeletedInWorkSpace(blkID objectio.Blockid, row uint32) (bool, error) {
-	if tbl.tombstoneTable.tableSpace == nil {
+	if tbl.tombstoneTable == nil || tbl.tombstoneTable.tableSpace == nil {
 		return false, nil
 	}
 	if tbl.tombstoneTable.tableSpace.node != nil {

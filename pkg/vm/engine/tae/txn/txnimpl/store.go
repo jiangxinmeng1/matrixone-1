@@ -499,7 +499,7 @@ func (store *txnStore) ObserveTxn(
 				}
 				visitAppend(bat, false)
 			}
-			if tbl.tombstoneTable.tableSpace != nil && tbl.tombstoneTable.tableSpace.node != nil {
+			if tbl.tombstoneTable != nil && tbl.tombstoneTable.tableSpace != nil && tbl.tombstoneTable.tableSpace.node != nil {
 				anode := tbl.tombstoneTable.tableSpace.node
 				schema := anode.table.GetLocalSchema(true)
 				bat := &containers.BatchWithVersion{

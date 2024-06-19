@@ -142,4 +142,11 @@ type Object interface {
 		blkID *objectio.Blockid,
 		deletes **nulls.Nulls,
 		mp *mpool.MPool) error
+	ScanInRange(
+		ctx context.Context,
+		start, end types.TS,
+		bat **containers.Batch,
+		mp *mpool.MPool,
+		vpool *containers.VectorPool,
+	) (err error)
 }

@@ -37,7 +37,7 @@ func (entry *ObjectEntry) collectTombstoneInRange(
 	if err != nil {
 		return nil, err
 	}
-	if batWithVersion == nil {
+	if batWithVersion == nil || batWithVersion.Batch == nil{
 		return nil, nil
 	}
 

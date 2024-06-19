@@ -72,6 +72,13 @@ type NodeT interface {
 		colIdxes []int,
 		mp *mpool.MPool,
 	) (bat *containers.Batch, err error)
+	ScanInRange(
+		ctx context.Context,
+		start, end types.TS,
+		bat **containers.Batch,
+		mp *mpool.MPool,
+		vpool *containers.VectorPool,
+	) (err error)
 	FillBlockTombstones(
 		txn txnif.TxnReader,
 		blkID *objectio.Blockid,

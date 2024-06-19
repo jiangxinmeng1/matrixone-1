@@ -577,3 +577,28 @@ func (blk *baseObject) FillBlockTombstones(
 	}
 	return node.FillBlockTombstones(txn, blkID, deletes, mp)
 }
+
+func (blk *baseObject) ScanInMemory(
+	start, end types.TS,
+	mp *mpool.MPool,
+) (bat *containers.BatchWithVersion, err error) {
+	node := blk.PinNode()
+	defer node.Unref()
+	if node.IsPersisted() {
+		return nil, nil
+	}
+	mnode := node.MustMNode()
+	return mnode.CollectAppendInRange(start, end, false, mp)
+}
+
+func (blk *baseObject) ScanInRange(
+	ctx context.Context,
+	start, end types.TS,
+	bat **containers.Batch,
+	mp *mpool.MPool,
+	vpool *containers.VectorPool,
+) (err error) {
+	node := blk.PinNode()
+	defer node.Unref()
+	return node.ScanInRange(ctx, start, end, bat, mp, vpool)
+}

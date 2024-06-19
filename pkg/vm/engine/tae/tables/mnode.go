@@ -580,6 +580,26 @@ func (node *memoryNode) Scan(
 	return
 }
 
+func (node *memoryNode) ScanInRange(
+	ctx context.Context,
+	start, end types.TS,
+	bat **containers.Batch,
+	mp *mpool.MPool,
+	vpool *containers.VectorPool,
+) (err error) {
+	batWithVersion, err := node.CollectAppendInRange(start, end, false, mp)
+	if batWithVersion == nil {
+		return nil
+	}
+	if *bat == nil {
+		*bat = batWithVersion.Batch
+	} else {
+		(*bat).Extend(batWithVersion.Batch)
+		batWithVersion.Batch.Close()
+	}
+	return
+}
+
 func (node *memoryNode) FillBlockTombstones(
 	txn txnif.TxnReader,
 	blkID *objectio.Blockid,

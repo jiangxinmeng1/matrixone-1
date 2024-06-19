@@ -267,6 +267,99 @@ func (node *persistedNode) Scan(
 	return
 }
 
+func (node *persistedNode) ScanInRange(
+	ctx context.Context,
+	start, end types.TS,
+	bat **containers.Batch,
+	mp *mpool.MPool,
+	vpool *containers.VectorPool,
+) (err error) {
+	if !node.object.meta.IsTombstone {
+		panic("not support")
+	}
+	colIdxes := catalog.TombstoneBatchIdxes
+	readSchema := node.object.meta.GetTable().GetLastestSchema(true)
+	var startTS types.TS
+	if !node.object.meta.IsAppendable() {
+		node.object.meta.RLock()
+		startTS = node.object.meta.GetCreatedAtLocked()
+		node.object.meta.RUnlock()
+		if startTS.Less(&start) || startTS.Greater(&end) {
+			return
+		}
+	} else {
+		node.object.meta.RLock()
+		createAt := node.object.meta.GetCreatedAtLocked()
+		deleteAt := node.object.meta.GetDeleteAtLocked()
+		node.object.meta.RUnlock()
+		if deleteAt.Less(&start) || createAt.Greater(&end) {
+			return
+		}
+	}
+	id := node.object.meta.AsCommonID()
+	for blkID := 0; blkID < node.object.meta.BlockCnt(); blkID++ {
+		id.SetBlockOffset(uint16(blkID))
+		location, err := node.object.buildMetalocation(uint16(blkID))
+		if err != nil {
+			return err
+		}
+		vecs, err := LoadPersistedColumnDatas(
+			ctx, readSchema, node.object.rt, id, colIdxes, location, mp,
+		)
+		if err != nil {
+			return err
+		}
+		if !node.object.meta.IsAppendable() {
+			if *bat == nil {
+				*bat = containers.NewBatch()
+				for i, idx := range colIdxes {
+					attr := readSchema.ColDefs[idx].Name
+					(*bat).AddVector(attr, vecs[i])
+				}
+				typ := types.T_TS.ToType()
+				commitTSVec := containers.MakeVector(typ,mp)
+				err = vector.AppendMultiFixed(commitTSVec.GetDownstreamVector(), startTS, false, vecs[0].Length(), mp)
+				if err != nil {
+					return err
+				}
+				(*bat).AddVector(catalog.AttrCommitTs, commitTSVec)
+			} else {
+				for i, idx := range colIdxes {
+					attr := readSchema.ColDefs[idx].Name
+					(*bat).GetVectorByName(attr).Extend(vecs[i])
+				}
+				commitTSVec := (*bat).GetVectorByName(catalog.AttrCommitTs)
+				err = vector.AppendMultiFixed(commitTSVec.GetDownstreamVector(), startTS, false, vecs[0].Length(), mp)
+				if err != nil {
+					return err
+				}
+
+			}
+		} else {
+			commitTSVec, err := node.object.LoadPersistedCommitTS(uint16(blkID))
+			if err != nil {
+				return err
+			}
+			commitTSs := vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
+			rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
+			for i := 0; i < len(commitTSs); i++ {
+				commitTS := commitTSs[i]
+				if commitTS.GreaterEq(&start) && commitTS.LessEq(&end) {
+					if *bat == nil {
+						pkIdx := readSchema.GetColIdx(catalog.AttrPKVal)
+						pkType := readSchema.ColDefs[pkIdx].GetType()
+						*bat = catalog.NewTombstoneBatchByPKType(pkType, mp)
+					}
+					(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
+					(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
+					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(commitTS[i], false)
+				}
+			}
+		}
+	}
+	return
+}
+
 func (node *persistedNode) FillBlockTombstones(
 	txn txnif.TxnReader,
 	blkID *objectio.Blockid,

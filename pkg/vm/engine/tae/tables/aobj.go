@@ -24,7 +24,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
-	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -327,6 +326,7 @@ func (obj *aobject) GetValue(
 	return
 }
 
+// TODO: remove it. (use rel.GetByFilter)
 // GetByFilter will read pk column, which seqnum will not change, no need to pass the read schema.
 func (obj *aobject) GetByFilter(
 	ctx context.Context,
@@ -470,75 +470,13 @@ func (obj *aobject) CollectAppendInRange(
 ) (*containers.BatchWithVersion, error) {
 	node := obj.PinNode()
 	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.CollectAppendInRange(start, end, withAborted, mp)
+	if withPersistedData {
+		batWithVersion := &containers.BatchWithVersion{}
+		err := node.ScanInRange(ctx, start, end, &batWithVersion.Batch, mp, obj.rt.VectorPool.Small)
+		return batWithVersion, err
 	} else {
-		if !withPersistedData {
-			return nil, nil
-		}
-		return obj.persistedCollectAppendInRange(ctx, start, end, withAborted, mp)
+		return obj.ScanInMemory(start, end, mp)
 	}
-}
-
-func (obj *aobject) persistedCollectAppendInRange(
-	ctx context.Context,
-	start, end types.TS,
-	withAborted bool,
-	mp *mpool.MPool,
-) (*containers.BatchWithVersion, error) {
-	if !obj.meta.IsTombstone {
-		panic("not support")
-	}
-	obj.meta.RLock()
-	minTS := obj.meta.GetCreatedAtLocked()
-	maxTS := obj.meta.GetDeleteAtLocked()
-	obj.meta.RUnlock()
-	if minTS.Greater(&end) || maxTS.Less(&start) {
-		return nil, nil
-	}
-	var bat *containers.Batch
-	readSchema := obj.meta.GetTable().GetLastestSchema(true)
-	id := obj.meta.AsCommonID()
-	location, err := obj.buildMetalocation(uint16(0))
-	if err != nil {
-		return nil, err
-	}
-	vecs, err := LoadPersistedColumnDatas(ctx, readSchema, obj.rt, id, catalog.TombstoneBatchIdxes, location, mp)
-	if err != nil {
-		return nil, err
-	}
-	commitTSVec, err := obj.GetCommitTSVectorInRange(start, end, mp)
-	if err != nil {
-		return nil, err
-	}
-
-	rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
-	commitTSs := vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
-	for i := 0; i < vecs[0].Length(); i++ {
-		if commitTSs[0].Less(&start) || commitTSs[0].Greater(&end) {
-			continue
-		}
-		if bat == nil {
-			bat = containers.BuildBatch(
-				readSchema.Attrs(),
-				readSchema.AllTypes(),
-				containers.Options{Allocator: mp})
-			bat.AddVector(
-				catalog.AttrCommitTs,
-				containers.MakeVector(types.T_TS.ToType(),
-					mp))
-		}
-		bat.GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
-		bat.GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
-		bat.GetVectorByName(catalog.AttrCommitTs).Append(commitTSs[i], false)
-	}
-	batchWithVersion := &containers.BatchWithVersion{
-		Version:    readSchema.Version,
-		NextSeqnum: uint16(readSchema.Extra.NextColSeqnum),
-		Seqnums:    readSchema.AllSeqnums(),
-		Batch:      bat,
-	}
-	return batchWithVersion, nil
 }
 
 func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {

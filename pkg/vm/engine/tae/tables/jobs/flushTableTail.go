@@ -721,23 +721,30 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 	subtasks = make([]*flushObjTask, len(metas))
 	// fire flush task
 	for i, obj := range metas {
-		var data *containers.Batch
-		var dataVer *containers.BatchWithVersion
+		dataVers := make(map[uint32]*containers.BatchWithVersion)
 		objData := obj.GetObjectData()
-		if dataVer, err = objData.ScanInMemory(
-			types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
+		if err = objData.ScanInMemory(
+			dataVers, types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
 		); err != nil {
 			return
 		}
-		data = dataVer.Batch
-		if data == nil || data.Length() == 0 {
+		if len(dataVers) == 0 {
 			// the new appendable block might has no data when we flush the table, just skip it
 			// In previous impl, runner will only pass non-empty obj to NewCompactBlackTask
 			continue
 		}
+		if len(dataVers) != 1 {
+			panic("logic err")
+		}
+		var dataVer *containers.BatchWithVersion
+		for _, data := range dataVers {
+			dataVer = data
+			break
+		}
+
 		// do not close data, leave that to wait phase
 		if isTombstone {
-			_, err = mergesort.SortBlockColumns(data.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
+			_, err = mergesort.SortBlockColumns(dataVer.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
 			if err != nil {
 				return
 			}
@@ -749,7 +756,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 			dataVer.Seqnums,
 			objData.GetFs(),
 			obj,
-			data,
+			dataVer.Batch,
 			nil,
 			true,
 			task.ID(),

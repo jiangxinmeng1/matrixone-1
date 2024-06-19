@@ -471,16 +471,17 @@ func (blk *baseObject) FillBlockTombstones(
 }
 
 func (blk *baseObject) ScanInMemory(
+	batches map[uint32]*containers.BatchWithVersion,
 	start, end types.TS,
 	mp *mpool.MPool,
-) (bat *containers.BatchWithVersion, err error) {
+) (err error) {
 	node := blk.PinNode()
 	defer node.Unref()
 	if node.IsPersisted() {
-		return nil, nil
+		return nil
 	}
 	mnode := node.MustMNode()
-	return mnode.CollectAppendInRange(start, end, false, mp)
+	return mnode.getDataWindowOnWriteSchema(batches, start, end, mp)
 }
 
 func (blk *baseObject) CollectObjectTombstoneInRange(

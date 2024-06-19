@@ -48,12 +48,8 @@ func newMemoryNode(object *baseObject, isTombstone bool) *memoryNode {
 	impl.object = object
 
 	var schema *catalog.Schema
-	if isTombstone {
-		schema = object.meta.GetTable().GetLastestSchemaLocked(true)
-	} else {
-		// Get the lastest schema, it will not be modified, so just keep the pointer
-		schema = object.meta.GetSchemaLocked()
-	}
+	// Get the lastest schema, it will not be modified, so just keep the pointer
+	schema = object.meta.GetTable().GetLastestSchemaLocked(isTombstone)
 	impl.writeSchema = schema
 	// impl.data = containers.BuildBatchWithPool(
 	// 	schema.AllNames(), schema.AllTypes(), 0, object.rt.VectorPool.Memtable,
@@ -144,67 +140,83 @@ func (node *memoryNode) EstimateMemSizeLocked() int {
 	return node.data.ApproxSize()
 }
 
-func (node *memoryNode) getDataWindowOnWriteSchemaLocked(
-	from, to uint32, mp *mpool.MPool,
-) (bat *containers.BatchWithVersion, err error) {
+func (node *memoryNode) getDataWindowOnWriteSchema(
+	batches map[uint32]*containers.BatchWithVersion,
+	start, end types.TS, mp *mpool.MPool,
+) (err error) {
+	node.object.RLock()
+	defer node.object.RUnlock()
 	if node.data == nil {
-		schema := node.writeSchema
-		opts := containers.Options{
-			Allocator: mp,
-		}
-		inner := containers.BuildBatch(
-			schema.AllNames(), schema.AllTypes(), opts,
-		)
-		return &containers.BatchWithVersion{
+		return nil
+	}
+	from, to, commitTSVec, _, _ :=
+		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
+	if commitTSVec == nil {
+		return nil
+	}
+	dest, ok := batches[node.writeSchema.Version]
+	if ok {
+		dest.Extend(node.data)
+		dest.GetVectorByName(catalog.AttrCommitTs).Extend(commitTSVec)
+		commitTSVec.Close() // TODO no copy
+	} else {
+		inner := node.data.CloneWindowWithPool(int(from), int(to-from), node.object.rt.VectorPool.Transient)
+		batWithVer := &containers.BatchWithVersion{
 			Version:    node.writeSchema.Version,
 			NextSeqnum: uint16(node.writeSchema.Extra.NextColSeqnum),
 			Seqnums:    node.writeSchema.AllSeqnums(),
 			Batch:      inner,
-		}, nil
-	}
-	inner := node.data.CloneWindowWithPool(int(from), int(to-from), node.object.rt.VectorPool.Transient)
-	// inner := node.data.CloneWindow(int(from), int(to-from), common.MutMemAllocator)
-	bat = &containers.BatchWithVersion{
-		Version:    node.writeSchema.Version,
-		NextSeqnum: uint16(node.writeSchema.Extra.NextColSeqnum),
-		Seqnums:    node.writeSchema.AllSeqnums(),
-		Batch:      inner,
+		}
+		inner.AddVector(catalog.AttrCommitTs, commitTSVec)
+		batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_COMMITTS)
+		batches[node.writeSchema.Version] = batWithVer
 	}
 	return
 }
 
 func (node *memoryNode) getDataWindowLocked(
+	bat **containers.Batch,
 	readSchema *catalog.Schema,
 	colIdxes []int,
 	from, to uint32,
 	mp *mpool.MPool,
-) (bat *containers.Batch, err error) {
+) (err error) {
 	if node.data == nil {
-		schema := node.writeSchema
-		opts := containers.Options{
-			Allocator: mp,
-		}
-		bat = containers.BuildBatch(
-			schema.AllNames(), schema.AllTypes(), opts,
-		)
 		return
 	}
 
-	// manually clone data
-	bat = containers.NewBatchWithCapacity(len(colIdxes))
 	if node.data.Deletes != nil {
-		bat.Deletes = bat.WindowDeletes(int(from), int(to-from), false)
+		panic("not expect")
+		// bat.Deletes = bat.WindowDeletes(int(from), int(to-from), false)
 	}
-	for _, colIdx := range colIdxes {
-		colDef := readSchema.ColDefs[colIdx]
-		idx, ok := node.writeSchema.SeqnumMap[colDef.SeqNum]
-		var vec containers.Vector
-		if !ok {
-			vec = containers.NewConstNullVector(colDef.Type, int(to-from), mp)
-		} else {
-			vec = node.data.Vecs[idx].CloneWindowWithPool(int(from), int(to-from), node.object.rt.VectorPool.Transient)
+	if *bat == nil {
+		*bat = containers.NewBatchWithCapacity(len(colIdxes))
+		for _, colIdx := range colIdxes {
+			colDef := readSchema.ColDefs[colIdx]
+			idx, ok := node.writeSchema.SeqnumMap[colDef.SeqNum]
+			var vec containers.Vector
+			if !ok {
+				vec = node.object.rt.VectorPool.Transient.GetVector(&colDef.Type) // TODO
+				for i := from; i < to; i++ {
+					vec.Append(nil, true)
+				}
+			} else {
+				vec = node.data.Vecs[idx].CloneWindowWithPool(int(from), int(to-from), node.object.rt.VectorPool.Transient)
+			}
+			(*bat).AddVector(colDef.Name, vec)
 		}
-		bat.AddVector(colDef.Name, vec)
+	} else {
+		for _, colIdx := range colIdxes {
+			colDef := readSchema.ColDefs[colIdx]
+			idx, ok := node.writeSchema.SeqnumMap[colDef.SeqNum]
+			var vec containers.Vector
+			if !ok {
+				vec = containers.NewConstNullVector(colDef.Type, int(to-from), mp)
+				(*bat).GetVectorByName(colDef.Name).Extend(vec) // TODO
+			} else {
+				(*bat).GetVectorByName(colDef.Name).Extend(node.data.Vecs[idx])
+			}
+		}
 	}
 	return
 }
@@ -261,37 +273,6 @@ func (node *memoryNode) checkConflictLocked(
 	}
 }
 
-func (node *memoryNode) CollectAppendInRange(
-	start, end types.TS, withAborted bool, mp *mpool.MPool,
-) (batWithVer *containers.BatchWithVersion, err error) {
-	node.object.RLock()
-	minRow, maxRow, commitTSVec, abortVec, abortedMap :=
-		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
-	if commitTSVec == nil || abortVec == nil {
-		node.object.RUnlock()
-		return nil, nil
-	}
-	batWithVer, err = node.getDataWindowOnWriteSchemaLocked(minRow, maxRow, mp)
-	if err != nil {
-		node.object.RUnlock()
-		return nil, err
-	}
-	node.object.RUnlock()
-
-	batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_COMMITTS)
-	batWithVer.AddVector(catalog.AttrCommitTs, commitTSVec)
-	if withAborted {
-		batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_ABORT)
-		batWithVer.AddVector(catalog.AttrAborted, abortVec)
-	} else {
-		abortVec.Close()
-		batWithVer.Deletes = abortedMap
-		batWithVer.Compact()
-	}
-
-	return
-}
-
 func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {
 	node.object.RLock()
 	defer node.object.RUnlock()
@@ -316,7 +297,8 @@ func (node *memoryNode) Scan(
 		// blk.RUnlock()
 		return
 	}
-	*bat, err = node.getDataWindowLocked(
+	err = node.getDataWindowLocked(
+		bat,
 		readSchema,
 		colIdxes,
 		0,

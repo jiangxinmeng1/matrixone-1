@@ -443,7 +443,7 @@ type TableLogtailRespBuilder struct {
 	checkpoint         string
 	dataMetaBatch      *containers.Batch
 	tombstoneMetaBatch *containers.Batch
-	dataInsBatches     map[uint32]*containers.Batch // schema version -> data batch
+	dataInsBatches     map[uint32]*containers.BatchWithVersion // schema version -> data batch
 	dataDelBatch       *containers.Batch
 }
 
@@ -463,7 +463,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 	b.dname = tbl.GetDB().GetName()
 	b.tname = tbl.GetLastestSchemaLocked(false).Name
 
-	b.dataInsBatches = make(map[uint32]*containers.Batch)
+	b.dataInsBatches = make(map[uint32]*containers.BatchWithVersion)
 	b.dataDelBatch = makeDelRespBatchFromSchema(tbl.GetLastestSchema(false).GetPrimaryKey().Type, common.LogtailAllocator)
 	b.dataMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	b.tombstoneMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
@@ -519,25 +519,9 @@ func (b *TableLogtailRespBuilder) skipObjectData(e *catalog.ObjectEntry, lastMVC
 }
 func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	data := e.GetObjectData()
-	insBatch, err := data.ScanInMemory(b.start, b.end, common.LogtailAllocator)
+	err := data.ScanInMemory(b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
 	if err != nil {
 		return err
-	}
-	if insBatch != nil && insBatch.Length() > 0 {
-		if e.IsTombstone {
-			// insBatch is freed, don't use anymore
-			b.dataDelBatch.Extend(insBatch.Batch)
-		} else {
-			dest, ok := b.dataInsBatches[insBatch.Version]
-			if !ok {
-				// create new dest batch
-				dest = DataChangeToLogtailBatch(insBatch)
-				b.dataInsBatches[insBatch.Version] = dest
-			} else {
-				dest.Extend(insBatch.Batch)
-				// insBatch is freed, don't use anymore
-			}
-		}
 	}
 	return nil
 }
@@ -629,7 +613,7 @@ func (b *TableLogtailRespBuilder) BuildResp() (api.SyncLogTailResp, error) {
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	for _, k := range keys {
-		if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Data, b.dataInsBatches[k], k); err != nil {
+		if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Data, b.dataInsBatches[k].Batch, k); err != nil {
 			return empty, err
 		}
 	}

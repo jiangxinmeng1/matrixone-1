@@ -59,9 +59,6 @@ type NodeT interface {
 
 	Rows() (uint32, error)
 
-	CollectAppendInRange(
-		start, end types.TS, withAborted bool, mp *mpool.MPool,
-	) (batWithVer *containers.BatchWithVersion, err error)
 	Scan(
 		bat **containers.Batch,
 		txn txnif.TxnReader,

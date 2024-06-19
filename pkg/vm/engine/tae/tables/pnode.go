@@ -137,13 +137,6 @@ func (node *persistedNode) GetRowsByKey(key any) ([]uint32, error) {
 	panic(moerr.NewInternalErrorNoCtx("todo"))
 }
 
-func (node *persistedNode) CollectAppendInRange(
-	start, end types.TS, withAborted bool, mp *mpool.MPool,
-) (bat *containers.BatchWithVersion, err error) {
-	// logtail should have sent metaloc
-	return nil, nil
-}
-
 func (node *persistedNode) Scan(
 	bat **containers.Batch,
 	txn txnif.TxnReader,

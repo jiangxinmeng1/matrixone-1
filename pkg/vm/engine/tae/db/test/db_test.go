@@ -4212,34 +4212,45 @@ func TestCollectInsert(t *testing.T) {
 	blkit := rel.MakeObjectIt(false, true)
 	blkdata := blkit.GetObject().GetMeta().(*catalog.ObjectEntry).GetObjectData()
 
-	batch, err := blkdata.ScanInMemory(types.TS{}, p1, common.DefaultAllocator)
+	batches := make(map[uint32]*containers.BatchWithVersion)
+	err := blkdata.ScanInMemory(batches, types.TS{}, p1, common.DefaultAllocator)
 	assert.NoError(t, err)
-	t.Log((batch.Attrs))
-	for _, vec := range batch.Vecs {
+	t.Log((batches[schema.Version].Attrs))
+	for _, vec := range batches[schema.Version].Vecs {
 		t.Log(vec)
 		assert.Equal(t, 6, vec.Length())
 	}
-	batch, err = blkdata.ScanInMemory(types.TS{}, p2, common.DefaultAllocator)
+	batches[schema.Version].Close()
+
+	batches = make(map[uint32]*containers.BatchWithVersion)
+	err = blkdata.ScanInMemory(batches, types.TS{}, p2, common.DefaultAllocator)
 	assert.NoError(t, err)
-	t.Log((batch.Attrs))
-	for _, vec := range batch.Vecs {
+	t.Log((batches[schema.Version].Attrs))
+	for _, vec := range batches[schema.Version].Vecs {
 		t.Log(vec)
 		assert.Equal(t, 9, vec.Length())
 	}
-	batch, err = blkdata.ScanInMemory(p1.Next(), p2, common.DefaultAllocator)
+	batches[schema.Version].Close()
+
+	batches = make(map[uint32]*containers.BatchWithVersion)
+	err = blkdata.ScanInMemory(batches, p1.Next(), p2, common.DefaultAllocator)
 	assert.NoError(t, err)
-	t.Log((batch.Attrs))
-	for _, vec := range batch.Vecs {
+	t.Log((batches[schema.Version].Attrs))
+	for _, vec := range batches[schema.Version].Vecs {
 		t.Log(vec)
 		assert.Equal(t, 3, vec.Length())
 	}
-	batch, err = blkdata.ScanInMemory(p1.Next(), p3, common.DefaultAllocator)
+	batches[schema.Version].Close()
+
+	batches = make(map[uint32]*containers.BatchWithVersion)
+	err = blkdata.ScanInMemory(batches, p1.Next(), p3, common.DefaultAllocator)
 	assert.NoError(t, err)
-	t.Log((batch.Attrs))
-	for _, vec := range batch.Vecs {
+	t.Log((batches[schema.Version].Attrs))
+	for _, vec := range batches[schema.Version].Vecs {
 		t.Log(vec)
 		assert.Equal(t, 6, vec.Length())
 	}
+	batches[schema.Version].Close()
 }
 
 func TestAppendnode(t *testing.T) {
@@ -5377,9 +5388,12 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	{
 		txn, rel := tae.GetRelation()
 		meta := testutil.GetOneTombstoneMeta(rel)
-		bat, err := meta.GetObjectData().ScanInMemory(types.TS{}, types.MaxTs(), common.DefaultAllocator)
+		batches := make(map[uint32]*containers.BatchWithVersion)
+		err := meta.GetObjectData().ScanInMemory(batches, types.TS{}, types.MaxTs(), common.DefaultAllocator)
 		require.NoError(t, err)
+		bat = batches[schema.Version].Batch
 		require.Equal(t, 10, bat.Length())
+		bat.Close()
 		require.NoError(t, txn.Commit(ctx))
 	}
 	logutil.Infof(tae.Catalog.SimplePPString(3))

@@ -15,7 +15,6 @@
 package txnimpl
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
@@ -435,25 +434,6 @@ func (space *tableSpace) GetPKVecs() []containers.Vector {
 
 func (space *tableSpace) BatchDedup(key containers.Vector) error {
 	return space.index.BatchDedup(space.table.GetLocalSchema(space.isTombstone).GetSingleSortKey().Name, key)
-}
-
-func (space *tableSpace) GetColumnDataByIds(
-	obj *catalog.ObjectEntry,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	n := space.node
-	return n.GetColumnDataByIds(colIdxes, mp)
-}
-
-func (space *tableSpace) GetColumnDataById(
-	ctx context.Context,
-	obj *catalog.ObjectEntry,
-	colIdx int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	n := space.node
-	return n.GetColumnDataById(ctx, colIdx, mp)
 }
 
 func (space *tableSpace) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {

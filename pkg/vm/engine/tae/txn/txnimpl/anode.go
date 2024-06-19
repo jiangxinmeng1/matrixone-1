@@ -15,8 +15,6 @@
 package txnimpl
 
 import (
-	"context"
-
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -222,22 +220,6 @@ func (n *anode) Window(start, end uint32) (bat *containers.Batch, err error) {
 	} else {
 		bat = data.Window(int(start), int(end-start))
 	}
-	return
-}
-
-func (n *anode) GetColumnDataByIds(
-	colIdxes []int, mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	view = containers.NewBlockView()
-	err = n.FillBlockView(view, colIdxes, mp)
-	return
-}
-
-func (n *anode) GetColumnDataById(
-	ctx context.Context, colIdx int, mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	view = containers.NewColumnView(colIdx)
-	err = n.FillColumnView(view, mp)
 	return
 }
 

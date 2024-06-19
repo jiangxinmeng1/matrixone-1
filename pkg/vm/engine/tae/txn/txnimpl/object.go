@@ -15,7 +15,6 @@
 package txnimpl
 
 import (
-	"context"
 	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -284,24 +283,6 @@ func (obj *txnObject) Prefetch(idxes []int) error {
 }
 
 func (obj *txnObject) Fingerprint() *common.ID { return obj.entry.AsCommonID() }
-
-func (obj *txnObject) GetColumnDataById(
-	ctx context.Context, blkID uint16, colIdx int, mp *mpool.MPool,
-) (*containers.ColumnView, error) {
-	if obj.entry.IsLocal {
-		return obj.table.dataTable.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdx, mp)
-}
-
-func (obj *txnObject) GetColumnDataByIds(
-	ctx context.Context, blkID uint16, colIdxes []int, mp *mpool.MPool,
-) (*containers.BlockView, error) {
-	if obj.entry.IsLocal {
-		return obj.table.dataTable.tableSpace.GetColumnDataByIds(obj.entry, colIdxes, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
-}
 
 func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) error {
 	id := obj.entry.AsCommonID()

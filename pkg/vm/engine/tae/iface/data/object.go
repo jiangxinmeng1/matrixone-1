@@ -72,12 +72,6 @@ type Object interface {
 	Rows() (int, error)
 	CheckFlushTaskRetry(startts types.TS) bool
 
-	GetColumnDataById(
-		ctx context.Context, txn txnif.TxnReader, readSchema any /*avoid import cycle*/, blkID uint16, colIdx int, mp *mpool.MPool,
-	) (*containers.ColumnView, error)
-	GetColumnDataByIds(
-		ctx context.Context, txn txnif.TxnReader, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
-	) (*containers.BlockView, error)
 	Prefetch(idxes []uint16, blkID uint16) error
 	GetMeta() any
 

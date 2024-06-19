@@ -15,7 +15,6 @@
 package handle
 
 import (
-	"context"
 	"io"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -66,8 +65,6 @@ type ObjectReader interface {
 	// GetByFilter(filter Filter, offsetOnly bool) (map[uint64]*batch.Batch, error)
 	String() string
 	GetMeta() any
-	GetColumnDataByIds(ctx context.Context, blkID uint16, colIdxes []int, mp *mpool.MPool) (*containers.BlockView, error)
-	GetColumnDataById(context.Context, uint16, int, *mpool.MPool) (*containers.ColumnView, error)
 	Scan(
 		bat **containers.Batch,
 		blkID uint16,

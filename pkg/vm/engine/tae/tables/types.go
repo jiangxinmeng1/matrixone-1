@@ -72,9 +72,10 @@ type NodeT interface {
 		colIdxes []int,
 		mp *mpool.MPool,
 	) (bat *containers.Batch, err error)
-	ScanInRange(
+	CollectObjectTombstoneInRange(
 		ctx context.Context,
 		start, end types.TS,
+		objID *types.Objectid,
 		bat **containers.Batch,
 		mp *mpool.MPool,
 		vpool *containers.VectorPool,

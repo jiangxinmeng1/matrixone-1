@@ -227,92 +227,23 @@ func (blk *baseObject) Prefetch(idxes []uint16, blkID uint16) error {
 	}
 }
 
-func (blk *baseObject) ResolvePersistedColumnDatas(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	blkID uint16,
-	colIdxs []int,
-	skipDeletes bool,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-
-	view = containers.NewBlockView()
-	location, err := blk.buildMetalocation(blkID)
-	if err != nil {
-		return nil, err
-	}
-	id := blk.meta.AsCommonID()
-	id.SetBlockOffset(blkID)
-	vecs, err := LoadPersistedColumnDatas(
-		ctx, readSchema, blk.rt, id, colIdxs, location, mp,
-	)
-	if err != nil {
-		return nil, err
-	}
-	for i, vec := range vecs {
-		view.SetData(colIdxs[i], vec)
-	}
-
-	if blk.meta.IsTombstone {
-		skipDeletes = true
-	}
-	if skipDeletes {
-		return
-	}
-
-	defer func() {
-		if err != nil {
-			view.Close()
-		}
-	}()
-
-	fullBlockID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	err = blk.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp)
-	if err != nil {
-		return nil, err
-	}
-	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
-	return
-}
-
 func (blk *baseObject) ResolvePersistedColumnData(
 	ctx context.Context,
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
-	blkID uint16,
-	colIdx int,
-	skipDeletes bool,
+	blkOffset uint16,
+	col int,
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
-	view = containers.NewColumnView(colIdx)
-	vec, err := blk.LoadPersistedColumnData(context.Background(), readSchema, colIdx, mp, blkID)
+	bat, err := blk.Scan(txn, readSchema, blkOffset, []int{col}, mp)
 	if err != nil {
 		return
 	}
-	view.SetData(vec)
-
-	if blk.meta.IsTombstone {
-		skipDeletes = true
-	}
-	if skipDeletes {
+	if bat == nil {
 		return
 	}
-
-	defer func() {
-		if err != nil {
-			view.Close()
-		}
-	}()
-	// TODO workspace
-	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
-	if err != nil {
-		return nil, err
-	}
-	id := blk.meta.AsCommonID()
-	id.SetBlockOffset(blkID)
-	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
+	view = containers.NewColumnView(col)
+	view.SetData(bat.Vecs[0])
 	return
 }
 
@@ -336,7 +267,6 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		schema,
 		blkOffset,
 		def.Idx,
-		true,
 		mp,
 	)
 	if err != nil {
@@ -376,7 +306,6 @@ func (blk *baseObject) containsWithLoad(
 		schema,
 		blkOffset,
 		def.Idx,
-		true,
 		mp,
 	)
 	if err != nil {
@@ -472,39 +401,6 @@ func (blk *baseObject) persistedContains(
 	}
 	return nil
 }
-func (blk *baseObject) getPersistedValue(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	schema *catalog.Schema,
-	blkID uint16,
-	row, col int,
-	skipMemory bool,
-	skipCheckDeletes bool,
-	mp *mpool.MPool,
-) (v any, isNull bool, err error) {
-	view := containers.NewColumnView(col)
-	blkid := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkID)
-	if !skipCheckDeletes {
-		err = blk.meta.GetTable().FillDeletes(ctx, *blkid, txn, view.BaseView, mp)
-		if err != nil {
-			return
-		}
-		id := blk.meta.AsCommonID()
-		id.SetBlockOffset(blkID)
-		err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
-		if view.DeleteMask.Contains(uint64(row)) {
-			err = moerr.NewNotFoundNoCtx()
-			return
-		}
-	}
-	view2, err := blk.ResolvePersistedColumnData(ctx, txn, schema, blkID, col, true, mp)
-	if err != nil {
-		return
-	}
-	defer view2.Close()
-	v, isNull = view2.GetValue(row)
-	return
-}
 
 func (blk *baseObject) OnReplayAppend(_ txnif.AppendNode) (err error) {
 	panic("not supported")
@@ -523,12 +419,6 @@ func (blk *baseObject) GetTotalChanges() int {
 }
 
 func (blk *baseObject) IsAppendable() bool { return false }
-
-func (blk *baseObject) CollectAppendInRange(
-	start, end types.TS, withAborted bool, mp *mpool.MPool,
-) (*containers.BatchWithVersion, error) {
-	return nil, nil
-}
 
 func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
 	rows, err := blk.Rows()
@@ -591,14 +481,139 @@ func (blk *baseObject) ScanInMemory(
 	return mnode.CollectAppendInRange(start, end, false, mp)
 }
 
-func (blk *baseObject) ScanInRange(
+func (blk *baseObject) CollectObjectTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
+	objID *types.Objectid,
 	bat **containers.Batch,
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (err error) {
+	if !blk.meta.IsTombstone {
+		panic("logic err")
+	}
 	node := blk.PinNode()
 	defer node.Unref()
-	return node.ScanInRange(ctx, start, end, bat, mp, vpool)
+	return node.CollectObjectTombstoneInRange(ctx, start, end, objID, bat, mp, vpool)
+}
+
+func (obj *baseObject) GetColumnDataByIds(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	readSchema any,
+	blkOffset uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (view *containers.BlockView, err error) {
+	var bat *containers.Batch
+	if obj.meta.IsTombstone {
+		bat, err = obj.Scan(txn, readSchema, blkOffset, colIdxes, mp)
+		if err != nil {
+			return
+		}
+		if bat == nil {
+			return
+		}
+		view = containers.NewBlockView()
+		for i, idx := range colIdxes {
+			view.SetData(idx, bat.Vecs[i])
+		}
+		return
+	}
+	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
+	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), colIdxes, blkID, mp)
+	if err != nil {
+		return
+	}
+	if bat == nil {
+		return
+	}
+	view = containers.NewBlockView()
+	for i, idx := range colIdxes {
+		view.SetData(idx, bat.Vecs[i])
+	}
+	view.DeleteMask = bat.Deletes
+	id := obj.meta.AsCommonID()
+	id.SetBlockOffset(blkOffset)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.DeleteMask)
+	return
+}
+func (obj *baseObject) GetColumnDataById(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	readSchema any,
+	blkOffset uint16,
+	col int,
+	mp *mpool.MPool,
+) (view *containers.ColumnView, err error) {
+	var bat *containers.Batch
+	if obj.meta.IsTombstone {
+		bat, err = obj.Scan(txn, readSchema, blkOffset, []int{col}, mp)
+		if err != nil {
+			return
+		}
+		if bat == nil {
+			return
+		}
+		view = containers.NewColumnView(col)
+		view.SetData(bat.Vecs[0])
+		return
+	}
+	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
+	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+	if err != nil {
+		return
+	}
+	if bat == nil {
+		return
+	}
+	view = containers.NewColumnView(col)
+	view.SetData(bat.Vecs[0])
+	view.DeleteMask = bat.Deletes
+	id := obj.meta.AsCommonID()
+	id.SetBlockOffset(blkOffset)
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &view.DeleteMask)
+	return
+}
+
+// TODO: equal filter
+func (obj *baseObject) GetValue(
+	ctx context.Context,
+	txn txnif.AsyncTxn,
+	readSchema any,
+	blkOffset uint16,
+	row, col int,
+	skipCheckDelete bool,
+	mp *mpool.MPool,
+) (v any, isNull bool, err error) {
+	if !obj.meta.IsTombstone && !skipCheckDelete {
+		var bat *containers.Batch
+		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
+		err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		if err != nil {
+			return
+		}
+		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &bat.Deletes)
+		if err != nil {
+			return
+		}
+		if bat.Deletes != nil && bat.Deletes.Contains(uint64(row)) {
+			err = moerr.NewNotFoundNoCtx()
+			return
+		}
+		isNull = bat.Vecs[0].IsNull(row)
+		if !isNull {
+			v = bat.Vecs[0].Get(row)
+		}
+		return
+	}
+	bat, err := obj.Scan(txn, readSchema, blkOffset, []int{col}, mp)
+	if err != nil {
+		return
+	}
+	isNull = bat.Vecs[0].IsNull(row)
+	if !isNull {
+		v = bat.Vecs[0].Get(row)
+	}
+	return
 }

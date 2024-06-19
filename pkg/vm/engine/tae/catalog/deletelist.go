@@ -53,18 +53,9 @@ func (entry *TableEntry) CollectTombstoneInRange(
 			}
 			// TODO: Bloomfilter
 		}
-		deletes, err := tombstone.collectTombstoneInRange(ctx, objectID, start, end, mp, vpool)
+		err = tombstone.GetObjectData().CollectObjectTombstoneInRange(ctx, start, end, &objectID, &bat, mp, vpool)
 		if err != nil {
 			return nil, err
-		}
-		if deletes == nil {
-			continue
-		}
-		if bat == nil {
-			bat = deletes
-		} else {
-			bat.Extend(deletes)
-			deletes.Close()
 		}
 	}
 	return
@@ -128,7 +119,10 @@ func (entry *TableEntry) FillDeletes(
 		if !visible {
 			continue
 		}
-		tombstone.fillDeletes(ctx, blkID, txn, view, mp)
+		tombstone.GetObjectData().FillBlockTombstones(txn, &blkID, &view.DeleteMask, mp)
+		if err != nil {
+			return err
+		}
 	}
 	return
 }

@@ -4195,28 +4195,28 @@ func TestCollectInsert(t *testing.T) {
 	blkit := rel.MakeObjectIt(false, true)
 	blkdata := blkit.GetObject().GetMeta().(*catalog.ObjectEntry).GetObjectData()
 
-	batch, err := blkdata.CollectAppendInRange(ctx, types.TS{}, p1, true, false, common.DefaultAllocator)
+	batch, err := blkdata.ScanInMemory(types.TS{}, p1, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 6, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(ctx, types.TS{}, p2, true, false, common.DefaultAllocator)
+	batch, err = blkdata.ScanInMemory(types.TS{}, p2, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 9, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(ctx, p1.Next(), p2, true, false, common.DefaultAllocator)
+	batch, err = blkdata.ScanInMemory(p1.Next(), p2, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
 		t.Log(vec)
 		assert.Equal(t, 3, vec.Length())
 	}
-	batch, err = blkdata.CollectAppendInRange(ctx, p1.Next(), p3, true, false, common.DefaultAllocator)
+	batch, err = blkdata.ScanInMemory(p1.Next(), p3, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batch.Attrs))
 	for _, vec := range batch.Vecs {
@@ -5358,7 +5358,7 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 	{
 		txn, rel := tae.GetRelation()
 		meta := testutil.GetOneTombstoneMeta(rel)
-		bat, err := meta.GetObjectData().CollectAppendInRange(ctx, types.TS{}, types.MaxTs(), false, false, common.DefaultAllocator)
+		bat, err := meta.GetObjectData().ScanInMemory(types.TS{}, types.MaxTs(), common.DefaultAllocator)
 		require.NoError(t, err)
 		require.Equal(t, 10, bat.Length())
 		require.NoError(t, txn.Commit(ctx))

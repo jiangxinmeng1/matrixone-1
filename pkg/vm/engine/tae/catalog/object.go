@@ -654,19 +654,7 @@ func (entry *ObjectEntry) CollectTombstoneInRange(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (ret *containers.Batch, err error) {
-	tombstones, err := entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
-	if tombstones == nil {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if ret == nil {
-		pkType := tombstones.GetVectorByName(AttrPKVal).GetType()
-		ret = NewTombstoneBatch(*pkType, mp)
-	}
-	ret.Extend(tombstones)
-	tombstones.Close()
+	ret, err = entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
 	return
 }
 

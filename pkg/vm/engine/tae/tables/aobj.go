@@ -161,102 +161,6 @@ func (obj *aobject) Pin() *common.PinnedItem[*aobject] {
 	}
 }
 
-func (obj *aobject) GetColumnDataByIds(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema any,
-	_ uint16,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	var bat *containers.Batch
-	if obj.meta.IsTombstone {
-		bat, err = obj.Scan(txn, readSchema, 0, colIdxes, mp)
-		if err != nil {
-			return
-		}
-		if bat == nil {
-			return
-		}
-		view = containers.NewBlockView()
-		for i, idx := range colIdxes {
-			view.SetData(idx, bat.Vecs[i])
-		}
-		return
-	}
-	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
-	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), colIdxes, blkID, mp)
-	if err != nil {
-		return
-	}
-	if bat == nil {
-		return
-	}
-	view = containers.NewBlockView()
-	for i, idx := range colIdxes {
-		view.SetData(idx, bat.Vecs[i])
-	}
-	view.DeleteMask = bat.Deletes
-	err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &view.DeleteMask)
-	return
-}
-
-func (obj *aobject) GetColumnDataById(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema any,
-	_ uint16,
-	col int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	var bat *containers.Batch
-	if obj.meta.IsTombstone {
-		bat, err = obj.Scan(txn, readSchema, 0, []int{col}, mp)
-		if err != nil {
-			return
-		}
-		if bat == nil {
-			return
-		}
-		view = containers.NewColumnView(col)
-		view.SetData(bat.Vecs[0])
-		return
-	}
-	blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
-	err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
-	if err != nil {
-		return
-	}
-	if bat == nil {
-		return
-	}
-	view = containers.NewColumnView(col)
-	view.SetData(bat.Vecs[0])
-	view.DeleteMask = bat.Deletes
-	err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &view.DeleteMask)
-	return
-}
-func (obj *aobject) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.MustMNode().getCommitTSVec(maxRow, mp)
-	} else {
-		vec, err := obj.LoadPersistedCommitTS(0)
-		return vec, err
-	}
-}
-func (obj *aobject) GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.MustMNode().getCommitTSVecInRange(start, end, mp)
-	} else {
-		vec, err := obj.LoadPersistedCommitTS(0)
-		return vec, err
-	}
-}
-
 // check if all rows are committed before the specified ts
 // here we assume that the ts is greater equal than the block's
 // create ts and less than the block's delete ts
@@ -279,51 +183,6 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	// always return false for if the block is persisted
 	// it is a coarse-grained check
 	return false
-}
-func (obj *aobject) GetCommitVec() (containers.Vector, error) {
-	return nil, nil
-}
-
-// TODO: equal filter
-func (obj *aobject) GetValue(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	_ uint16,
-	row, col int,
-	skipCheckDelete bool,
-	mp *mpool.MPool,
-) (v any, isNull bool, err error) {
-	if !obj.meta.IsTombstone && !skipCheckDelete {
-		var bat *containers.Batch
-		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, 0)
-		err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
-		if err != nil {
-			return
-		}
-		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &bat.Deletes)
-		if err != nil {
-			return
-		}
-		if bat.Deletes != nil && bat.Deletes.Contains(uint64(row)) {
-			err = moerr.NewNotFoundNoCtx()
-			return
-		}
-		isNull = bat.Vecs[0].IsNull(row)
-		if !isNull {
-			v = bat.Vecs[0].Get(row)
-		}
-		return
-	}
-	bat, err := obj.Scan(txn, readSchema, 0, []int{col}, mp)
-	if err != nil {
-		return
-	}
-	isNull = bat.Vecs[0].IsNull(row)
-	if !isNull {
-		v = bat.Vecs[0].Get(row)
-	}
-	return
 }
 
 // TODO: remove it. (use rel.GetByFilter)
@@ -458,24 +317,6 @@ func (obj *aobject) Contains(
 			bf,
 			mp,
 		)
-	}
-}
-
-func (obj *aobject) CollectAppendInRange(
-	ctx context.Context,
-	start, end types.TS,
-	withAborted bool,
-	withPersistedData bool,
-	mp *mpool.MPool,
-) (*containers.BatchWithVersion, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if withPersistedData {
-		batWithVersion := &containers.BatchWithVersion{}
-		err := node.ScanInRange(ctx, start, end, &batWithVersion.Batch, mp, obj.rt.VectorPool.Small)
-		return batWithVersion, err
-	} else {
-		return obj.ScanInMemory(start, end, mp)
 	}
 }
 

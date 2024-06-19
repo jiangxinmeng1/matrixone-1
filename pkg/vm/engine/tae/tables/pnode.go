@@ -267,9 +267,10 @@ func (node *persistedNode) Scan(
 	return
 }
 
-func (node *persistedNode) ScanInRange(
+func (node *persistedNode) CollectObjectTombstoneInRange(
 	ctx context.Context,
 	start, end types.TS,
+	objID *types.Objectid,
 	bat **containers.Batch,
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
@@ -310,30 +311,17 @@ func (node *persistedNode) ScanInRange(
 			return err
 		}
 		if !node.object.meta.IsAppendable() {
-			if *bat == nil {
-				*bat = containers.NewBatch()
-				for i, idx := range colIdxes {
-					attr := readSchema.ColDefs[idx].Name
-					(*bat).AddVector(attr, vecs[i])
+			rowIDs := vector.MustFixedCol[types.Rowid](
+				vecs[0].GetDownstreamVector())
+			for i := 0; i < len(rowIDs); i++ { // TODO
+				if types.PrefixCompare(rowIDs[i][:], objID[:]) == 0 {
+					if *bat == nil {
+						*bat = catalog.NewTombstoneBatchByPKType(*vecs[1].GetType(), mp)
+					}
+					(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
+					(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(int(i)), false)
+					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(startTS, false)
 				}
-				typ := types.T_TS.ToType()
-				commitTSVec := containers.MakeVector(typ,mp)
-				err = vector.AppendMultiFixed(commitTSVec.GetDownstreamVector(), startTS, false, vecs[0].Length(), mp)
-				if err != nil {
-					return err
-				}
-				(*bat).AddVector(catalog.AttrCommitTs, commitTSVec)
-			} else {
-				for i, idx := range colIdxes {
-					attr := readSchema.ColDefs[idx].Name
-					(*bat).GetVectorByName(attr).Extend(vecs[i])
-				}
-				commitTSVec := (*bat).GetVectorByName(catalog.AttrCommitTs)
-				err = vector.AppendMultiFixed(commitTSVec.GetDownstreamVector(), startTS, false, vecs[0].Length(), mp)
-				if err != nil {
-					return err
-				}
-
 			}
 		} else {
 			commitTSVec, err := node.object.LoadPersistedCommitTS(uint16(blkID))
@@ -344,7 +332,8 @@ func (node *persistedNode) ScanInRange(
 			rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
 			for i := 0; i < len(commitTSs); i++ {
 				commitTS := commitTSs[i]
-				if commitTS.GreaterEq(&start) && commitTS.LessEq(&end) {
+				if commitTS.GreaterEq(&start) && commitTS.LessEq(&end) &&
+					types.PrefixCompare(rowIDs[i][:], objID[:]) == 0 { // TODO
 					if *bat == nil {
 						pkIdx := readSchema.GetColIdx(catalog.AttrPKVal)
 						pkType := readSchema.ColDefs[pkIdx].GetType()

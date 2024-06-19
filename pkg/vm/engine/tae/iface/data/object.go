@@ -96,8 +96,6 @@ type Object interface {
 	// if the object is not an appendable object:
 	// only check with the created ts
 	CoarseCheckAllRowsCommittedBefore(ts types.TS) bool
-	GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error)
-	GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error)
 	GetDuplicatedRows(
 		ctx context.Context,
 		txn txnif.TxnReader,
@@ -117,7 +115,6 @@ type Object interface {
 	GetRuntime() *dbutils.Runtime
 
 	Init() error
-	CollectAppendInRange(ctx context.Context, start, end types.TS, withAborted, withPersistedData bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 
@@ -142,11 +139,16 @@ type Object interface {
 		blkID *objectio.Blockid,
 		deletes **nulls.Nulls,
 		mp *mpool.MPool) error
-	ScanInRange(
+	CollectObjectTombstoneInRange(
 		ctx context.Context,
 		start, end types.TS,
+		objID *types.Objectid,
 		bat **containers.Batch,
 		mp *mpool.MPool,
 		vpool *containers.VectorPool,
 	) (err error)
+	ScanInMemory(
+		start, end types.TS,
+		mp *mpool.MPool,
+	) (bat *containers.BatchWithVersion, err error)
 }

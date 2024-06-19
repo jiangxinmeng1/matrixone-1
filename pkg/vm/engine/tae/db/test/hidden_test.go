@@ -57,11 +57,11 @@ func TestHiddenWithPK1(t *testing.T) {
 		it := rel.MakeObjectIt(false, true)
 		for it.Valid() {
 			blk := it.GetObject()
-			view, err := blk.GetColumnDataById(context.Background(), 0, schema.PhyAddrKey.Idx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.Scan(&view, 0, []int{schema.PhyAddrKey.Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
-			defer view.Close()
 			fp := blk.Fingerprint()
-			_ = view.GetData().Foreach(func(v any, _ bool, _ int) (err error) {
+			_ = view.Vecs[0].Foreach(func(v any, _ bool, _ int) (err error) {
 				rid := v.(types.Rowid)
 				bid, offset := rid.Decode()
 				t.Logf("bid=%s,offset=%d", bid.String(), offset)
@@ -69,6 +69,7 @@ func TestHiddenWithPK1(t *testing.T) {
 				offsets = append(offsets, offset)
 				return
 			}, nil)
+			view.Close()
 			it.Next()
 		}
 		// sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
@@ -80,13 +81,14 @@ func TestHiddenWithPK1(t *testing.T) {
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
 		blk := testutil.GetOneObject(rel)
-		view, err := blk.GetColumnDataById(context.Background(), 0, schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
+		var view *containers.Batch
+		err := blk.Scan(&view, 0, []int{schema.GetColIdx(catalog.PhyAddrColumnName)}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
 		offsets := make([]uint32, 0)
 		fp := blk.Fingerprint()
 		t.Log(fp.String())
-		_ = view.GetData().Foreach(func(v any, _ bool, _ int) (err error) {
+		_ = view.Vecs[0].Foreach(func(v any, _ bool, _ int) (err error) {
 			rid := v.(types.Rowid)
 			bid, offset := rid.Decode()
 			t.Logf(",bid=%s,offset=%d", bid, offset)
@@ -123,13 +125,14 @@ func TestHiddenWithPK1(t *testing.T) {
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
+				var view *containers.Batch
+				err := blk.Scan(&view, uint16(j), []int{schema.GetColIdx(catalog.PhyAddrColumnName)}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer view.Close()
 				offsets := make([]uint32, 0)
 				meta := blk.GetMeta().(*catalog.ObjectEntry)
 				t.Logf("%v, blk %d", meta.String(), j)
-				_ = view.GetData().Foreach(func(v any, _ bool, _ int) (err error) {
+				_ = view.Vecs[0].Foreach(func(v any, _ bool, _ int) (err error) {
 					rid := v.(types.Rowid)
 					bid, offset := rid.Decode()
 					// t.Logf("sid=%d,bid=%d,offset=%d", sid, bid, offset)
@@ -167,14 +170,15 @@ func TestHiddenWithPK1(t *testing.T) {
 			blk := it.GetObject()
 			objIdx++
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.GetColIdx(catalog.PhyAddrColumnName), common.DefaultAllocator)
+				var view *containers.Batch
+				err := blk.Scan(&view, uint16(j), []int{schema.GetColIdx(catalog.PhyAddrColumnName)}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer view.Close()
 				offsets := make([]uint32, 0)
 				meta := blk.GetMeta().(*catalog.ObjectEntry)
 				t.Log(meta.String())
 				t.Log(meta.String())
-				_ = view.GetData().Foreach(func(v any, _ bool, _ int) (err error) {
+				_ = view.Vecs[0].Foreach(func(v any, _ bool, _ int) (err error) {
 					rid := v.(types.Rowid)
 					bid, offset := rid.Decode()
 					// t.Logf("sid=%d,bid=%d,offset=%d", sid, bid, offset)
@@ -223,17 +227,18 @@ func TestHidden2(t *testing.T) {
 	err := rel.Append(context.Background(), bats[0])
 	{
 		blk := testutil.GetOneObject(rel)
-		var hidden *containers.ColumnView
+		var hidden containers.Vector
 		for _, def := range schema.ColDefs {
-			view, err := blk.GetColumnDataById(context.Background(), 0, def.Idx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.Scan(&view, 0, []int{def.Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer view.Close()
 			assert.Equal(t, bats[0].Length(), view.Length())
 			if def.IsPhyAddr() {
-				hidden = view
+				hidden = view.Vecs[0]
 			}
 		}
-		_ = hidden.GetData().Foreach(func(key any, _ bool, _ int) (err error) {
+		_ = hidden.Foreach(func(key any, _ bool, _ int) (err error) {
 			rid := key.(types.Rowid)
 			bid, offset := rid.Decode()
 			t.Logf(",bid=%s,offset=%d", bid, offset)
@@ -247,10 +252,11 @@ func TestHidden2(t *testing.T) {
 			return
 		}, nil)
 		for _, def := range schema.ColDefs {
-			view, err := blk.GetColumnDataById(context.Background(), 0, def.Idx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.HybridScan(&view, 0, []int{def.Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer view.Close()
-			view.ApplyDeletes()
+			view.Compact()
 			assert.Equal(t, bats[0].Length()-1, view.Length())
 		}
 	}
@@ -260,17 +266,18 @@ func TestHidden2(t *testing.T) {
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
 		blk := testutil.GetOneObject(rel)
-		var hidden *containers.ColumnView
+		var hidden containers.Vector
 		for _, def := range schema.ColDefs {
-			view, err := blk.GetColumnDataById(context.Background(), 0, def.Idx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.Scan(&view, 0, []int{def.Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer view.Close()
 			assert.Equal(t, bats[0].Length()-1, view.Length())
 			if def.IsPhyAddr() {
-				hidden = view
+				hidden = view.Vecs[0]
 			}
 		}
-		_ = hidden.GetData().Foreach(func(key any, _ bool, _ int) (err error) {
+		_ = hidden.Foreach(func(key any, _ bool, _ int) (err error) {
 			rid := key.(types.Rowid)
 			bid, offset := rid.Decode()
 			t.Logf(",bid=%s,offset=%d", bid, offset)
@@ -310,10 +317,11 @@ func TestHidden2(t *testing.T) {
 		for it.Valid() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
-				hidden, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.PhyAddrKey.Idx, common.DefaultAllocator)
+				var hidden *containers.Batch
+				err := blk.HybridScan(&hidden, uint16(j), []int{schema.PhyAddrKey.Idx}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer hidden.Close()
-				hidden.ApplyDeletes()
+				hidden.Compact()
 				rows += hidden.Length()
 			}
 			it.Next()

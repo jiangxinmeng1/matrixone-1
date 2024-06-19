@@ -348,6 +348,21 @@ func (obj *txnSysObject) GetColumnDataById(
 	}
 }
 
+func (obj *txnSysObject) HybridScan(
+	bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
+) (err error) {
+	if len(colIdx) > 1 {
+		panic("not expect")
+	}
+	if *bat != nil {
+		panic("not expect")
+	}
+	view, err := obj.GetColumnDataById(obj.Txn.GetContext(), blkID, colIdx[0], mp)
+	*bat = containers.NewBatch()
+	(*bat).AddVector("", view.GetData())
+	return
+}
+
 func (obj *txnSysObject) Prefetch(idxes []int) error {
 	return nil
 }

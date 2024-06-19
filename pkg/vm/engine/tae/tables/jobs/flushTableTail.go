@@ -463,39 +463,23 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 	}
 
 	var obj handle.Object
-	var schema *catalog.Schema
 	if isTombstone {
 		obj = task.aTombstoneHandles[objIdx]
-		schema = task.tombstoneSchema
+		err = obj.Scan(&bat, 0, idxs, common.MergeAllocator)
 	} else {
 		obj = task.aObjHandles[objIdx]
-		schema = task.schema
+		err = obj.HybridScan(&bat, 0, idxs, common.MergeAllocator)
 	}
 
-	views, err := obj.GetColumnDataByIds(ctx, 0, idxs, common.MergeAllocator)
 	if err != nil {
 		return
 	}
-	bat = containers.NewBatch()
-	totalRowCnt := views.Columns[0].Length()
-	bat.Deletes = views.DeleteMask.Clone()
-	task.aObjDeletesCnt += bat.Deletes.GetCardinality()
-	defer views.Close()
-	for i, colidx := range idxs {
-		colview := views.Columns[i]
-		if colview == nil {
-			empty = true
-			return
-		}
-		vec := colview.Orphan()
-		if vec.Length() == 0 {
-			empty = true
-			vec.Close()
-			bat.Close()
-			return
-		}
-		bat.AddVector(schema.ColDefs[colidx].Name, vec.TryConvertConst())
+	if bat == nil {
+		empty = true
+		return
 	}
+	totalRowCnt := bat.Length()
+	task.aObjDeletesCnt += bat.Deletes.GetCardinality()
 
 	if isTombstone && bat.Deletes != nil {
 		panic(fmt.Sprintf("logic err, tombstone %v has deletes", obj.GetID().String()))

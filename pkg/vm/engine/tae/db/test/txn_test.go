@@ -242,22 +242,22 @@ func (c *APP1Client) CheckBound() {
 func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint32, count uint64, err error) {
 	rel, _ := c.DB.GetRelationByName(repertory.Name)
 	blockIt := rel.MakeObjectIt(false, true)
-	var view *containers.ColumnView
 	found := false
 	for blockIt.Valid() {
 		blk := blockIt.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			view, err = blk.GetColumnDataById(context.Background(), uint16(j), repertory.ColDefs[1].Idx, common.DefaultAllocator)
+			var view *containers.Batch
+			err = blk.HybridScan(&view, uint16(j), []int{repertory.ColDefs[1].Idx}, common.DefaultAllocator)
 			if err != nil {
 				return
 			}
 			defer view.Close()
-			_ = view.GetData().Foreach(func(v any, _ bool, row int) (err error) {
+			_ = view.Vecs[0].Foreach(func(v any, _ bool, row int) (err error) {
 				pk := v.(uint64)
 				if pk != goodId {
 					return
 				}
-				if view.DeleteMask.Contains(uint64(row)) {
+				if view.Deletes.Contains(uint64(row)) {
 					return
 				}
 				id = blk.Fingerprint()
@@ -551,8 +551,9 @@ func TestWarehouse(t *testing.T) {
 		assert.Nil(t, err)
 		it := rel.MakeObjectIt(false, true)
 		blk := it.GetObject()
-		view, _ := blk.GetColumnDataById(context.Background(), 0, 1, common.DefaultAllocator)
-		t.Log(view.GetData().String())
+		var view *containers.Batch
+		blk.Scan(&view, 0, []int{1}, common.DefaultAllocator)
+		t.Log(view.Vecs[0].String())
 		defer view.Close()
 		testutil.CheckAllColRowsByScan(t, rel, 20, false)
 		_ = txn.Commit(context.Background())

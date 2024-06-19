@@ -202,9 +202,9 @@ func CheckAllColRowsByScan(t *testing.T, rel handle.Relation, expectRows int, ap
 
 func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDelete bool) int {
 	rows := 0
-	ForEachColumnView(rel, colIdx, func(view *containers.ColumnView) (err error) {
+	ForEachColumnView(rel, colIdx, func(view *containers.Batch) (err error) {
 		if applyDelete {
-			view.ApplyDeletes()
+			view.Compact()
 		}
 		rows += view.Length()
 		// t.Log(view.String())
@@ -213,11 +213,12 @@ func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDel
 	return rows
 }
 
-func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers.ColumnView) error) {
+func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers.Batch) error) {
 	ForEachObject(rel, func(blk handle.Object) (err error) {
 		blkCnt := blk.GetMeta().(*catalog.ObjectEntry).BlockCnt()
 		for i := 0; i < blkCnt; i++ {
-			view, err := blk.GetColumnDataById(context.Background(), uint16(i), colIdx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.HybridScan(&view, uint16(i), []int{colIdx}, common.DefaultAllocator)
 			if view == nil {
 				logutil.Warnf("blk %v", blk.String())
 				continue

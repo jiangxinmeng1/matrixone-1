@@ -193,7 +193,7 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 		return nil, nil, nil, mergesort.ErrNoMoreBlocks
 	}
 	var err error
-	var view *containers.BlockView
+	var view *containers.Batch
 	releaseF := func() {
 		if view != nil {
 			view.Close()
@@ -206,41 +206,45 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 	}()
 
 	obj := task.mergedObjsHandle[objIdx]
-	view, err = obj.GetColumnDataByIds(ctx, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+	if task.isTombstone {
+		err = obj.Scan(&view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+	} else {
+		err = obj.HybridScan(&view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+	}
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	if task.isTombstone {
-		rowIDs := view.GetColumnData(0)
+		rowIDs := view.Vecs[0]
 		tbl := task.rel.GetMeta().(*catalog.TableEntry)
 		rowIDs.Foreach(func(v any, isNull bool, row int) error {
 			rowID := v.(types.Rowid)
 			objectID := rowID.BorrowObjectID()
 			obj, err := tbl.GetObjectByID(objectID, false)
 			if err != nil {
-				view.DeleteMask.Add(uint64(row))
+				view.Deletes.Add(uint64(row))
 				return nil
 			}
 			if obj.HasDropCommitted() {
-				if view.DeleteMask == nil {
-					view.DeleteMask = &nulls.Nulls{}
+				if view.Deletes == nil {
+					view.Deletes = &nulls.Nulls{}
 				}
-				view.DeleteMask.Add(uint64(row))
+				view.Deletes.Add(uint64(row))
 			}
 			return nil
 		}, nil)
 	}
-	if len(task.attrs) != len(view.Columns) {
-		panic(fmt.Sprintf("mismatch %v, %v, %v", task.attrs, len(task.attrs), len(view.Columns)))
+	if len(task.attrs) != len(view.Vecs) {
+		panic(fmt.Sprintf("mismatch %v, %v, %v", task.attrs, len(task.attrs), len(view.Vecs)))
 	}
 	task.nMergedBlk[objIdx]++
 
 	bat := batch.New(true, task.attrs)
-	for i, col := range view.Columns {
-		bat.Vecs[i] = col.GetData().GetDownstreamVector()
+	for i, idx := range task.idxs {
+		bat.Vecs[idx] = view.Vecs[i].GetDownstreamVector()
 	}
-	bat.SetRowCount(view.Columns[0].Length())
-	return bat, view.DeleteMask, releaseF, nil
+	bat.SetRowCount(view.Length())
+	return bat, view.Deletes, releaseF, nil
 }
 
 func (task *mergeObjectsTask) GetCommitEntry() *api.MergeCommitEntry {

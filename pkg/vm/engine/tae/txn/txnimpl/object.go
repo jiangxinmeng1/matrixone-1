@@ -308,3 +308,31 @@ func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) e
 	id.SetBlockOffset(blkID)
 	return obj.table.store.UpdateDeltaLoc(id, deltaLoc)
 }
+
+func (obj *txnObject) Scan(
+	bat **containers.Batch,
+	blkID uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (err error) {
+	if obj.entry.IsLocal {
+		obj.table.dataTable.tableSpace.Scan(bat, colIdxes, mp)
+		return
+	}
+	return obj.entry.GetObjectData().Scan(bat, obj.Txn, obj.table.getSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
+}
+
+func (obj *txnObject) HybridScan(
+	bat **containers.Batch,
+	blkOffset uint16,
+	colIdxs []int,
+	mp *mpool.MPool,
+) error {
+	if obj.entry.IsLocal {
+		obj.table.dataTable.tableSpace.HybridScan(bat, colIdxs, mp)
+		return nil
+	}
+	blkID := objectio.NewBlockidWithObjectID(obj.GetID(), blkOffset)
+	return obj.entry.GetTable().HybridScan(
+		obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
+}

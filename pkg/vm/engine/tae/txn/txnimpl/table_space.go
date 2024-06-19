@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 
@@ -508,6 +509,20 @@ func (space *tableSpace) GetColumnDataById(
 ) (view *containers.ColumnView, err error) {
 	n := space.nodes[0]
 	return n.GetColumnDataById(ctx, colIdx, mp)
+}
+
+func (space *tableSpace) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	n := space.nodes[0].(*anode)
+	n.Scan(bat, colIdxes, mp)
+}
+
+func (space *tableSpace) HybridScan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	n := space.nodes[0].(*anode)
+	n.Scan(bat, colIdxes, mp)
+	if (*bat).Deletes == nil {
+		(*bat).Deletes = &nulls.Nulls{}
+	}
+	(*bat).Deletes.Merge(n.data.Deletes)
 }
 
 func (space *tableSpace) Prefetch(obj *catalog.ObjectEntry, idxes []uint16) error {

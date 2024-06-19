@@ -241,6 +241,23 @@ func (n *anode) GetColumnDataById(
 	return
 }
 
+func (n *anode) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	if *bat == nil {
+		*bat = containers.NewBatch()
+		for _, colIdx := range colIdxes {
+			orig := n.data.Vecs[colIdx]
+			attr := n.data.Attrs[colIdx]
+			(*bat).AddVector(attr, orig.CloneWindow(0, orig.Length(), mp))
+		}
+		return
+	}
+	for _, colIdx := range colIdxes {
+		orig := n.data.Vecs[colIdx]
+		attr := n.data.Attrs[colIdx]
+		(*bat).GetVectorByName(attr).Extend(orig)
+	}
+}
+
 func (n *anode) Prefetch(idxes []uint16) error {
 	return nil
 }

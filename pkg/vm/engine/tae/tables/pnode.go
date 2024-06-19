@@ -165,7 +165,7 @@ func (node *persistedNode) Scan(
 		return err
 	}
 	// TODO: check visibility
-	if bat == nil {
+	if *bat == nil {
 		*bat = containers.NewBatch()
 		for i, idx := range colIdxes {
 			attr := readSchema.ColDefs[idx].Name

@@ -155,26 +155,6 @@ func (obj *object) estimateRawScore() (score int, dropped bool) {
 	return 0, obj.meta.HasDropCommitted()
 }
 
-func (obj *object) GetByFilter(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	filter *handle.Filter,
-	mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	if filter.Op != handle.FilterEq {
-		panic("logic error")
-	}
-	if obj.meta.GetSchema().SortKey == nil {
-		rid := filter.Val.(types.Rowid)
-		offset = rid.GetRowOffset()
-		return
-	}
-
-	node := obj.PinNode()
-	defer node.Unref()
-	return obj.getPersistedRowByFilter(ctx, node.MustPNode(), txn, filter, mp)
-}
-
 func (obj *object) getPersistedRowByFilter(
 	ctx context.Context,
 	pnode *persistedNode,

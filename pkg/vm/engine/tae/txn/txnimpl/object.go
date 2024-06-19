@@ -285,12 +285,6 @@ func (obj *txnObject) Prefetch(idxes []int) error {
 
 func (obj *txnObject) Fingerprint() *common.ID { return obj.entry.AsCommonID() }
 
-func (obj *txnObject) GetByFilter(
-	ctx context.Context, filter *handle.Filter, mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	return obj.entry.GetObjectData().GetByFilter(ctx, obj.table.store.txn, filter, mp)
-}
-
 func (obj *txnObject) GetColumnDataById(
 	ctx context.Context, blkID uint16, colIdx int, mp *mpool.MPool,
 ) (*containers.ColumnView, error) {

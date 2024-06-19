@@ -3389,12 +3389,12 @@ func TestImmutableIndexInAblk(t *testing.T) {
 	err = txn.Commit(context.Background())
 	assert.NoError(t, err)
 
-	txn, _ = tae.GetRelation()
-	_, _, err = meta.GetObjectData().GetByFilter(context.Background(), txn, filter, common.DefaultAllocator)
+	txn, rel = tae.GetRelation()
+	_, _, err = rel.GetByFilter(context.Background(), filter)
 	assert.Error(t, err)
 	v = testutil.GetSingleSortKeyValue(bat, schema, 2)
 	filter = handle.NewEQFilter(v)
-	_, _, err = meta.GetObjectData().GetByFilter(context.Background(), txn, filter, common.DefaultAllocator)
+	_, _, err = rel.GetByFilter(context.Background(), filter)
 	assert.NoError(t, err)
 
 	rowIDs := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)

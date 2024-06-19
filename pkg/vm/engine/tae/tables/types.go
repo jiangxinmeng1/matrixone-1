@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
@@ -60,8 +59,6 @@ type NodeT interface {
 
 	Rows() (uint32, error)
 
-	GetRowByFilter(ctx context.Context, txn txnif.TxnReader, filter *handle.Filter, mp *mpool.MPool,
-		vpool *containers.VectorPool) (bid uint16, row uint32, err error)
 	CollectAppendInRange(
 		start, end types.TS, withAborted bool, mp *mpool.MPool,
 	) (batWithVer *containers.BatchWithVersion, err error)

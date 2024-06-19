@@ -31,7 +31,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/updates"
@@ -183,29 +182,6 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	// always return false for if the block is persisted
 	// it is a coarse-grained check
 	return false
-}
-
-// TODO: remove it. (use rel.GetByFilter)
-// GetByFilter will read pk column, which seqnum will not change, no need to pass the read schema.
-func (obj *aobject) GetByFilter(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	filter *handle.Filter,
-	mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	if filter.Op != handle.FilterEq {
-		panic("logic error")
-	}
-	if obj.meta.GetSchema().SortKey == nil {
-		rid := filter.Val.(types.Rowid)
-		offset = rid.GetRowOffset()
-		return
-	}
-
-	node := obj.PinNode()
-	defer node.Unref()
-	_, offset, err = node.GetRowByFilter(ctx, txn, filter, mp, obj.rt.VectorPool.Small)
-	return
 }
 
 func (obj *aobject) GetDuplicatedRows(

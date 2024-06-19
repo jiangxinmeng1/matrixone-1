@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
@@ -108,7 +107,6 @@ type Object interface {
 		mp *mpool.MPool,
 	) (err error)
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
-	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
 	PPString(level common.PPLevel, depth int, prefix string, blkid int) string
 	EstimateMemSize() (int, int)

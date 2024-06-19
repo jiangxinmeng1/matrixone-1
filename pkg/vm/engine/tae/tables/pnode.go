@@ -26,9 +26,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
@@ -137,92 +135,6 @@ func (node *persistedNode) GetValueByRow(_ *catalog.Schema, _, _ int) (v any, is
 
 func (node *persistedNode) GetRowsByKey(key any) ([]uint32, error) {
 	panic(moerr.NewInternalErrorNoCtx("todo"))
-}
-
-// only used by tae only
-// not to optimize it
-func (node *persistedNode) GetRowByFilter(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	filter *handle.Filter,
-	mp *mpool.MPool,
-	vpool *containers.VectorPool,
-) (blkID uint16, row uint32, err error) {
-	for blkID = uint16(0); blkID < uint16(node.object.meta.BlockCnt()); blkID++ {
-		var ok bool
-		ok, err = node.ContainsKey(ctx, filter.Val, uint32(blkID))
-		if err != nil {
-			return
-		}
-		if !ok {
-			continue
-		}
-		// Note: sort key do not change
-		schema := node.object.meta.GetSchema()
-		var sortKey containers.Vector
-		sortKey, err = node.object.LoadPersistedColumnData(ctx, schema, schema.GetSingleSortKeyIdx(), mp, blkID)
-		if err != nil {
-			return
-		}
-		defer sortKey.Close()
-		rows := make([]uint32, 0)
-		err = sortKey.Foreach(func(v any, _ bool, offset int) error {
-			if compute.CompareGeneric(v, filter.Val, sortKey.GetType().Oid) == 0 {
-				row := uint32(offset)
-				rows = append(rows, row)
-				return nil
-			}
-			return nil
-		}, nil)
-		if err != nil && !moerr.IsMoErrCode(err, moerr.OkExpectedDup) {
-			return
-		}
-		if len(rows) == 0 {
-			continue
-		}
-
-		// Load persisted commit ts
-		var commitTSVec containers.Vector
-		commitTSVec, err = node.object.LoadPersistedCommitTS(blkID)
-		if err != nil {
-			return
-		}
-		defer commitTSVec.Close()
-
-		// Load persisted deletes
-		fullBlockID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, blkID)
-		view := containers.NewColumnView(0)
-		if err = node.object.meta.GetTable().FillDeletes(ctx, *fullBlockID, txn, view.BaseView, mp); err != nil {
-			return
-		}
-		id := node.object.meta.AsCommonID()
-		id.SetBlockOffset(blkID)
-		err = txn.GetStore().FillInWorkspaceDeletes(id, &view.BaseView.DeleteMask)
-		if err != nil {
-			return
-		}
-
-		exist := false
-		var deleted bool
-		for _, offset := range rows {
-			commitTS := commitTSVec.Get(int(offset)).(types.TS)
-			startTS := txn.GetStartTS()
-			if commitTS.Greater(&startTS) {
-				break
-			}
-			deleted = view.IsDeleted(int(offset))
-			if !deleted {
-				exist = true
-				row = offset
-				break
-			}
-		}
-		if exist {
-			return
-		}
-	}
-	err = moerr.NewNotFoundNoCtx()
-	return
 }
 
 func (node *persistedNode) CollectAppendInRange(

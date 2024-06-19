@@ -162,5 +162,8 @@ func (entry *TableEntry) HybridScan(
 			return err
 		}
 	}
-	return nil
+	id := dataObject.AsCommonID()
+	id.BlockID = *blkID
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &(*bat).Deletes)
+	return err
 }

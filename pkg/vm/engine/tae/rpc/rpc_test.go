@@ -454,12 +454,13 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	_ = it.Close()
 	assert.Equal(t, taeBat.Length(), rows)
 
-	var physicals []*containers.BlockView
+	physicals := make([]*containers.Batch, 0)
 	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			bv, err := blk.GetColumnDataByIds(context.Background(), uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+			bv, err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().Scan(
+				txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			physicals = append(physicals, bv)
 		}
@@ -478,8 +479,8 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.Nil(t, err)
 	for _, view := range physicals {
 		bat := batch.New(true, []string{hideDef[0].Name, schema.GetPrimaryKey().GetName()})
-		bat.Vecs[0], _ = view.GetColumnData(2).GetDownstreamVector().Window(0, 5)
-		bat.Vecs[1], _ = view.GetColumnData(1).GetDownstreamVector().Window(0, 5)
+		bat.Vecs[0], _ = view.Vecs[0].GetDownstreamVector().Window(0, 5)
+		bat.Vecs[1], _ = view.Vecs[1].GetDownstreamVector().Window(0, 5)
 		_, err := writer.WriteBatch(bat)
 		assert.Nil(t, err)
 	}
@@ -489,28 +490,28 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	delLoc1 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[0].GetExtent(),
-		uint32(physicals[0].GetColumnData(2).Length()),
+		uint32(physicals[0].Vecs[0].Length()),
 		blocks[0].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc2 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[1].GetExtent(),
-		uint32(physicals[1].GetColumnData(2).Length()),
+		uint32(physicals[1].Vecs[0].Length()),
 		blocks[1].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc3 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[2].GetExtent(),
-		uint32(physicals[2].GetColumnData(2).Length()),
+		uint32(physicals[2].Vecs[0].Length()),
 		blocks[2].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc4 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[3].GetExtent(),
-		uint32(physicals[3].GetColumnData(2).Length()),
+		uint32(physicals[3].Vecs[0].Length()),
 		blocks[3].GetID(),
 	).String()
 	assert.Nil(t, err)
@@ -1977,10 +1978,12 @@ func TestApplyDeltaloc(t *testing.T) {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := meta.GetObjectData().GetColumnDataById(context.Background(), txn0, schema, uint16(j), def.Idx, common.DefaultAllocator)
+				var view *containers.Batch
+				blkID := objectio.NewBlockidWithObjectID(&meta.ID, uint16(j))
+				err := meta.GetTable().HybridScan(txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
 				assert.NoError(t, err)
-				view.ApplyDeletes()
-				length += view.GetData().Length()
+				view.Compact()
+				length += view.Length()
 			}
 			it.Next()
 		}

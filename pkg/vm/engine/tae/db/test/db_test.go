@@ -430,11 +430,14 @@ func TestNonAppendableBlock(t *testing.T) {
 		expectVal := bat.Vecs[2].Get(4)
 		assert.Equal(t, expectVal, v)
 
-		view, err := dataBlk.GetColumnDataById(context.Background(), txn, readSchema, 0, 2, common.DefaultAllocator)
+		var view *containers.Batch
+		tbl := rel.GetMeta().(*catalog.TableEntry)
+		blkID := objectio.NewBlockidWithObjectID(obj.GetID(), 0)
+		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
-		defer view.Close()
-		assert.Nil(t, view.DeleteMask)
+		assert.Nil(t, view.Deletes)
 		assert.Equal(t, bat.Vecs[2].Length(), view.Length())
+		view.Close()
 
 		pkDef := schema.GetPrimaryKey()
 		pkVec := containers.MakeVector(pkDef.Type, common.DefaultAllocator)
@@ -447,24 +450,24 @@ func TestNonAppendableBlock(t *testing.T) {
 		err = rel.RangeDelete(obj.Fingerprint(), 1, 2, handle.DT_Normal)
 		assert.Nil(t, err)
 
-		view, err = dataBlk.GetColumnDataById(context.Background(), txn, readSchema, 0, 2, common.DefaultAllocator)
+		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
-		defer view.Close()
-		assert.True(t, view.DeleteMask.Contains(1))
-		assert.True(t, view.DeleteMask.Contains(2))
+		assert.True(t, view.Deletes.Contains(1))
+		assert.True(t, view.Deletes.Contains(2))
 		assert.Equal(t, bat.Vecs[2].Length(), view.Length())
+		view.Close()
 
 		// _, err = dataBlk.Update(txn, 3, 2, int32(999))
 		// assert.Nil(t, err)
 
-		view, err = dataBlk.GetColumnDataById(context.Background(), txn, readSchema, 0, 2, common.DefaultAllocator)
+		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
-		defer view.Close()
-		assert.True(t, view.DeleteMask.Contains(1))
-		assert.True(t, view.DeleteMask.Contains(2))
+		assert.True(t, view.Deletes.Contains(1))
+		assert.True(t, view.Deletes.Contains(2))
 		assert.Equal(t, bat.Vecs[2].Length(), view.Length())
 		// v = view.GetData().Get(3)
 		// assert.Equal(t, int32(999), v)
+		view.Close()
 
 		assert.Nil(t, txn.Commit(context.Background()))
 	}
@@ -1151,21 +1154,23 @@ func TestFlushTabletail(t *testing.T) {
 		}
 		for i := 0; it.Valid(); it.Next() {
 			obj := it.GetObject()
+			var views *containers.Batch
 			for j := uint16(0); j < uint16(obj.BlkCnt()); j++ {
-				views, err := obj.GetColumnDataByIds(context.Background(), j, idxs, common.DefaultAllocator)
+				blkID := objectio.NewBlockidWithObjectID(obj.GetID(), j)
+				err := rel.GetMeta().(*catalog.TableEntry).HybridScan(txn, &views, schema, idxs, blkID, common.DefaultAllocator)
 				require.NoError(t, err)
 				defer views.Close()
-				for j, view := range views.Columns {
-					require.Equal(t, schema.ColDefs[j].Type.Oid, view.GetData().GetType().Oid)
+				for j, view := range views.Vecs {
+					require.Equal(t, schema.ColDefs[j].Type.Oid, view.GetType().Oid)
 				}
 
 				viewDel := 0
-				if views.DeleteMask != nil {
-					viewDel = views.DeleteMask.GetCardinality()
+				if views.Deletes != nil {
+					viewDel = views.Deletes.GetCardinality()
 				}
 				require.Equal(t, dels[i], viewDel)
-				views.ApplyDeletes()
-				total += views.Columns[0].Length()
+				views.Compact()
+				total += views.Length()
 				i++
 			}
 		}
@@ -3331,10 +3336,13 @@ func TestCompactblk3(t *testing.T) {
 			return nil
 		}
 		for j := 0; j < be.BlockCnt(); j++ {
-			view, err := be.GetObjectData().GetColumnDataById(context.Background(), txn, schema, uint16(j), 0, common.DefaultAllocator)
+			var view *containers.Batch
+			blkID := objectio.NewBlockidWithObjectID(&be.ID, uint16(j))
+			err := be.GetTable().HybridScan(txn, &view, schema, []int{0}, blkID, common.DefaultAllocator)
 			assert.NoError(t, err)
-			view.ApplyDeletes()
+			view.Compact()
 			assert.Equal(t, 2, view.Length())
+			view.Close()
 		}
 		return nil
 	}
@@ -6324,13 +6332,15 @@ func TestAlterFakePk(t *testing.T) {
 		require.NoError(t, err)
 		// check non-exist column foreach
 		newSchema := obj.GetRelation().Schema(false)
-		blkdata := obj.GetMeta().(*catalog.ObjectEntry).GetObjectData()
 		sels := &nulls.Nulls{}
 		sels.Add(1)
 		sels.Add(3)
 		rows := make([]int, 0, 4)
-		view, err := blkdata.GetColumnDataById(ctx, txn, newSchema, 0, 1, common.DebugAllocator)
-		view.GetData().Foreach(func(v any, isNull bool, row int) error {
+		tbl := rel.GetMeta().(*catalog.TableEntry)
+		var view *containers.Batch
+		blkID := objectio.NewBlockidWithObjectID(obj.GetID(), 0)
+		err = tbl.HybridScan(txn, &view, newSchema.(*catalog.Schema), []int{1}, blkID, common.DefaultAllocator)
+		view.Vecs[0].Foreach(func(v any, isNull bool, row int) error {
 			require.True(t, true)
 			rows = append(rows, row)
 			return nil

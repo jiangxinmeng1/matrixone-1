@@ -299,12 +299,13 @@ func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {
 }
 
 func (node *memoryNode) Scan(
+	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
 	blkID uint16,
 	colIdxes []int,
 	mp *mpool.MPool,
-) (bat *containers.Batch, err error) {
+) (err error) {
 	if blkID != 0 {
 		panic("logic err")
 	}
@@ -315,7 +316,7 @@ func (node *memoryNode) Scan(
 		// blk.RUnlock()
 		return
 	}
-	bat, err = node.getDataWindowLocked(
+	*bat, err = node.getDataWindowLocked(
 		readSchema,
 		colIdxes,
 		0,

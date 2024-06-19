@@ -145,35 +145,36 @@ func (node *persistedNode) CollectAppendInRange(
 }
 
 func (node *persistedNode) Scan(
+	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
 	blkID uint16,
 	colIdxes []int,
 	mp *mpool.MPool,
-) (bat *containers.Batch, err error) {
+) (err error) {
 	id := node.object.meta.AsCommonID()
 	id.SetBlockOffset(uint16(blkID))
 	location, err := node.object.buildMetalocation(uint16(blkID))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	vecs, err := LoadPersistedColumnDatas(
 		txn.GetContext(), readSchema, node.object.rt, id, colIdxes, location, mp,
 	)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// TODO: check visibility
 	if bat == nil {
-		bat = containers.NewBatch()
+		*bat = containers.NewBatch()
 		for i, idx := range colIdxes {
 			attr := readSchema.ColDefs[idx].Name
-			bat.AddVector(attr, vecs[i])
+			(*bat).AddVector(attr, vecs[i])
 		}
 	} else {
 		for i, idx := range colIdxes {
 			attr := readSchema.ColDefs[idx].Name
-			bat.GetVectorByName(attr).Extend(vecs[i])
+			(*bat).GetVectorByName(attr).Extend(vecs[i])
 		}
 	}
 	return

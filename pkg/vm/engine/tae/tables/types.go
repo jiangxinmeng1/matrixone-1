@@ -63,12 +63,13 @@ type NodeT interface {
 		start, end types.TS, withAborted bool, mp *mpool.MPool,
 	) (batWithVer *containers.BatchWithVersion, err error)
 	Scan(
+		bat **containers.Batch,
 		txn txnif.TxnReader,
 		readSchema *catalog.Schema,
 		blkID uint16,
 		colIdxes []int,
 		mp *mpool.MPool,
-	) (bat *containers.Batch, err error)
+	) (err error)
 	CollectObjectTombstoneInRange(
 		ctx context.Context,
 		start, end types.TS,

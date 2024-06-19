@@ -235,7 +235,8 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	col int,
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
-	bat, err := blk.Scan(txn, readSchema, blkOffset, []int{col}, mp)
+	var bat *containers.Batch
+	err = blk.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
 	if err != nil {
 		return
 	}
@@ -444,15 +445,16 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 }
 
 func (blk *baseObject) Scan(
+	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema any,
 	blkID uint16,
 	colIdxes []int,
 	mp *mpool.MPool,
-) (bat *containers.Batch, err error) {
+) (err error) {
 	node := blk.PinNode()
 	defer node.Unref()
-	return node.Scan(txn, readSchema.(*catalog.Schema), blkID, colIdxes, mp)
+	return node.Scan(bat, txn, readSchema.(*catalog.Schema), blkID, colIdxes, mp)
 }
 
 func (blk *baseObject) FillBlockTombstones(
@@ -507,7 +509,8 @@ func (obj *baseObject) GetColumnDataByIds(
 ) (view *containers.BlockView, err error) {
 	var bat *containers.Batch
 	if obj.meta.IsTombstone {
-		bat, err = obj.Scan(txn, readSchema, blkOffset, colIdxes, mp)
+		var bat *containers.Batch
+		err = obj.Scan(&bat, txn, readSchema, blkOffset, colIdxes, mp)
 		if err != nil {
 			return
 		}
@@ -548,7 +551,8 @@ func (obj *baseObject) GetColumnDataById(
 ) (view *containers.ColumnView, err error) {
 	var bat *containers.Batch
 	if obj.meta.IsTombstone {
-		bat, err = obj.Scan(txn, readSchema, blkOffset, []int{col}, mp)
+		var bat *containers.Batch
+		err = obj.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
 		if err != nil {
 			return
 		}
@@ -607,7 +611,8 @@ func (obj *baseObject) GetValue(
 		}
 		return
 	}
-	bat, err := obj.Scan(txn, readSchema, blkOffset, []int{col}, mp)
+	var bat *containers.Batch
+	err = obj.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
 	if err != nil {
 		return
 	}

@@ -398,7 +398,8 @@ func MockCNDeleteInS3(
 	deleteRows []uint32,
 ) (location objectio.Location, err error) {
 	pkDef := schema.GetPrimaryKey()
-	view, err := obj.Scan(txn, schema, blkOffset, []int{pkDef.Idx}, common.DefaultAllocator)
+	var view *containers.Batch
+	err = obj.Scan(&view, txn, schema, blkOffset, []int{pkDef.Idx}, common.DefaultAllocator)
 	pkVec := containers.MakeVector(pkDef.Type, common.DefaultAllocator)
 	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)
 	objID := &obj.GetMeta().(*catalog.ObjectEntry).ID

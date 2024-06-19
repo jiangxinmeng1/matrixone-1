@@ -147,7 +147,7 @@ func (entry *TableEntry) HybridScan(
 		return err
 	}
 	_, offset := blkID.Offsets()
-	*bat, err = dataObject.GetObjectData().Scan(txn, readSchema, offset, colIdxs, mp)
+	err = dataObject.GetObjectData().Scan(bat, txn, readSchema, offset, colIdxs, mp)
 	if err != nil {
 		return err
 	}

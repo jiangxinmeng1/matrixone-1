@@ -459,8 +459,9 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			bv, err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().Scan(
-				txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+			var bv *containers.Batch
+			err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().Scan(
+				&bv, txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			physicals = append(physicals, bv)
 		}

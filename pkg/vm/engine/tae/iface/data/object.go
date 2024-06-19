@@ -126,12 +126,13 @@ type Object interface {
 		mp *mpool.MPool) (err error)
 	Close()
 	Scan(
+		bat **containers.Batch,
 		txn txnif.TxnReader,
 		readSchema any,
 		blkID uint16,
 		colIdxes []int,
 		mp *mpool.MPool,
-	) (bat *containers.Batch, err error)
+	) (err error)
 	FillBlockTombstones(
 		txn txnif.TxnReader,
 		blkID *objectio.Blockid,

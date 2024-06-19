@@ -17,8 +17,6 @@ package tables
 import (
 	"context"
 
-	"github.com/RoaringBitmap/roaring"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -67,18 +65,6 @@ func (node *persistedNode) Contains(
 ) (err error) {
 	panic("should not be called")
 }
-func (node *persistedNode) BatchDedup(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	precommit bool,
-	keys containers.Vector,
-	keysZM index.ZM,
-	rowmask *roaring.Bitmap,
-	bf objectio.BloomFilter,
-) (err error) {
-	panic("should not be called")
-}
-
 func (node *persistedNode) GetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -94,22 +80,6 @@ func (node *persistedNode) GetDuplicatedRows(
 	panic("should not be balled")
 }
 
-func (node *persistedNode) ContainsKey(ctx context.Context, key any, blkID uint32) (ok bool, err error) {
-	pkIndex, err := MakeImmuIndex(ctx, node.object.meta, nil, node.object.rt)
-	if err != nil {
-		return
-	}
-	if err = pkIndex.Dedup(ctx, key, node.object.rt, blkID); err == nil {
-		return
-	}
-	if !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
-		return
-	}
-	ok = true
-	err = nil
-	return
-}
-
 func (node *persistedNode) GetDataWindow(
 	readSchema *catalog.Schema, colIdxes []int, from, to uint32, mp *mpool.MPool,
 ) (bat *containers.Batch, err error) {
@@ -117,25 +87,6 @@ func (node *persistedNode) GetDataWindow(
 }
 
 func (node *persistedNode) IsPersisted() bool { return true }
-
-func (node *persistedNode) PrepareAppend(rows uint32) (n uint32, err error) {
-	panic(moerr.NewInternalErrorNoCtx("not supported"))
-}
-
-func (node *persistedNode) ApplyAppend(
-	_ *containers.Batch,
-	_ txnif.AsyncTxn,
-) (from int, err error) {
-	panic(moerr.NewInternalErrorNoCtx("not supported"))
-}
-
-func (node *persistedNode) GetValueByRow(_ *catalog.Schema, _, _ int) (v any, isNull bool) {
-	panic(moerr.NewInternalErrorNoCtx("todo"))
-}
-
-func (node *persistedNode) GetRowsByKey(key any) ([]uint32, error) {
-	panic(moerr.NewInternalErrorNoCtx("todo"))
-}
 
 func (node *persistedNode) Scan(
 	bat **containers.Batch,

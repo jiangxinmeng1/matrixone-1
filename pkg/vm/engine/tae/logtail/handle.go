@@ -444,7 +444,7 @@ type TableLogtailRespBuilder struct {
 	dataMetaBatch      *containers.Batch
 	tombstoneMetaBatch *containers.Batch
 	dataInsBatches     map[uint32]*containers.BatchWithVersion // schema version -> data batch
-	dataDelBatch       *containers.Batch
+	dataDelBatches     map[uint32]*containers.BatchWithVersion
 }
 
 func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end types.TS, tbl *catalog.TableEntry) *TableLogtailRespBuilder {
@@ -464,7 +464,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 	b.tname = tbl.GetLastestSchemaLocked(false).Name
 
 	b.dataInsBatches = make(map[uint32]*containers.BatchWithVersion)
-	b.dataDelBatch = makeDelRespBatchFromSchema(tbl.GetLastestSchema(false).GetPrimaryKey().Type, common.LogtailAllocator)
+	b.dataDelBatches = make(map[uint32]*containers.BatchWithVersion)
 	b.dataMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	b.tombstoneMetaBatch = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	return b
@@ -477,10 +477,12 @@ func (b *TableLogtailRespBuilder) Close() {
 		}
 	}
 	b.dataInsBatches = nil
-	if b.dataDelBatch != nil {
-		b.dataDelBatch.Close()
-		b.dataDelBatch = nil
+	for _, vec := range b.dataDelBatches {
+		if vec != nil {
+			vec.Close()
+		}
 	}
+	b.dataDelBatches = nil
 }
 
 func (b *TableLogtailRespBuilder) VisitObj(e *catalog.ObjectEntry) error {
@@ -519,7 +521,12 @@ func (b *TableLogtailRespBuilder) skipObjectData(e *catalog.ObjectEntry, lastMVC
 }
 func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	data := e.GetObjectData()
-	err := data.ScanInMemory(b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
+	var err error
+	if e.IsTombstone {
+		err = data.ScanInMemory(b.dataDelBatches, b.start, b.end, common.LogtailAllocator)
+	} else {
+		err = data.ScanInMemory(b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
+	}
 	if err != nil {
 		return err
 	}
@@ -613,12 +620,17 @@ func (b *TableLogtailRespBuilder) BuildResp() (api.SyncLogTailResp, error) {
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 	for _, k := range keys {
-		if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Data, b.dataInsBatches[k].Batch, k); err != nil {
+		if err := tryAppendEntry(api.Entry_Insert, TableRespKind_Data, DataChangeToLogtailBatch(b.dataInsBatches[k]), k); err != nil {
 			return empty, err
 		}
 	}
-	if err := tryAppendEntry(api.Entry_Delete, TableRespKind_Data, b.dataDelBatch, 0); err != nil {
-		return empty, err
+	if len(b.dataDelBatches) > 1 {
+		panic(fmt.Sprintf("logic err, batch %v", b.dataDelBatches))
+	}
+	for _, bat := range b.dataDelBatches {
+		if err := tryAppendEntry(api.Entry_Delete, TableRespKind_Data, TombstoneChangeToLogtailBatch(bat), 0); err != nil {
+			return empty, err
+		}
 	}
 
 	return api.SyncLogTailResp{

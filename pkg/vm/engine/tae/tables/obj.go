@@ -24,10 +24,8 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
@@ -153,47 +151,6 @@ func (obj *object) RunCalibration() (score int, err error) {
 
 func (obj *object) estimateRawScore() (score int, dropped bool) {
 	return 0, obj.meta.HasDropCommitted()
-}
-
-func (obj *object) getPersistedRowByFilter(
-	ctx context.Context,
-	pnode *persistedNode,
-	txn txnif.TxnReader,
-	filter *handle.Filter,
-	mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	var sortKey containers.Vector
-	schema := obj.meta.GetSchema()
-	idx := schema.GetSingleSortKeyIdx()
-	for blkID = uint16(0); blkID < uint16(obj.meta.BlockCnt()); blkID++ {
-		var ok bool
-		ok, err = pnode.ContainsKey(ctx, filter.Val, uint32(blkID))
-		if err != nil {
-			return
-		}
-		if !ok {
-			continue
-		}
-		if sortKey, err = obj.LoadPersistedColumnData(ctx, schema, idx, mp, blkID); err != nil {
-			continue
-		}
-		defer sortKey.Close()
-		off, existed := compute.GetOffsetByVal(sortKey, filter.Val, nil)
-		if !existed {
-			continue
-		}
-		offset = uint32(off)
-		blkid := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkID)
-		rowID := objectio.NewRowid(blkid, offset)
-		var deleted bool
-		deleted, err = obj.meta.GetTable().IsDeleted(ctx, txn, *rowID, obj.rt.VectorPool.Small, mp)
-		if !deleted {
-			return
-		}
-
-	}
-	err = moerr.NewNotFoundNoCtx()
-	return
 }
 
 func (obj *object) EstimateMemSize() (int, int) {

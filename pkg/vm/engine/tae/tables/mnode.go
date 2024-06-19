@@ -156,7 +156,7 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 	}
 	dest, ok := batches[node.writeSchema.Version]
 	if ok {
-		dest.Extend(node.data)
+		dest.Extend(node.data.Window(int(from), int(to-from)))
 		dest.GetVectorByName(catalog.AttrCommitTs).Extend(commitTSVec)
 		commitTSVec.Close() // TODO no copy
 	} else {

@@ -62,7 +62,7 @@ type AppendCmd struct {
 	Data        *containers.Batch
 	Infos       []*appendInfo
 	Ts          types.TS
-	Node        InsertNode
+	Node        *anode
 	IsTombstone bool
 }
 
@@ -72,7 +72,7 @@ func NewEmptyAppendCmd() *AppendCmd {
 	return cmd
 }
 
-func NewAppendCmd(id uint32, node InsertNode, data *containers.Batch, isTombstone bool) *AppendCmd {
+func NewAppendCmd(id uint32, node *anode, data *containers.Batch, isTombstone bool) *AppendCmd {
 	impl := &AppendCmd{
 		Node:        node,
 		Infos:       node.GetAppends(),

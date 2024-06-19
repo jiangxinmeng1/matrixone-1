@@ -364,17 +364,16 @@ func TestNodeCommand(t *testing.T) {
 	err = tbl.RangeDeleteLocalRows(100, 200)
 	assert.NoError(t, err)
 
-	for i, inode := range tbl.dataTable.tableSpace.nodes {
-		cmd, err := inode.MakeCommand(uint32(i))
-		assert.NoError(t, err)
-		assert.NotNil(t, cmd.(*AppendCmd).Data)
-		//if entry != nil {
-		//	_ = entry.WaitDone()
-		//	entry.Free()
-		//}
-		if cmd != nil {
-			t.Log(cmd.String())
-		}
+	inode := tbl.dataTable.tableSpace.node
+	cmd, err := inode.MakeCommand(uint32(0))
+	assert.NoError(t, err)
+	assert.NotNil(t, cmd.(*AppendCmd).Data)
+	//if entry != nil {
+	//	_ = entry.WaitDone()
+	//	entry.Free()
+	//}
+	if cmd != nil {
+		t.Log(cmd.String())
 	}
 	assert.NoError(t, txn.Commit(context.Background()))
 }

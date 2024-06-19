@@ -232,10 +232,10 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
-	if len(tbl.tombstoneTable.tableSpace.nodes) == 0 {
+	if tbl.tombstoneTable.tableSpace.node == nil {
 		return
 	}
-	deletes := tbl.tombstoneTable.tableSpace.nodes[0].(*anode).data
+	deletes := tbl.tombstoneTable.tableSpace.node.data
 	for i := 0; i < deletes.Length(); i++ {
 		rowID := deletes.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 		id.SetObjectID(rowID.BorrowObjectID())
@@ -778,34 +778,36 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 	}
 	var zm index.ZM
 	pkColPos := baseTable.schema.GetSingleSortKeyIdx()
-	for _, node := range baseTable.tableSpace.nodes {
-		if node.IsPersisted() {
-			err = tbl.DoPrecommitDedupByNode(ctx, node, isTombstone)
-			if err != nil {
-				return
-			}
-			continue
-		}
-		pkVec, err := node.WindowColumn(0, node.Rows(), pkColPos)
+	for _, stats := range baseTable.tableSpace.stats {
+		err = tbl.DoPrecommitDedupByNode(ctx, stats, isTombstone)
 		if err != nil {
-			return err
+			return
 		}
-		if zm.Valid() {
-			zm.ResetMinMax()
-		} else {
-			pkType := pkVec.GetType()
-			zm = index.NewZM(pkType.Oid, pkType.Scale)
-		}
-		if err = index.BatchUpdateZM(zm, pkVec.GetDownstreamVector()); err != nil {
-			pkVec.Close()
-			return err
-		}
-		if err = tbl.DoPrecommitDedupByPK(pkVec, zm, isTombstone); err != nil {
-			pkVec.Close()
-			return err
-		}
-		pkVec.Close()
 	}
+
+	if baseTable.tableSpace.node == nil {
+		return
+	}
+	node := baseTable.tableSpace.node
+	pkVec, err := node.WindowColumn(0, node.Rows(), pkColPos)
+	if err != nil {
+		return err
+	}
+	if zm.Valid() {
+		zm.ResetMinMax()
+	} else {
+		pkType := pkVec.GetType()
+		zm = index.NewZM(pkType.Oid, pkType.Scale)
+	}
+	if err = index.BatchUpdateZM(zm, pkVec.GetDownstreamVector()); err != nil {
+		pkVec.Close()
+		return err
+	}
+	if err = tbl.DoPrecommitDedupByPK(pkVec, zm, isTombstone); err != nil {
+		pkVec.Close()
+		return err
+	}
+	pkVec.Close()
 	return
 }
 
@@ -928,41 +930,66 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM,
 	return
 }
 
-func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode, isTombstone bool) (err error) {
-	var pks containers.Vector
+func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, stats objectio.ObjectStats, isTombstone bool) (err error) {
 	//loaded := false
 	//TODO::load ZM/BF index first, then load PK column if necessary.
-	if pks == nil {
-		colV, err := node.GetColumnDataById(ctx, tbl.dataTable.schema.GetSingleSortKeyIdx(), common.WorkspaceAllocator)
+
+	metaLocs := make([]objectio.Location, 0)
+	blkCount := stats.BlkCnt()
+	totalRow := stats.Rows()
+	schema := tbl.getBaseTable(isTombstone).schema
+	blkMaxRows := schema.BlockMaxRows
+	for i := uint16(0); i < uint16(blkCount); i++ {
+		var blkRow uint32
+		if totalRow > blkMaxRows {
+			blkRow = blkMaxRows
+		} else {
+			blkRow = totalRow
+		}
+		totalRow -= blkRow
+		metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, i)
+
+		metaLocs = append(metaLocs, metaloc)
+	}
+
+	for _, loc := range metaLocs {
+		var vectors []containers.Vector
+		var closeFunc func()
+		vectors, closeFunc, err = blockio.LoadColumns2(
+			ctx,
+			[]uint16{uint16(schema.GetSingleSortKeyIdx())},
+			nil,
+			tbl.store.rt.Fs.Service,
+			loc,
+			fileservice.Policy(0),
+			false,
+			nil,
+		)
 		if err != nil {
 			return err
 		}
-		colV.ApplyDeletes()
-		pks = colV.Orphan()
+		pks := vectors[0]
+		defer closeFunc()
 		defer pks.Close()
-	}
-	var rowIDs containers.Vector
-	if isTombstone {
-		rowIDs, err = tbl.tombstoneTable.preCommitGetRowsByPK(ctx, pks)
-	} else {
-
-		rowIDs, err = tbl.dataTable.preCommitGetRowsByPK(ctx, pks)
-	}
-	if err != nil {
-		return
-	}
-	defer rowIDs.Close()
-	if !isTombstone {
-		err = tbl.findDeletes(ctx, rowIDs, true, true)
-	}
-	if err != nil {
-		return
-	}
-	for i := 0; i < rowIDs.Length(); i++ {
-		if !rowIDs.IsNull(i) {
-			colName := tbl.getSchema(false).GetPrimaryKey().Name
-			entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
-			err = moerr.NewDuplicateEntryNoCtx(entry, colName)
+		var rowIDs containers.Vector
+		rowIDs, err = tbl.getBaseTable(isTombstone).preCommitGetRowsByPK(ctx, pks)
+		if err != nil {
+			return
+		}
+		defer rowIDs.Close()
+		if !isTombstone {
+			err = tbl.findDeletes(ctx, rowIDs, true, true)
+		}
+		if err != nil {
+			return
+		}
+		for i := 0; i < rowIDs.Length(); i++ {
+			if !rowIDs.IsNull(i) {
+				colName := tbl.getSchema(false).GetPrimaryKey().Name
+				entry := common.TypeStringValue(*pks.GetType(), pks.Get(i), false)
+				err = moerr.NewDuplicateEntryNoCtx(entry, colName)
+				return
+			}
 		}
 	}
 	return
@@ -1253,7 +1280,7 @@ func (tbl *txnTable) RangeDelete(
 		return
 	}
 	if dt == handle.DT_MergeCompact {
-		anode := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+		anode := tbl.tombstoneTable.tableSpace.node
 		anode.isMergeCompact = true
 		if tbl.store.txn.GetTxnState(false) != txnif.TxnStateActive {
 			startOffset := anode.data.Length() - deleteBatch.Length()
@@ -1277,8 +1304,8 @@ func (tbl *txnTable) contains(
 	if tbl.tombstoneTable.tableSpace == nil {
 		return
 	}
-	if len(tbl.tombstoneTable.tableSpace.nodes) > 0 {
-		workspaceDeleteBatch := tbl.tombstoneTable.tableSpace.nodes[0].(*anode).data
+	if tbl.tombstoneTable.tableSpace.node != nil {
+		workspaceDeleteBatch := tbl.tombstoneTable.tableSpace.node.data
 		for j := 0; j < keys.Length(); j++ {
 			if keys.IsNull(j) {
 				continue
@@ -1414,8 +1441,8 @@ func (tbl *txnTable) FillInWorkspaceDeletes(blkID types.Blockid, deletes **nulls
 	if tbl.tombstoneTable.tableSpace == nil {
 		return nil
 	}
-	if len(tbl.tombstoneTable.tableSpace.nodes) != 0 {
-		node := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+	if tbl.tombstoneTable.tableSpace.node != nil {
+		node := tbl.tombstoneTable.tableSpace.node
 		for i := 0; i < node.data.Length(); i++ {
 			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 			if *rowID.BorrowBlockID() == blkID {
@@ -1478,8 +1505,8 @@ func (tbl *txnTable) IsDeletedInWorkSpace(blkID objectio.Blockid, row uint32) (b
 	if tbl.tombstoneTable.tableSpace == nil {
 		return false, nil
 	}
-	if len(tbl.tombstoneTable.tableSpace.nodes) != 0 {
-		node := tbl.tombstoneTable.tableSpace.nodes[0].(*anode)
+	if tbl.tombstoneTable.tableSpace.node != nil {
+		node := tbl.tombstoneTable.tableSpace.node
 		for i := 0; i < node.data.Length(); i++ {
 			rowID := node.data.GetVectorByName(catalog.AttrRowID).Get(i).(types.Rowid)
 			blk, rowOffset := rowID.Decode()

@@ -488,35 +488,27 @@ func (store *txnStore) ObserveTxn(
 					visitTable(txnEntry)
 				}
 			}
-			if tbl.dataTable.tableSpace != nil {
-				for _, node := range tbl.dataTable.tableSpace.nodes {
-					anode, ok := node.(*anode)
-					if ok {
-						schema := anode.table.GetLocalSchema(false)
-						bat := &containers.BatchWithVersion{
-							Version:    schema.Version,
-							NextSeqnum: uint16(schema.Extra.NextColSeqnum),
-							Seqnums:    schema.AllSeqnums(),
-							Batch:      anode.data,
-						}
-						visitAppend(bat, false)
-					}
+			if tbl.dataTable.tableSpace != nil && tbl.dataTable.tableSpace.node != nil {
+				anode := tbl.dataTable.tableSpace.node
+				schema := anode.table.GetLocalSchema(false)
+				bat := &containers.BatchWithVersion{
+					Version:    schema.Version,
+					NextSeqnum: uint16(schema.Extra.NextColSeqnum),
+					Seqnums:    schema.AllSeqnums(),
+					Batch:      anode.data,
 				}
+				visitAppend(bat, false)
 			}
-			if tbl.tombstoneTable.tableSpace != nil {
-				for _, node := range tbl.tombstoneTable.tableSpace.nodes {
-					anode, ok := node.(*anode)
-					if ok {
-						schema := anode.table.GetLocalSchema(true)
-						bat := &containers.BatchWithVersion{
-							Version:    schema.Version,
-							NextSeqnum: uint16(schema.Extra.NextColSeqnum),
-							Seqnums:    schema.AllSeqnums(),
-							Batch:      anode.data,
-						}
-						visitAppend(bat, true)
-					}
+			if tbl.tombstoneTable.tableSpace != nil && tbl.tombstoneTable.tableSpace.node != nil {
+				anode := tbl.tombstoneTable.tableSpace.node
+				schema := anode.table.GetLocalSchema(true)
+				bat := &containers.BatchWithVersion{
+					Version:    schema.Version,
+					NextSeqnum: uint16(schema.Extra.NextColSeqnum),
+					Seqnums:    schema.AllSeqnums(),
+					Batch:      anode.data,
 				}
+				visitAppend(bat, true)
 			}
 		}
 	}

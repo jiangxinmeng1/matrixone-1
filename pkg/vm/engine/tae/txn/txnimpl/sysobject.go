@@ -15,7 +15,6 @@
 package txnimpl
 
 import (
-	"context"
 	"fmt"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
@@ -192,15 +191,6 @@ func (obj *txnSysObject) getColumnTableVec(
 	}
 	return
 }
-func (obj *txnSysObject) getColumnTableData(
-	colIdx int, mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	ts := obj.Txn.GetStartTS()
-	view = containers.NewColumnView(colIdx)
-	colData, err := obj.getColumnTableVec(ts, colIdx, mp)
-	view.SetData(colData)
-	return
-}
 
 func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.TableMVCCNode], attr string, colData containers.Vector) {
 	schema := node.BaseNode.Schema
@@ -272,14 +262,6 @@ func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool
 	return
 }
 
-func (obj *txnSysObject) getRelTableData(colIdx int, mp *mpool.MPool) (view *containers.ColumnView, err error) {
-	ts := obj.Txn.GetStartTS()
-	view = containers.NewColumnView(colIdx)
-	colData, err := obj.getRelTableVec(ts, colIdx, mp)
-	view.SetData(colData)
-	return
-}
-
 func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode], attr string, colData containers.Vector) {
 	switch attr {
 	case pkgcatalog.SystemDBAttr_ID:
@@ -322,45 +304,85 @@ func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData con
 	}
 	return
 }
-func (obj *txnSysObject) getDBTableData(
-	colIdx int, mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	view = containers.NewColumnView(colIdx)
-	colData, err := obj.getDBTableVec(colIdx, mp)
-	view.SetData(colData)
-	return
-}
-
-func (obj *txnSysObject) GetColumnDataById(
-	ctx context.Context, blkID uint16, colIdx int, mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	if !obj.isSysTable() {
-		return obj.txnObject.GetColumnDataById(ctx, blkID, colIdx, mp)
-	}
-	if obj.table.GetID() == pkgcatalog.MO_DATABASE_ID {
-		return obj.getDBTableData(colIdx, mp)
-	} else if obj.table.GetID() == pkgcatalog.MO_TABLES_ID {
-		return obj.getRelTableData(colIdx, mp)
-	} else if obj.table.GetID() == pkgcatalog.MO_COLUMNS_ID {
-		return obj.getColumnTableData(colIdx, mp)
-	} else {
-		panic("not supported")
-	}
-}
 
 func (obj *txnSysObject) HybridScan(
 	bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
 ) (err error) {
-	if len(colIdx) > 1 {
-		panic("not expect")
+	return obj.Scan(bat, blkID, colIdx, mp)
+}
+func (obj *txnSysObject) Scan(
+	bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
+) (err error) {
+	if !obj.isSysTable() {
+		return obj.txnObject.HybridScan(bat, blkID, colIdx, mp)
 	}
-	if *bat != nil {
-		panic("not expect")
+	attrs := obj.table.entry.GetLastestSchema(false).Attrs()
+	if obj.table.GetID() == pkgcatalog.MO_DATABASE_ID {
+		if *bat == nil {
+			*bat = containers.NewBatch()
+			for _, idx := range colIdx {
+				vec, err := obj.getDBTableVec(idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).AddVector(attrs[idx], vec)
+			}
+		} else {
+			for _, idx := range colIdx {
+				vec, err := obj.getDBTableVec(idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
+				vec.Close()
+			}
+		}
+		return nil
+	} else if obj.table.GetID() == pkgcatalog.MO_TABLES_ID {
+		if *bat == nil {
+			*bat = containers.NewBatch()
+			for _, idx := range colIdx {
+				vec, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).AddVector(attrs[idx], vec)
+			}
+		} else {
+			for _, idx := range colIdx {
+				vec, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
+				vec.Close()
+			}
+		}
+		return nil
+	} else if obj.table.GetID() == pkgcatalog.MO_COLUMNS_ID {
+		if *bat == nil {
+			*bat = containers.NewBatch()
+			for _, idx := range colIdx {
+				vec, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).AddVector(attrs[idx], vec)
+			}
+		} else {
+			for _, idx := range colIdx {
+				vec, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
+				if err != nil {
+					return err
+				}
+				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
+				vec.Close()
+			}
+		}
+		return nil
+	} else {
+		panic("not supported")
 	}
-	view, err := obj.GetColumnDataById(obj.Txn.GetContext(), blkID, colIdx[0], mp)
-	*bat = containers.NewBatch()
-	(*bat).AddVector("", view.GetData())
-	return
 }
 
 func (obj *txnSysObject) Prefetch(idxes []int) error {

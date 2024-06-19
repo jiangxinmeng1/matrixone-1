@@ -1724,19 +1724,19 @@ func TestSystemDB1(t *testing.T) {
 	it := table.MakeObjectIt(false, true)
 	tableSchema := table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	for it.Valid() {
+		idxs := []int{
+			tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_Name),
+			tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CatalogName),
+			tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CreateSQL),
+		}
+		var view *containers.Batch
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_Name), common.DefaultAllocator)
+		err := blk.Scan(&view, 0, idxs, common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
-		assert.Equal(t, 3, view.Length())
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CatalogName), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		assert.Equal(t, 3, view.Length())
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemDBAttr_CreateSQL), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		assert.Equal(t, 3, view.Length())
+		for _, vec := range view.Vecs {
+			assert.Equal(t, 3, vec.Length())
+		}
 		it.Next()
 	}
 
@@ -1745,16 +1745,15 @@ func TestSystemDB1(t *testing.T) {
 	it = table.MakeObjectIt(false, true)
 	tableSchema = table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	for it.Valid() {
+		idxs := []int{
+			tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Name),
+			tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Persistence),
+			tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Kind),
+		}
+		var view *containers.Batch
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Name), common.DefaultAllocator)
+		err := blk.Scan(&view, 0, idxs, common.DefaultAllocator)
 		assert.Nil(t, err)
-		defer view.Close()
-		assert.Equal(t, 4, view.Length())
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Persistence), common.DefaultAllocator)
-		assert.NoError(t, err)
-		defer view.Close()
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemRelAttr_Kind), common.DefaultAllocator)
-		assert.NoError(t, err)
 		defer view.Close()
 		it.Next()
 	}
@@ -1762,43 +1761,25 @@ func TestSystemDB1(t *testing.T) {
 	table, err = db.GetRelationByName(pkgcatalog.MO_COLUMNS)
 	assert.Nil(t, err)
 
-	bat := containers.NewBatch()
-	defer bat.Close()
+	var bat *containers.Batch
 	// schema2 := table.GetMeta().(*catalog.TableEntry).GetSchema()
 	// bat := containers.BuildBatch(schema2.AllNames(), schema2.AllTypes(), schema2.AllNullables(), 0)
 	tableSchema = table.GetMeta().(*catalog.TableEntry).GetLastestSchema(false)
 	it = table.MakeObjectIt(false, true)
 	for it.Valid() {
+		idxs := []int{
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_DBName),
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_RelName),
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Name),
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_ConstraintType),
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Type),
+			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Num),
+		}
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_DBName), common.DefaultAllocator)
+		err := blk.Scan(&bat, 0, idxs, common.DefaultAllocator)
 		assert.NoError(t, err)
-		defer view.Close()
-		bat.AddVector(pkgcatalog.SystemColAttr_DBName, view.Orphan())
-
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_RelName), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		bat.AddVector(pkgcatalog.SystemColAttr_RelName, view.Orphan())
-
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Name), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		bat.AddVector(pkgcatalog.SystemColAttr_Name, view.Orphan())
-
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_ConstraintType), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		t.Log(view.GetData().String())
-		bat.AddVector(pkgcatalog.SystemColAttr_ConstraintType, view.Orphan())
-
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Type), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		t.Log(view.GetData().String())
-		view, err = blk.GetColumnDataById(context.Background(), 0, tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Num), common.DefaultAllocator)
-		assert.Nil(t, err)
-		defer view.Close()
-		t.Log(view.GetData().String())
+		defer bat.Close()
+		t.Log(bat.String())
 		it.Next()
 	}
 

@@ -77,6 +77,7 @@ type NodeT interface {
 		vpool *containers.VectorPool,
 	) (err error)
 	FillBlockTombstones(
+		ctx context.Context,
 		txn txnif.TxnReader,
 		blkID *objectio.Blockid,
 		deletes **nulls.Nulls,

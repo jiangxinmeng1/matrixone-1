@@ -83,7 +83,7 @@ func (entry *TableEntry) FillDeletes(
 		if !visible {
 			continue
 		}
-		tombstone.GetObjectData().FillBlockTombstones(txn, &blkID, &view.DeleteMask, mp)
+		tombstone.GetObjectData().FillBlockTombstones(ctx, txn, &blkID, &view.DeleteMask, mp)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func (entry *TableEntry) HybridScan(
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
 		tombstone := it.Get().GetPayload()
-		err := tombstone.GetObjectData().FillBlockTombstones(txn, blkID, &(*bat).Deletes, mp)
+		err := tombstone.GetObjectData().FillBlockTombstones(ctx, txn, blkID, &(*bat).Deletes, mp)
 		if err != nil {
 			return err
 		}

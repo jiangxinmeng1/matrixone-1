@@ -459,6 +459,7 @@ func (blk *baseObject) Scan(
 }
 
 func (blk *baseObject) FillBlockTombstones(
+	ctx context.Context,
 	txn txnif.TxnReader,
 	blkID *objectio.Blockid,
 	deletes **nulls.Nulls,
@@ -468,7 +469,7 @@ func (blk *baseObject) FillBlockTombstones(
 	if !blk.meta.IsTombstone {
 		panic("logic err")
 	}
-	return node.FillBlockTombstones(txn, blkID, deletes, mp)
+	return node.FillBlockTombstones(ctx, txn, blkID, deletes, mp)
 }
 
 func (blk *baseObject) ScanInMemory(

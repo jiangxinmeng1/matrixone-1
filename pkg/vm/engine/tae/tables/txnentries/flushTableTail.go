@@ -43,11 +43,11 @@ type flushTableTailEntry struct {
 	taskID     uint64
 	tableEntry *catalog.TableEntry
 
-	ablksMetas        []*catalog.ObjectEntry
-	ablksHandles      []handle.Object
-	createdBlkHandles handle.Object
-	createdMergeFile  string
-	transMappings     *api.BlkTransferBooking
+	aobjMetas        []*catalog.ObjectEntry
+	aobjHandles      []handle.Object
+	createdObjHandle handle.Object
+	createdMergeFile string
+	transMappings    *api.BlkTransferBooking
 
 	atombstonesMetas        []*catalog.ObjectEntry
 	atombstoneksHandles     []handle.Object
@@ -88,9 +88,9 @@ func NewFlushTableTailEntry(
 		taskID:                  taskID,
 		transMappings:           mapping,
 		tableEntry:              tableEntry,
-		ablksMetas:              aobjsMetas,
-		ablksHandles:            aobjsHandles,
-		createdBlkHandles:       createdObjHandles,
+		aobjMetas:               aobjsMetas,
+		aobjHandles:             aobjsHandles,
+		createdObjHandle:        createdObjHandles,
 		createdMergeFile:        createdMergedObjFile,
 		atombstonesMetas:        atombstonesMetas,
 		atombstoneksHandles:     atombstonesHandles,
@@ -100,8 +100,8 @@ func NewFlushTableTailEntry(
 	}
 
 	if entry.transMappings != nil {
-		if entry.createdBlkHandles != nil {
-			entry.delTbls = make([]*model.TransDels, entry.createdBlkHandles.GetMeta().(*catalog.ObjectEntry).BlockCnt())
+		if entry.createdObjHandle != nil {
+			entry.delTbls = make([]*model.TransDels, entry.createdObjHandle.GetMeta().(*catalog.ObjectEntry).BlockCnt())
 			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
@@ -126,11 +126,11 @@ func (entry *flushTableTailEntry) addTransferPages() {
 		if len(m) == 0 {
 			continue
 		}
-		id := entry.ablksHandles[i].Fingerprint()
+		id := entry.aobjHandles[i].Fingerprint()
 		entry.pageIds = append(entry.pageIds, id)
 		page := model.NewTransferHashPage(id, time.Now(), isTransient)
 		for srcRow, dst := range m {
-			blkid := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(dst.BlkIdx))
+			blkid := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(dst.BlkIdx))
 			page.Train(uint32(srcRow), *objectio.NewRowid(blkid, uint32(dst.RowIdx)))
 		}
 		entry.rt.TransferTable.AddPage(page)
@@ -140,14 +140,14 @@ func (entry *flushTableTailEntry) addTransferPages() {
 // collectDelsAndTransfer collects deletes in flush process and moves them to the created obj
 // ATTENTION !!! (from, to] !!!
 func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (transCnt int, err error) {
-	if len(entry.ablksHandles) == 0 {
+	if len(entry.aobjHandles) == 0 {
 		return
 	}
-	// if created blk handles is nil, all rows in ablks are deleted
-	if entry.createdBlkHandles == nil {
+	// if created obj handles is nil, all rows in aobjs are deleted
+	if entry.createdObjHandle == nil {
 		return
 	}
-	for i, blk := range entry.ablksMetas {
+	for i, obj := range entry.aobjMetas {
 		// For ablock, there is only one block in it.
 		// Checking the block mapping once is enough
 		mapping := entry.transMappings.Mappings[i].M
@@ -156,7 +156,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			continue
 		}
 		var bat *containers.Batch
-		bat, err = blk.CollectTombstoneInRange(
+		bat, err = obj.CollectTombstoneInRange(
 			entry.txn.GetContext(),
 			from.Next(), // NOTE HERE
 			to,
@@ -178,15 +178,15 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			row := rowid[i].GetRowOffset()
 			destpos, ok := mapping[int32(row)]
 			if !ok {
-				panic(fmt.Sprintf("%s find no transfer mapping for row %d", blk.ID.String(), row))
+				panic(fmt.Sprintf("%s find no transfer mapping for row %d", obj.ID.String(), row))
 			}
 			if entry.delTbls[destpos.BlkIdx] == nil {
 				entry.delTbls[destpos.BlkIdx] = model.NewTransDels(entry.txn.GetPrepareTS())
 			}
 			entry.delTbls[destpos.BlkIdx].Mapping[int(destpos.RowIdx)] = ts[i]
-			id := entry.createdBlkHandles.Fingerprint()
+			id := entry.createdObjHandle.Fingerprint()
 			id.SetBlockOffset(uint16(destpos.BlkIdx))
-			if err = entry.createdBlkHandles.GetRelation().RangeDelete(
+			if err = entry.createdObjHandle.GetRelation().RangeDelete(
 				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 			); err != nil {
 				bat.Close()
@@ -194,7 +194,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 			}
 		}
 		bat.Close()
-		entry.nextRoundDirties[blk] = struct{}{}
+		entry.nextRoundDirties[obj] = struct{}{}
 	}
 	return
 }
@@ -216,14 +216,14 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 
 	for i, delTbl := range entry.delTbls {
 		if delTbl != nil {
-			destid := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(i))
+			destid := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(i))
 			entry.rt.TransferDelsMap.SetDelsForBlk(*destid, delTbl)
 		}
 	}
 
 	if aconflictCnt, totalTrans := len(entry.nextRoundDirties), trans+entry.transCntBeforeCommit; aconflictCnt > 0 || totalTrans > 0 {
 		logutil.Infof(
-			"[FlushTabletail] task %d ww (%s .. %s): on %d ablk, transfer %v rows, %d in commit queue",
+			"[FlushTabletail] task %d ww (%s .. %s): on %d aobj, transfer %v rows, %d in commit queue",
 			entry.taskID,
 			entry.txn.GetStartTS().ToString(),
 			entry.txn.GetPrepareTS().ToString(),
@@ -253,24 +253,24 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 	fs := entry.rt.Fs.Service
 
 	// object for snapshot read of aobjects
-	ablkNames := make([]string, 0, len(entry.ablksMetas))
-	for _, blk := range entry.ablksMetas {
-		if !blk.HasPersistedData() {
-			logutil.Infof("[FlushTabletail] skip empty aobject %s when rollback", blk.ID.String())
+	aobjNames := make([]string, 0, len(entry.aobjMetas))
+	for _, obj := range entry.aobjMetas {
+		if !obj.HasPersistedData() {
+			logutil.Infof("[FlushTabletail] skip empty aobject %s when rollback", obj.ID.String())
 			continue
 		}
-		seg := blk.ID.Segment()
+		seg := obj.ID.Segment()
 		name := objectio.BuildObjectName(seg, 0).String()
-		ablkNames = append(ablkNames, name)
+		aobjNames = append(aobjNames, name)
 	}
-	for _, blk := range entry.atombstonesMetas {
-		if !blk.HasPersistedData() {
-			logutil.Infof("[FlushTabletail] skip empty atombstone %s when rollback", blk.ID.String())
+	for _, obj := range entry.atombstonesMetas {
+		if !obj.HasPersistedData() {
+			logutil.Infof("[FlushTabletail] skip empty atombstone %s when rollback", obj.ID.String())
 			continue
 		}
-		seg := blk.ID.Segment()
+		seg := obj.ID.Segment()
 		name := objectio.BuildObjectName(seg, 0).String()
-		ablkNames = append(ablkNames, name)
+		aobjNames = append(aobjNames, name)
 	}
 
 	// for io task, dispatch by round robin, scope can be nil
@@ -278,7 +278,7 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 		// TODO: variable as timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		for _, name := range ablkNames {
+		for _, name := range aobjNames {
 			_ = fs.Delete(ctx, name)
 		}
 		if entry.createdDeletesFile != "" {
@@ -294,11 +294,11 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 
 // ApplyCommit Gc in memory deletes and update table compact status
 func (entry *flushTableTailEntry) ApplyCommit(_ string) (err error) {
-	for _, blk := range entry.ablksMetas {
-		_ = blk.GetObjectData().TryUpgrade()
+	for _, obj := range entry.aobjMetas {
+		_ = obj.GetObjectData().TryUpgrade()
 	}
-	for _, blk := range entry.atombstonesMetas {
-		_ = blk.GetObjectData().TryUpgrade()
+	for _, obj := range entry.atombstonesMetas {
+		_ = obj.GetObjectData().TryUpgrade()
 	}
 	return
 }

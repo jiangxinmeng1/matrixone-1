@@ -25,6 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 )
 
@@ -317,6 +318,6 @@ func (obj *txnObject) HybridScan(
 		return nil
 	}
 	blkID := objectio.NewBlockidWithObjectID(obj.GetID(), blkOffset)
-	return obj.entry.GetTable().HybridScan(
-		ctx, obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
+	return tables.HybridScan(
+		ctx, obj.entry.GetTable(), obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
 }

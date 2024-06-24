@@ -37,6 +37,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/testutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/jobs"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils/config"
@@ -1981,7 +1982,7 @@ func TestApplyDeltaloc(t *testing.T) {
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
 				blkID := objectio.NewBlockidWithObjectID(&meta.ID, uint16(j))
-				err := meta.GetTable().HybridScan(ctx, txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
+				err := tables.HybridScan(ctx, meta.GetTable(), txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
 				assert.NoError(t, err)
 				view.Compact()
 				length += view.Length()

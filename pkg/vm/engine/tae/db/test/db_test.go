@@ -8618,9 +8618,10 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = tae.GetRelation()
+	tableEntry := rel.GetMeta().(*catalog.TableEntry)
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, err := blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
-		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
+	deletes, err := tables.RangeScanTombstoneByObject(
+		ctx, tableEntry, types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, deletes.Length())
@@ -8635,8 +8636,8 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	deletes, err = blk.GetMeta().(*catalog.ObjectEntry).CollectTombstoneInRange(
-		context.Background(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
+	delets, err := tables.RangeScanTombstoneByObject(
+		ctx, tableEntry, types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 5, deletes.Length())

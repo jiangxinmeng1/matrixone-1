@@ -324,7 +324,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	}
 
 	phaseDesc = "2-HandleMergeEntryInTxn"
-	if task.createdBObjs, err = HandleMergeEntryInTxn(task.txn, task.commitEntry, task.rt, task.isTombstone); err != nil {
+	if task.createdBObjs, err = HandleMergeEntryInTxn(ctx, task.txn, task.commitEntry, task.rt, task.isTombstone); err != nil {
 		return err
 	}
 
@@ -334,7 +334,9 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	return nil
 }
 
-func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *dbutils.Runtime, isTombstone bool) ([]*catalog.ObjectEntry, error) {
+func HandleMergeEntryInTxn(
+	ctx context.Context, txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *dbutils.Runtime, isTombstone bool,
+) ([]*catalog.ObjectEntry, error) {
 	database, err := txn.GetDatabaseByID(entry.DbId)
 	if err != nil {
 		return nil, err
@@ -380,6 +382,7 @@ func HandleMergeEntryInTxn(txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *
 	}
 
 	txnEntry, err := txnentries.NewMergeObjectsEntry(
+		ctx,
 		txn,
 		rel,
 		mergedObjs,

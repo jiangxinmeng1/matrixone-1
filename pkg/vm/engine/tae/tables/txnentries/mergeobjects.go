@@ -15,6 +15,7 @@
 package txnentries
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
@@ -32,6 +33,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 )
 
 type mergeObjectsEntry struct {
@@ -52,6 +54,7 @@ type mergeObjectsEntry struct {
 }
 
 func NewMergeObjectsEntry(
+	ctx context.Context,
 	txn txnif.AsyncTxn,
 	relation handle.Relation,
 	droppedObjs, createdObjs []*catalog.ObjectEntry,
@@ -82,7 +85,7 @@ func NewMergeObjectsEntry(
 		entry.collectTs = rt.Now()
 		var err error
 		// phase 1 transfer
-		entry.transCntBeforeCommit, _, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
+		entry.transCntBeforeCommit, _, err = entry.collectDelsAndTransfer(ctx, entry.txn.GetStartTS(), entry.collectTs)
 		if err != nil {
 			return nil, err
 		}
@@ -165,13 +168,16 @@ func (entry *mergeObjectsEntry) MakeCommand(csn uint32) (cmd txnif.TxnCmd, err e
 
 // ATTENTION !!! (from, to] !!!
 func (entry *mergeObjectsEntry) transferObjectDeletes(
+	ctx context.Context,
 	dropped *catalog.ObjectEntry,
 	from, to types.TS,
-	blkOffsetBase int) (transCnt int, collect, transfer time.Duration, err error) {
-
+	blkOffsetBase int,
+) (transCnt int, collect, transfer time.Duration, err error) {
 	inst := time.Now()
-	bat, err := dropped.CollectTombstoneInRange(
-		entry.txn.GetContext(),
+	bat, err := tables.RangeScanTombstoneByObject(
+		ctx,
+		dropped.GetTable(),
+		dropped.ID,
 		from.Next(),
 		to,
 		common.MergeAllocator,
@@ -247,7 +253,9 @@ func (s *tempStat) String() string {
 }
 
 // ATTENTION !!! (from, to] !!!
-func (entry *mergeObjectsEntry) collectDelsAndTransfer(from, to types.TS) (transCnt int, stat tempStat, err error) {
+func (entry *mergeObjectsEntry) collectDelsAndTransfer(
+	ctx context.Context, from, to types.TS,
+) (transCnt int, stat tempStat, err error) {
 	if len(entry.createdObjs) == 0 {
 		return
 	}
@@ -279,7 +287,7 @@ func (entry *mergeObjectsEntry) collectDelsAndTransfer(from, to types.TS) (trans
 		cnt := 0
 
 		var ct, tt time.Duration
-		cnt, ct, tt, err = entry.transferObjectDeletes(dropped, from, to, blksOffsetBase)
+		cnt, ct, tt, err = entry.transferObjectDeletes(ctx, dropped, from, to, blksOffsetBase)
 		if err != nil {
 			return
 		}
@@ -320,7 +328,8 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 		return
 	}
 	// phase 2 transfer
-	transCnt, stat, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS().Prev())
+	ctx := context.Background()
+	transCnt, stat, err := entry.collectDelsAndTransfer(ctx, entry.collectTs, entry.txn.GetPrepareTS().Prev())
 	if err != nil {
 		return nil
 	}

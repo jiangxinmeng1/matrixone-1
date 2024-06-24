@@ -32,7 +32,7 @@ func (entry *TableEntry) CollectTombstoneInRange(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (bat *containers.Batch, err error) {
-	it := entry.MakeObjectIt(false, true)
+	it := entry.MakeTombstoneObjectIt(false)
 	for ; it.Valid(); it.Next() {
 		node := it.Get()
 		tombstone := node.GetPayload()

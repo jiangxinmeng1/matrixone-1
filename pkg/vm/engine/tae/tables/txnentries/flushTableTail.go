@@ -68,6 +68,7 @@ type flushTableTailEntry struct {
 }
 
 func NewFlushTableTailEntry(
+	ctx context.Context,
 	txn txnif.AsyncTxn,
 	taskID uint64,
 	mapping *api.BlkTransferBooking,
@@ -106,7 +107,7 @@ func NewFlushTableTailEntry(
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
 			var err error
-			entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(entry.txn.GetStartTS(), entry.collectTs)
+			entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(ctx, entry.txn.GetStartTS(), entry.collectTs)
 			if err != nil {
 				return nil, err
 			}
@@ -139,7 +140,9 @@ func (entry *flushTableTailEntry) addTransferPages() {
 
 // collectDelsAndTransfer collects deletes in flush process and moves them to the created obj
 // ATTENTION !!! (from, to] !!!
-func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (transCnt int, err error) {
+func (entry *flushTableTailEntry) collectDelsAndTransfer(
+	ctx context.Context, from, to types.TS,
+) (transCnt int, err error) {
 	if len(entry.aobjHandles) == 0 {
 		return
 	}
@@ -157,7 +160,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 		}
 		var bat *containers.Batch
 		bat, err = obj.CollectTombstoneInRange(
-			entry.txn.GetContext(),
+			ctx,
 			from.Next(), // NOTE HERE
 			to,
 			common.MergeAllocator,
@@ -209,7 +212,8 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 		// no del table, no transfer
 		return nil
 	}
-	trans, err := entry.collectDelsAndTransfer(entry.collectTs, entry.txn.GetPrepareTS().Prev())
+	ctx := context.Background()
+	trans, err := entry.collectDelsAndTransfer(ctx, entry.collectTs, entry.txn.GetPrepareTS().Prev())
 	if err != nil {
 		return err
 	}

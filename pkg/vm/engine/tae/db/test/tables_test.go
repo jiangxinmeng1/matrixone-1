@@ -416,7 +416,7 @@ func TestTxn6(t *testing.T) {
 				obj := it.GetObject()
 				for j := 0; j < obj.BlkCnt(); j++ {
 					var view *containers.Batch
-					err := obj.HybridScan(&view, uint16(j), []int{schema.ColDefs[3].Idx}, common.DefaultAllocator)
+					err := obj.HybridScan(ctx, &view, uint16(j), []int{schema.ColDefs[3].Idx}, common.DefaultAllocator)
 					assert.Nil(t, err)
 					defer view.Close()
 					assert.NotEqual(t, bats[0].Length(), view.Length())
@@ -519,7 +519,7 @@ func TestFlushAblkMerge(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				blk.HybridScan(&view, uint16(j), []int{3, schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+				blk.HybridScan(ctx, &view, uint16(j), []int{3, schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 				assert.NotNil(t, view)
 				defer view.Close()
 				if view.Deletes != nil {
@@ -625,7 +625,7 @@ func TestCompaction1(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				blk.Scan(&view, uint16(j), []int{3}, common.DefaultAllocator)
+				blk.Scan(ctx, &view, uint16(j), []int{3}, common.DefaultAllocator)
 				assert.NotNil(t, view)
 				view.Close()
 				assert.True(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
@@ -650,7 +650,7 @@ func TestCompaction1(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				blk.Scan(&view, uint16(0), []int{3}, common.DefaultAllocator)
+				blk.Scan(ctx, &view, uint16(0), []int{3}, common.DefaultAllocator)
 				assert.NotNil(t, view)
 				view.Close()
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
@@ -699,7 +699,7 @@ func TestCompaction2(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				blk.Scan(&view, uint16(j), []int{3}, common.DefaultAllocator)
+				blk.Scan(ctx, &view, uint16(j), []int{3}, common.DefaultAllocator)
 				assert.NotNil(t, view)
 				view.Close()
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).IsAppendable())
@@ -717,7 +717,7 @@ func TestCompaction2(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				blk.Scan(&view, uint16(j), []int{3}, common.DefaultAllocator)
+				blk.Scan(ctx, &view, uint16(j), []int{3}, common.DefaultAllocator)
 				assert.NotNil(t, view)
 				view.Close()
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).IsAppendable())

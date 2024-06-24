@@ -15,6 +15,7 @@
 package handle
 
 import (
+	"context"
 	"io"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -66,12 +67,14 @@ type ObjectReader interface {
 	String() string
 	GetMeta() any
 	Scan(
+		ctx context.Context,
 		bat **containers.Batch,
 		blkID uint16,
 		colIdxes []int,
 		mp *mpool.MPool,
 	) (err error)
 	HybridScan(
+		ctx context.Context,
 		bat **containers.Batch,
 		blkOffset uint16,
 		colIdxs []int,

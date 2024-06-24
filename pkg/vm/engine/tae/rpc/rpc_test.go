@@ -445,7 +445,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 		var cv *containers.Batch
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			err := blk.Scan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := blk.Scan(ctx, &cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 		}
 		it.Next()
@@ -820,7 +820,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var v *containers.Batch
-			err := blk.HybridScan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := blk.HybridScan(ctx, &v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			v.Compact()
@@ -1028,7 +1028,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var v *containers.Batch
-			err := blk.Scan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := blk.Scan(ctx, &v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			assert.Equal(t, 100, v.Length())
@@ -1043,7 +1043,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	it = tbH.MakeObjectIt(false, true)
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
 	var cv *containers.Batch
-	err = it.GetObject().Scan(&cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+	err = it.GetObject().Scan(ctx, &cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer cv.Close()
 
@@ -1353,7 +1353,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
 			var v *containers.Batch
-			err := it.GetObject().Scan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := it.GetObject().Scan(ctx, &v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			assert.Equal(t, 100, v.Length())
@@ -1367,7 +1367,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	it = tbH.MakeObjectIt(false, true)
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
 	var v *containers.Batch
-	err = it.GetObject().Scan(&v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+	err = it.GetObject().Scan(ctx, &v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer v.Close()
 
@@ -1450,7 +1450,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
 			var v *containers.Batch
-			err := obj.HybridScan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := obj.HybridScan(ctx, &v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			v.Compact()
@@ -1683,7 +1683,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
 				var v *containers.Batch
-				err := obj.Scan(&v, 0, []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+				err := obj.Scan(ctx, &v, 0, []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer v.Close()
 				assert.Equal(t, 100, v.Length())
@@ -1720,7 +1720,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		it := tbH.MakeObjectIt(false, true)
 		hideColIdx := schema.GetColIdx(hideCol[0].Name)
 		var v *containers.Batch
-		err = it.GetObject().Scan(&v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+		err = it.GetObject().Scan(ctx, &v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer v.Close()
 
@@ -1774,7 +1774,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
 				var v *containers.Batch
-				err := obj.HybridScan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+				err := obj.HybridScan(ctx, &v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer v.Close()
 				v.Compact()
@@ -1980,7 +1980,7 @@ func TestApplyDeltaloc(t *testing.T) {
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
 				blkID := objectio.NewBlockidWithObjectID(&meta.ID, uint16(j))
-				err := meta.GetTable().HybridScan(txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
+				err := meta.GetTable().HybridScan(ctx, txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
 				assert.NoError(t, err)
 				view.Compact()
 				length += view.Length()

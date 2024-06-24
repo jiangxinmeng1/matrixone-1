@@ -207,9 +207,9 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 
 	obj := task.mergedObjsHandle[objIdx]
 	if task.isTombstone {
-		err = obj.Scan(&view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+		err = obj.Scan(ctx, &view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
 	} else {
-		err = obj.HybridScan(&view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
+		err = obj.HybridScan(ctx, &view, uint16(task.nMergedBlk[objIdx]), task.idxs, common.MergeAllocator)
 	}
 	if err != nil {
 		return nil, nil, nil, err

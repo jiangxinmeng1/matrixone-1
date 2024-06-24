@@ -280,6 +280,7 @@ func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {
 }
 
 func (node *memoryNode) Scan(
+	ctx context.Context,
 	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
@@ -292,7 +293,7 @@ func (node *memoryNode) Scan(
 	}
 	node.object.RLock()
 	defer node.object.RUnlock()
-	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(txn.GetContext(), txn)
+	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
 	if !visible || err != nil {
 		// blk.RUnlock()
 		return

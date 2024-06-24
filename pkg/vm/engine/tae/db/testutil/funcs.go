@@ -218,7 +218,7 @@ func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers
 		blkCnt := blk.GetMeta().(*catalog.ObjectEntry).BlockCnt()
 		for i := 0; i < blkCnt; i++ {
 			var view *containers.Batch
-			err := blk.HybridScan(&view, uint16(i), []int{colIdx}, common.DefaultAllocator)
+			err := blk.HybridScan(context.Background(), &view, uint16(i), []int{colIdx}, common.DefaultAllocator)
 			if view == nil {
 				logutil.Warnf("blk %v", blk.String())
 				continue

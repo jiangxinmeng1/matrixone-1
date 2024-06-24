@@ -235,7 +235,7 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 		blkCnt := uint16(blk.BlkCnt())
 		for i := uint16(0); i < blkCnt; i++ {
 			var view *containers.Batch
-			err := blk.HybridScan(&view, i, []int{rowIDIdx, pkIdx}, common.DefaultAllocator)
+			err := blk.HybridScan(context.Background(), &view, i, []int{rowIDIdx, pkIdx}, common.DefaultAllocator)
 			assert.NoError(e.t, err)
 			defer view.Close()
 			view.Compact()

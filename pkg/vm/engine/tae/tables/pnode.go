@@ -89,6 +89,7 @@ func (node *persistedNode) GetDataWindow(
 func (node *persistedNode) IsPersisted() bool { return true }
 
 func (node *persistedNode) Scan(
+	ctx context.Context,
 	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema *catalog.Schema,
@@ -103,7 +104,7 @@ func (node *persistedNode) Scan(
 		return err
 	}
 	vecs, err := LoadPersistedColumnDatas(
-		txn.GetContext(), readSchema, node.object.rt, id, colIdxes, location, mp,
+		ctx, readSchema, node.object.rt, id, colIdxes, location, mp,
 	)
 	if err != nil {
 		return err

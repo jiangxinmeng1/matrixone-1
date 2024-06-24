@@ -60,6 +60,7 @@ type NodeT interface {
 	Rows() (uint32, error)
 
 	Scan(
+		ctx context.Context,
 		bat **containers.Batch,
 		txn txnif.TxnReader,
 		readSchema *catalog.Schema,

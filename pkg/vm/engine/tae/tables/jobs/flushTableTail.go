@@ -465,10 +465,10 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 	var obj handle.Object
 	if isTombstone {
 		obj = task.aTombstoneHandles[objIdx]
-		err = obj.Scan(&bat, 0, idxs, common.MergeAllocator)
+		err = obj.Scan(ctx, &bat, 0, idxs, common.MergeAllocator)
 	} else {
 		obj = task.aObjHandles[objIdx]
-		err = obj.HybridScan(&bat, 0, idxs, common.MergeAllocator)
+		err = obj.HybridScan(ctx, &bat, 0, idxs, common.MergeAllocator)
 	}
 
 	if err != nil {

@@ -15,6 +15,7 @@
 package txnimpl
 
 import (
+	"context"
 	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -291,29 +292,31 @@ func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) e
 }
 
 func (obj *txnObject) Scan(
+	ctx context.Context,
 	bat **containers.Batch,
 	blkID uint16,
 	colIdxes []int,
 	mp *mpool.MPool,
 ) (err error) {
 	if obj.entry.IsLocal {
-		obj.table.dataTable.tableSpace.Scan(bat, colIdxes, mp)
+		obj.table.dataTable.tableSpace.Scan(ctx, bat, colIdxes, mp)
 		return
 	}
-	return obj.entry.GetObjectData().Scan(bat, obj.Txn, obj.table.getSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
+	return obj.entry.GetObjectData().Scan(ctx, bat, obj.Txn, obj.table.getSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
 }
 
 func (obj *txnObject) HybridScan(
+	ctx context.Context,
 	bat **containers.Batch,
 	blkOffset uint16,
 	colIdxs []int,
 	mp *mpool.MPool,
 ) error {
 	if obj.entry.IsLocal {
-		obj.table.dataTable.tableSpace.HybridScan(bat, colIdxs, mp)
+		obj.table.dataTable.tableSpace.HybridScan(ctx, bat, colIdxs, mp)
 		return nil
 	}
 	blkID := objectio.NewBlockidWithObjectID(obj.GetID(), blkOffset)
 	return obj.entry.GetTable().HybridScan(
-		obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
+		ctx, obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
 }

@@ -15,6 +15,7 @@
 package txnimpl
 
 import (
+	"context"
 	"fmt"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
@@ -306,15 +307,15 @@ func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData con
 }
 
 func (obj *txnSysObject) HybridScan(
-	bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
+	ctx context.Context, bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
 ) (err error) {
-	return obj.Scan(bat, blkID, colIdx, mp)
+	return obj.Scan(ctx, bat, blkID, colIdx, mp)
 }
 func (obj *txnSysObject) Scan(
-	bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
+	ctx context.Context, bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
 ) (err error) {
 	if !obj.isSysTable() {
-		return obj.txnObject.HybridScan(bat, blkID, colIdx, mp)
+		return obj.txnObject.HybridScan(ctx, bat, blkID, colIdx, mp)
 	}
 	attrs := obj.table.entry.GetLastestSchema(false).Attrs()
 	if obj.table.GetID() == pkgcatalog.MO_DATABASE_ID {

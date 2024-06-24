@@ -15,6 +15,8 @@
 package txnimpl
 
 import (
+	"context"
+
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -223,7 +225,7 @@ func (n *anode) Window(start, end uint32) (bat *containers.Batch, err error) {
 	return
 }
 
-func (n *anode) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+func (n *anode) Scan(ctx context.Context, bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
 	if *bat == nil {
 		*bat = containers.NewBatch()
 		for _, colIdx := range colIdxes {

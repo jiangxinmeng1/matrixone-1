@@ -515,7 +515,7 @@ func (obj *baseObject) GetValue(
 	if !obj.meta.IsTombstone && !skipCheckDelete {
 		var bat *containers.Batch
 		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
-		err = HybridScan(ctx, obj.meta.GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		err = HybridScanByBlock(ctx, obj.meta.GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
 		if err != nil {
 			return
 		}

@@ -318,6 +318,6 @@ func (obj *txnObject) HybridScan(
 		return nil
 	}
 	blkID := objectio.NewBlockidWithObjectID(obj.GetID(), blkOffset)
-	return tables.HybridScan(
+	return tables.HybridScanByBlock(
 		ctx, obj.entry.GetTable(), obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
 }

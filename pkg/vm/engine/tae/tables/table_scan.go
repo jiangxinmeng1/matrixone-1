@@ -25,7 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 )
 
-func HybridScan(
+func HybridScanByBlock(
 	ctx context.Context,
 	tableEntry *catalog.TableEntry,
 	txn txnif.TxnReader,

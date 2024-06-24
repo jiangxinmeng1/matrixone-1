@@ -236,7 +236,7 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	mp *mpool.MPool,
 ) (view *containers.ColumnView, err error) {
 	var bat *containers.Batch
-	err = blk.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
+	err = blk.Scan(ctx, &bat, txn, readSchema, blkOffset, []int{col}, mp)
 	if err != nil {
 		return
 	}
@@ -445,6 +445,7 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 }
 
 func (blk *baseObject) Scan(
+	ctx context.Context,
 	bat **containers.Batch,
 	txn txnif.TxnReader,
 	readSchema any,
@@ -454,7 +455,7 @@ func (blk *baseObject) Scan(
 ) (err error) {
 	node := blk.PinNode()
 	defer node.Unref()
-	return node.Scan(bat, txn, readSchema.(*catalog.Schema), blkID, colIdxes, mp)
+	return node.Scan(ctx, bat, txn, readSchema.(*catalog.Schema), blkID, colIdxes, mp)
 }
 
 func (blk *baseObject) FillBlockTombstones(
@@ -513,7 +514,7 @@ func (obj *baseObject) GetValue(
 	if !obj.meta.IsTombstone && !skipCheckDelete {
 		var bat *containers.Batch
 		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
-		err = obj.meta.GetTable().HybridScan(txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		err = obj.meta.GetTable().HybridScan(ctx, txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
 		if err != nil {
 			return
 		}
@@ -532,7 +533,7 @@ func (obj *baseObject) GetValue(
 		return
 	}
 	var bat *containers.Batch
-	err = obj.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
+	err = obj.Scan(ctx, &bat, txn, readSchema, blkOffset, []int{col}, mp)
 	if err != nil {
 		return
 	}

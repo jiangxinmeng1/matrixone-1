@@ -433,7 +433,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		var view *containers.Batch
 		tbl := rel.GetMeta().(*catalog.TableEntry)
 		blkID := objectio.NewBlockidWithObjectID(obj.GetID(), 0)
-		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
+		err = tbl.HybridScan(context.Background(), txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
 		assert.Nil(t, view.Deletes)
 		assert.Equal(t, bat.Vecs[2].Length(), view.Length())
@@ -451,7 +451,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		err = rel.RangeDelete(obj.Fingerprint(), 1, 2, handle.DT_Normal)
 		assert.Nil(t, err)
 
-		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
+		err = tbl.HybridScan(ctx, txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
 		assert.True(t, view.Deletes.Contains(1))
 		assert.True(t, view.Deletes.Contains(2))
@@ -462,7 +462,7 @@ func TestNonAppendableBlock(t *testing.T) {
 		// _, err = dataBlk.Update(txn, 3, 2, int32(999))
 		// assert.Nil(t, err)
 
-		err = tbl.HybridScan(txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
+		err = tbl.HybridScan(ctx, txn, &view, schema, []int{2}, blkID, common.DefaultAllocator)
 		assert.Nil(t, err)
 		assert.True(t, view.Deletes.Contains(1))
 		assert.True(t, view.Deletes.Contains(2))
@@ -571,13 +571,13 @@ func TestAddObjsWithMetaLoc(t *testing.T) {
 		obj, err := rel.GetObject(newBlockFp1.ObjectID(), false)
 		assert.Nil(t, err)
 		var view *containers.Batch
-		err = obj.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+		err = obj.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		assert.True(t, view.Vecs[0].Equals(bats[0].Vecs[2]))
 		view.Close()
 		view = nil
 
-		err = obj.Scan(&view, 1, []int{2}, common.DefaultAllocator)
+		err = obj.Scan(ctx, &view, 1, []int{2}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		assert.True(t, view.Vecs[0].Equals(bats[1].Vecs[2]))
 		view.Close()
@@ -638,7 +638,7 @@ func TestAddObjsWithMetaLoc(t *testing.T) {
 		testutil.ForEachObject(rel, func(blk handle.Object) (err error) {
 			var view *containers.Batch
 			if blk.IsAppendable() {
-				err := blk.Scan(&view, 0, []int{3}, common.DefaultAllocator)
+				err := blk.Scan(ctx, &view, 0, []int{3}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				view.Close()
 				cntOfAblk += blk.BlkCnt()
@@ -649,12 +649,12 @@ func TestAddObjsWithMetaLoc(t *testing.T) {
 			metaLoc.SetRows(schema.BlockMaxRows)
 			assert.True(t, !metaLoc.IsEmpty())
 			if bytes.Equal(metaLoc, metaLoc1) {
-				err := blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+				err := blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				assert.True(t, view.Vecs[0].Equals(bats[0].Vecs[2]))
 				view.Close()
 			} else {
-				err := blk.Scan(&view, 1, []int{3}, common.DefaultAllocator)
+				err := blk.Scan(ctx, &view, 1, []int{3}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				assert.True(t, view.Vecs[0].Equals(bats[1].Vecs[3]))
 				view.Close()
@@ -730,7 +730,7 @@ func TestCompactMemAlter(t *testing.T) {
 		assert.Nil(t, err)
 		for i := 0; i <= 5; i++ {
 			var view *containers.Batch
-			err := obj.Scan(&view, 0, []int{i}, common.DefaultAllocator)
+			err := obj.Scan(ctx, &view, 0, []int{i}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			if i < 5 {
 				require.Equal(t, bat.Vecs[i].GetType().Oid, view.Vecs[0].GetType().Oid)
@@ -1128,7 +1128,7 @@ func TestFlushTabletail(t *testing.T) {
 			obj := it.GetObject()
 			for j := uint16(0); j < uint16(obj.BlkCnt()); j++ {
 				var view *containers.Batch
-				err := obj.HybridScan(&view, j, []int{2}, common.DefaultAllocator)
+				err := obj.HybridScan(ctx, &view, j, []int{2}, common.DefaultAllocator)
 				require.NoError(t, err)
 				defer view.Close()
 				viewDel := 0
@@ -1163,7 +1163,7 @@ func TestFlushTabletail(t *testing.T) {
 			var views *containers.Batch
 			for j := uint16(0); j < uint16(obj.BlkCnt()); j++ {
 				blkID := objectio.NewBlockidWithObjectID(obj.GetID(), j)
-				err := rel.GetMeta().(*catalog.TableEntry).HybridScan(txn, &views, schema, idxs, blkID, common.DefaultAllocator)
+				err := rel.GetMeta().(*catalog.TableEntry).HybridScan(ctx, txn, &views, schema, idxs, blkID, common.DefaultAllocator)
 				require.NoError(t, err)
 				defer views.Close()
 				for j, view := range views.Vecs {
@@ -1303,7 +1303,7 @@ func TestMVCC1(t *testing.T) {
 		_, targetBlkOffset := id.BlockID.Offsets()
 		if bid.ObjectID() == id.ObjectID() {
 			var view *containers.Batch
-			err := block.HybridScan(&view, targetBlkOffset, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+			err := block.HybridScan(ctx, &view, targetBlkOffset, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 			assert.Nil(t, err)
 			defer view.Close()
 			assert.Nil(t, view.Deletes)
@@ -1362,7 +1362,7 @@ func TestMVCC2(t *testing.T) {
 		for it.Valid() {
 			obj := it.GetObject()
 			var view *containers.Batch
-			err := obj.HybridScan(&view, 0, []int{schema.GetSingleSortKey().Idx}, common.DefaultAllocator)
+			err := obj.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKey().Idx}, common.DefaultAllocator)
 			assert.Nil(t, err)
 			assert.Nil(t, view.Deletes)
 			assert.Equal(t, bats[1].Vecs[0].Length()*2-1, view.Length())
@@ -1409,7 +1409,7 @@ func TestUnload1(t *testing.T) {
 				blk := it.GetObject()
 				for j := 0; j < blk.BlkCnt(); j++ {
 					var view *containers.Batch
-					err := blk.Scan(&view, uint16(j), []int{schema.GetSingleSortKey().Idx}, common.DefaultAllocator)
+					err := blk.Scan(ctx, &view, uint16(j), []int{schema.GetSingleSortKey().Idx}, common.DefaultAllocator)
 					assert.Nil(t, err)
 					defer view.Close()
 					assert.Equal(t, int(schema.BlockMaxRows), view.Length())
@@ -1539,7 +1539,7 @@ func TestDelete1(t *testing.T) {
 		var view *containers.Batch
 		txn, rel := testutil.GetDefaultRelation(t, tae, schema.Name)
 		blk := testutil.GetOneObject(rel)
-		err := blk.HybridScan(&view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+		err := blk.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		assert.Nil(t, view.Deletes)
 		assert.Equal(t, bat.Vecs[0].Length()-1, view.Length())
@@ -1548,7 +1548,7 @@ func TestDelete1(t *testing.T) {
 
 		err = rel.RangeDelete(blk.Fingerprint(), 0, 0, handle.DT_Normal)
 		assert.NoError(t, err)
-		err = blk.HybridScan(&view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+		err = blk.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		assert.True(t, view.Deletes.Contains(0))
 		view.Close()
@@ -1562,7 +1562,7 @@ func TestDelete1(t *testing.T) {
 		txn, rel := testutil.GetDefaultRelation(t, tae, schema.Name)
 		blk := testutil.GetOneObject(rel)
 		var view *containers.Batch
-		err := blk.HybridScan(&view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+		err := blk.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer view.Close()
 		assert.True(t, view.Deletes.Contains(0))
@@ -1621,7 +1621,7 @@ func TestLogIndex1(t *testing.T) {
 		meta := blk.GetMeta().(*catalog.ObjectEntry)
 
 		var view *containers.Batch
-		err := blk.HybridScan(&view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+		err := blk.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		assert.True(t, view.Deletes.Contains(uint64(offset)))
@@ -1731,7 +1731,7 @@ func TestSystemDB1(t *testing.T) {
 		}
 		var view *containers.Batch
 		blk := it.GetObject()
-		err := blk.Scan(&view, 0, idxs, common.DefaultAllocator)
+		err := blk.Scan(ctx, &view, 0, idxs, common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		for _, vec := range view.Vecs {
@@ -1752,7 +1752,7 @@ func TestSystemDB1(t *testing.T) {
 		}
 		var view *containers.Batch
 		blk := it.GetObject()
-		err := blk.Scan(&view, 0, idxs, common.DefaultAllocator)
+		err := blk.Scan(ctx, &view, 0, idxs, common.DefaultAllocator)
 		assert.Nil(t, err)
 		defer view.Close()
 		it.Next()
@@ -1776,7 +1776,7 @@ func TestSystemDB1(t *testing.T) {
 			tableSchema.GetColIdx(pkgcatalog.SystemColAttr_Num),
 		}
 		blk := it.GetObject()
-		err := blk.Scan(&bat, 0, idxs, common.DefaultAllocator)
+		err := blk.Scan(ctx, &bat, 0, idxs, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer bat.Close()
 		t.Log(bat.String())
@@ -2064,7 +2064,7 @@ func TestADA(t *testing.T) {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var view *containers.Batch
-			err := blk.HybridScan(&view, uint16(j), []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+			err := blk.HybridScan(ctx, &view, uint16(j), []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			assert.Equal(t, 4, view.Length())
 			assert.Equal(t, 3, view.Deletes.GetCardinality())
@@ -2236,7 +2236,7 @@ func TestChaos1(t *testing.T) {
 	_, rel := testutil.GetDefaultRelation(t, tae, schema.Name)
 	blk := testutil.GetOneObject(rel)
 	var view *containers.Batch
-	err := blk.HybridScan(&view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
+	err := blk.HybridScan(ctx, &view, 0, []int{schema.GetSingleSortKeyIdx()}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer view.Close()
 	assert.Equal(t, int(appendCnt), view.Length())
@@ -2394,7 +2394,7 @@ func TestReshapeBlocks(t *testing.T) {
 		obj := it.GetObject()
 		var view *containers.Batch
 		for j := 0; j < obj.BlkCnt(); j++ {
-			err := obj.Scan(&view, uint16(j), []int{0}, common.DefaultAllocator)
+			err := obj.Scan(ctx, &view, uint16(j), []int{0}, common.DefaultAllocator)
 			assert.NoError(t, err)
 		}
 		t.Log(view)
@@ -2419,7 +2419,7 @@ func TestReshapeBlocks(t *testing.T) {
 		obj := it.GetObject()
 		var view *containers.Batch
 		for j := 0; j < obj.BlkCnt(); j++ {
-			err := obj.Scan(&view, uint16(j), []int{0}, common.DefaultAllocator)
+			err := obj.Scan(ctx, &view, uint16(j), []int{0}, common.DefaultAllocator)
 			assert.NoError(t, err)
 		}
 		t.Log(view)
@@ -2471,7 +2471,7 @@ func TestMergeBlocks(t *testing.T) {
 		obj := it.GetObject()
 		var view *containers.Batch
 		for j := 0; j < obj.BlkCnt(); j++ {
-			err := obj.Scan(&view, uint16(j), []int{0}, common.DefaultAllocator)
+			err := obj.Scan(ctx, &view, uint16(j), []int{0}, common.DefaultAllocator)
 			assert.NoError(t, err)
 		}
 		t.Log(view)
@@ -2496,7 +2496,7 @@ func TestMergeBlocks(t *testing.T) {
 		obj := it.GetObject()
 		var view *containers.Batch
 		for j := 0; j < obj.BlkCnt(); j++ {
-			err := obj.Scan(&view, uint16(j), []int{0}, common.DefaultAllocator)
+			err := obj.Scan(ctx, &view, uint16(j), []int{0}, common.DefaultAllocator)
 			assert.NoError(t, err)
 		}
 		t.Log(view)
@@ -2910,7 +2910,7 @@ func TestNull1(t *testing.T) {
 	txn, rel := tae.GetRelation()
 	blk := testutil.GetOneObject(rel)
 	var view *containers.Batch
-	err := blk.Scan(&view, 0, []int{3}, common.DefaultAllocator)
+	err := blk.Scan(ctx, &view, 0, []int{3}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	//v := view.GetData().Get(2)
 	assert.True(t, view.Vecs[0].IsNull(2))
@@ -2922,7 +2922,7 @@ func TestNull1(t *testing.T) {
 	tae.Restart(ctx)
 	txn, rel = tae.GetRelation()
 	blk = testutil.GetOneObject(rel)
-	blk.Scan(&view, 0, []int{3}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{3}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer view.Close()
 	//v = view.GetData().Get(2)
@@ -3077,13 +3077,13 @@ func TestGetColumnData(t *testing.T) {
 	txn, rel := tae.GetRelation()
 	blk := testutil.GetOneObject(rel)
 	var view *containers.Batch
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.Equal(t, bats[0].Length(), view.Length())
 	assert.NotZero(t, view.Vecs[0].Allocated())
 	view.Close()
 	view = nil
 
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.Equal(t, bats[0].Length(), view.Length())
 	assert.NotZero(t, view.Vecs[0].Allocated())
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -3093,13 +3093,13 @@ func TestGetColumnData(t *testing.T) {
 	tae.CompactBlocks(false)
 	txn, rel = tae.GetRelation()
 	blk = testutil.GetOneObject(rel)
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.Equal(t, bats[0].Length(), view.Length())
 	assert.NotZero(t, view.Vecs[0].Allocated())
 	view.Close()
 	view = nil
 
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.Equal(t, bats[0].Length(), view.Length())
 	assert.NotZero(t, view.Vecs[0].Allocated())
 	assert.NoError(t, txn.Commit(context.Background()))
@@ -3110,13 +3110,13 @@ func TestGetColumnData(t *testing.T) {
 	err := rel.Append(context.Background(), bats[1])
 	assert.NoError(t, err)
 	blk = testutil.GetOneObject(rel)
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	assert.True(t, view.Vecs[0].Equals(bats[1].Vecs[2]))
 	assert.NotZero(t, view.Vecs[0].Allocated())
 	view.Close()
 	view = nil
-	blk.Scan(&view, 0, []int{2}, common.DefaultAllocator)
+	blk.Scan(ctx, &view, 0, []int{2}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	assert.True(t, view.Vecs[0].Equals(bats[1].Vecs[2]))
 	assert.NotZero(t, view.Vecs[0].Allocated())
@@ -3347,7 +3347,7 @@ func TestCompactblk3(t *testing.T) {
 		for j := 0; j < be.BlockCnt(); j++ {
 			var view *containers.Batch
 			blkID := objectio.NewBlockidWithObjectID(&be.ID, uint16(j))
-			err := be.GetTable().HybridScan(txn, &view, schema, []int{0}, blkID, common.DefaultAllocator)
+			err := be.GetTable().HybridScan(ctx, txn, &view, schema, []int{0}, blkID, common.DefaultAllocator)
 			assert.NoError(t, err)
 			view.Compact()
 			assert.Equal(t, 2, view.Length())
@@ -4874,7 +4874,7 @@ func TestDelete4(t *testing.T) {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
-				err := blk.HybridScan(&view, uint16(j), []int{0}, common.DefaultAllocator)
+				err := blk.HybridScan(ctx, &view, uint16(j), []int{0}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				view.Compact()
 				if view.Length() != 0 {
@@ -5069,12 +5069,12 @@ func TestMergeBlocks3(t *testing.T) {
 		require.NoError(t, err)
 
 		var view *containers.Batch
-		err = objHandle.Scan(&view, 0, []int{schema.GetColIdx(catalog.PhyAddrColumnName)}, common.DefaultAllocator)
+		err = objHandle.Scan(ctx, &view, 0, []int{schema.GetColIdx(catalog.PhyAddrColumnName)}, common.DefaultAllocator)
 		require.NoError(t, err)
 		require.NotNil(t, *view)
 		pkDef := schema.GetPrimaryKey()
 		var pkView *containers.Batch
-		err = objHandle.Scan(&pkView, 0, []int{pkDef.Idx}, common.DefaultAllocator)
+		err = objHandle.Scan(ctx, &pkView, 0, []int{pkDef.Idx}, common.DefaultAllocator)
 		require.NoError(t, err)
 		err = rel.DeleteByPhyAddrKeys(view.Vecs[0], pkView.Vecs[0])
 		require.NoError(t, err)
@@ -6364,7 +6364,7 @@ func TestAlterFakePk(t *testing.T) {
 		tbl := rel.GetMeta().(*catalog.TableEntry)
 		var view *containers.Batch
 		blkID := objectio.NewBlockidWithObjectID(obj.GetID(), 0)
-		err = tbl.HybridScan(txn, &view, newSchema.(*catalog.Schema), []int{1}, blkID, common.DefaultAllocator)
+		err = tbl.HybridScan(ctx, txn, &view, newSchema.(*catalog.Schema), []int{1}, blkID, common.DefaultAllocator)
 		view.Vecs[0].Foreach(func(v any, isNull bool, row int) error {
 			require.True(t, true)
 			rows = append(rows, row)

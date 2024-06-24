@@ -120,6 +120,7 @@ type Object interface {
 		mp *mpool.MPool) (err error)
 	Close()
 	Scan(
+		ctx context.Context,
 		bat **containers.Batch,
 		txn txnif.TxnReader,
 		readSchema any,

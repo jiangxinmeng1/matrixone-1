@@ -135,6 +135,7 @@ func (entry *TableEntry) OnApplyDelete(
 }
 
 func (entry *TableEntry) HybridScan(
+	ctx context.Context,
 	txn txnif.TxnReader,
 	bat **containers.Batch,
 	readSchema *Schema,
@@ -147,7 +148,7 @@ func (entry *TableEntry) HybridScan(
 		return err
 	}
 	_, offset := blkID.Offsets()
-	err = dataObject.GetObjectData().Scan(bat, txn, readSchema, offset, colIdxs, mp)
+	err = dataObject.GetObjectData().Scan(ctx, bat, txn, readSchema, offset, colIdxs, mp)
 	if err != nil {
 		return err
 	}

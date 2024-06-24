@@ -15,6 +15,7 @@
 package txnimpl
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
@@ -436,13 +437,17 @@ func (space *tableSpace) BatchDedup(key containers.Vector) error {
 	return space.index.BatchDedup(space.table.GetLocalSchema(space.isTombstone).GetSingleSortKey().Name, key)
 }
 
-func (space *tableSpace) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+func (space *tableSpace) Scan(
+	ctx context.Context, bat **containers.Batch, colIdxes []int, mp *mpool.MPool,
+) {
 	n := space.node
-	n.Scan(bat, colIdxes, mp)
+	n.Scan(ctx, bat, colIdxes, mp)
 }
 
-func (space *tableSpace) HybridScan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
-	space.node.Scan(bat, colIdxes, mp)
+func (space *tableSpace) HybridScan(
+	ctx context.Context, bat **containers.Batch, colIdxes []int, mp *mpool.MPool,
+) {
+	space.node.Scan(ctx, bat, colIdxes, mp)
 	if (*bat).Deletes == nil {
 		(*bat).Deletes = &nulls.Nulls{}
 	}

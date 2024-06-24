@@ -122,7 +122,7 @@ func main() {
 			logutil.Info(obj.String())
 			for i := 0; i < obj.BlkCnt(); i++ {
 				var view *containers.Batch
-				err := obj.Scan(&view, uint16(i), []int{0}, common.DefaultAllocator)
+				err := obj.Scan(ctx, &view, uint16(i), []int{0}, common.DefaultAllocator)
 				logutil.Infof("Block %s Rows %d", obj.Fingerprint().BlockString(), view.Length())
 				if err != nil {
 					panic(err)

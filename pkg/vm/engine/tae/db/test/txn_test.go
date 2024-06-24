@@ -247,7 +247,7 @@ func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint3
 		blk := blockIt.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var view *containers.Batch
-			err = blk.HybridScan(&view, uint16(j), []int{repertory.ColDefs[1].Idx}, common.DefaultAllocator)
+			err = blk.HybridScan(context.Background(), &view, uint16(j), []int{repertory.ColDefs[1].Idx}, common.DefaultAllocator)
 			if err != nil {
 				return
 			}
@@ -552,7 +552,7 @@ func TestWarehouse(t *testing.T) {
 		it := rel.MakeObjectIt(false, true)
 		blk := it.GetObject()
 		var view *containers.Batch
-		blk.Scan(&view, 0, []int{1}, common.DefaultAllocator)
+		blk.Scan(ctx, &view, 0, []int{1}, common.DefaultAllocator)
 		t.Log(view.Vecs[0].String())
 		defer view.Close()
 		testutil.CheckAllColRowsByScan(t, rel, 20, false)

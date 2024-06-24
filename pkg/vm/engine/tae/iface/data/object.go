@@ -129,6 +129,7 @@ type Object interface {
 		mp *mpool.MPool,
 	) (err error)
 	FillBlockTombstones(
+		ctx context.Context,
 		txn txnif.TxnReader,
 		blkID *objectio.Blockid,
 		deletes **nulls.Nulls,

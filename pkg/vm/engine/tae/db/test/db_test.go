@@ -8621,7 +8621,7 @@ func TestCollectDeletesInRange2(t *testing.T) {
 	tableEntry := rel.GetMeta().(*catalog.TableEntry)
 	blk = rel.MakeObjectIt(false, true).GetObject()
 	deletes, err := tables.RangeScanTombstoneByObject(
-		ctx, tableEntry, types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
+		ctx, tableEntry, *blk.GetID(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 4, deletes.Length())
@@ -8636,8 +8636,8 @@ func TestCollectDeletesInRange2(t *testing.T) {
 
 	txn, rel = tae.GetRelation()
 	blk = rel.MakeObjectIt(false, true).GetObject()
-	delets, err := tables.RangeScanTombstoneByObject(
-		ctx, tableEntry, types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
+	deletes, err = tables.RangeScanTombstoneByObject(
+		ctx, tableEntry, *blk.GetID(), types.TS{}, txn.GetStartTS(), common.DefaultAllocator, tae.Runtime.VectorPool.Small,
 	)
 	assert.NoError(t, err)
 	assert.Equal(t, 5, deletes.Length())

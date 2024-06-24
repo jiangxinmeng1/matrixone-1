@@ -25,42 +25,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
-func (entry *TableEntry) CollectTombstoneInRange(
-	ctx context.Context,
-	start, end types.TS,
-	objectID objectio.ObjectId,
-	mp *mpool.MPool,
-	vpool *containers.VectorPool,
-) (bat *containers.Batch, err error) {
-	it := entry.MakeTombstoneObjectIt(false)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		tombstone.RLock()
-		skip := tombstone.IsCreatingOrAbortedLocked() || tombstone.HasDropCommittedLocked()
-		tombstone.RUnlock()
-		if skip {
-			continue
-		}
-		visible := tombstone.IsVisibleInRange(start, end)
-		if !visible {
-			continue
-		}
-		if tombstone.HasCommittedPersistedData() {
-			zm := tombstone.GetSortKeyZonemap()
-			if !zm.PrefixEq(objectID[:]) {
-				continue
-			}
-			// TODO: Bloomfilter
-		}
-		err = tombstone.GetObjectData().CollectObjectTombstoneInRange(ctx, start, end, &objectID, &bat, mp, vpool)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return
-}
-
 func (entry *TableEntry) IsDeleted(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -119,7 +83,7 @@ func (entry *TableEntry) FillDeletes(
 		if !visible {
 			continue
 		}
-		tombstone.GetObjectData().FillBlockTombstones(txn, &blkID, &view.DeleteMask, mp)
+		tombstone.GetObjectData().FillBlockTombstones(ctx, txn, &blkID, &view.DeleteMask, mp)
 		if err != nil {
 			return err
 		}
@@ -158,7 +122,7 @@ func (entry *TableEntry) HybridScan(
 	it := entry.MakeObjectIt(false, true)
 	for ; it.Valid(); it.Next() {
 		tombstone := it.Get().GetPayload()
-		err := tombstone.GetObjectData().FillBlockTombstones(txn, blkID, &(*bat).Deletes, mp)
+		err := tombstone.GetObjectData().FillBlockTombstones(ctx, txn, blkID, &(*bat).Deletes, mp)
 		if err != nil {
 			return err
 		}

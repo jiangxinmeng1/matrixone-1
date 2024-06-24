@@ -342,13 +342,14 @@ func (node *memoryNode) CollectObjectTombstoneInRange(
 }
 
 func (node *memoryNode) FillBlockTombstones(
+	ctx context.Context,
 	txn txnif.TxnReader,
 	blkID *objectio.Blockid,
 	deletes **nulls.Nulls,
 	mp *mpool.MPool) error {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(txn.GetContext(), txn)
+	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
 	if !visible || err != nil {
 		// blk.RUnlock()
 		return err

@@ -21,14 +21,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
@@ -646,16 +644,6 @@ func (entry *ObjectEntry) GetPKZoneMap(
 		return
 	}
 	return stats.SortKeyZoneMap(), nil
-}
-
-func (entry *ObjectEntry) CollectTombstoneInRange(
-	ctx context.Context,
-	start, end types.TS,
-	mp *mpool.MPool,
-	vpool *containers.VectorPool,
-) (ret *containers.Batch, err error) {
-	ret, err = entry.GetTable().CollectTombstoneInRange(ctx, start, end, entry.ID, mp, vpool)
-	return
 }
 
 // TODO: REMOVEME

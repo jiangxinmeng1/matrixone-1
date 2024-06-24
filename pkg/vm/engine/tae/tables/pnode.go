@@ -208,6 +208,7 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 }
 
 func (node *persistedNode) FillBlockTombstones(
+	ctx context.Context,
 	txn txnif.TxnReader,
 	blkID *objectio.Blockid,
 	deletes **nulls.Nulls,
@@ -230,7 +231,7 @@ func (node *persistedNode) FillBlockTombstones(
 			return err
 		}
 		vecs, err := LoadPersistedColumnDatas(
-			txn.GetContext(), readSchema, node.object.rt, id, []int{0}, location, mp,
+			ctx, readSchema, node.object.rt, id, []int{0}, location, mp,
 		)
 		if err != nil {
 			return err

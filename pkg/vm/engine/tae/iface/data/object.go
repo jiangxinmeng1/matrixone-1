@@ -96,7 +96,6 @@ type Object interface {
 		keysZM index.ZM,
 		precommit bool,
 		checkWWConflict bool,
-		bf objectio.BloomFilter,
 		rowIDs containers.Vector,
 		mp *mpool.MPool,
 	) (err error)
@@ -116,7 +115,6 @@ type Object interface {
 		isCommitting bool,
 		keys containers.Vector,
 		keysZM index.ZM,
-		bf objectio.BloomFilter,
 		mp *mpool.MPool) (err error)
 	Close()
 	Scan(

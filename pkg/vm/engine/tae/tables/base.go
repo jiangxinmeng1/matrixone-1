@@ -335,13 +335,12 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 	rowIDs containers.Vector,
 	isAblk bool,
 	maxVisibleRow uint32,
-	bf objectio.BloomFilter,
 	mp *mpool.MPool,
 ) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
 		blk.meta,
-		bf,
+		nil,
 		blk.rt,
 	)
 	if err != nil {
@@ -373,12 +372,12 @@ func (blk *baseObject) persistedContains(
 	keys containers.Vector,
 	keysZM index.ZM,
 	isAblk bool,
-	bf objectio.BloomFilter,
-	mp *mpool.MPool) (err error) {
+	mp *mpool.MPool,
+) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
 		blk.meta,
-		bf,
+		nil,
 		blk.rt,
 	)
 	if err != nil {

@@ -896,7 +896,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		if err = objData.Contains(
 			ctx,
 			tbl.store.txn,
-			isCommitting,
 			rowIDs,
 			keysZM,
 			bf,

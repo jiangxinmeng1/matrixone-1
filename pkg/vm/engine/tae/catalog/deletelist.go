@@ -88,40 +88,12 @@ func (entry *TableEntry) IsDeleted(
 		if !visible {
 			continue
 		}
-		err = tombstone.GetObjectData().Contains(ctx, txn, false, rowIDs, rowIDZM, nil, mp)
+		err = tombstone.GetObjectData().Contains(ctx, txn, rowIDs, rowIDZM, nil, mp)
 		if err != nil {
 			return false, err
 		}
 		if rowIDs.IsNull(0) {
 			return true, nil
-		}
-	}
-	return
-}
-
-func (entry *TableEntry) FillDeletes(
-	ctx context.Context,
-	blkID types.Blockid,
-	txn txnif.TxnReader,
-	view *containers.BaseView,
-	mp *mpool.MPool) (err error) {
-
-	it := entry.MakeObjectIt(false, true)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		tombstone.RLock()
-		visible, err := tombstone.IsVisibleWithLock(txn, tombstone.RWMutex)
-		tombstone.RUnlock()
-		if err != nil {
-			return err
-		}
-		if !visible {
-			continue
-		}
-		tombstone.GetObjectData().FillBlockTombstones(txn, &blkID, &view.DeleteMask, mp)
-		if err != nil {
-			return err
 		}
 	}
 	return

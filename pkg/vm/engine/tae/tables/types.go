@@ -41,7 +41,6 @@ type NodeT interface {
 		keysZM index.ZM,
 		bf objectio.BloomFilter,
 		txn txnif.TxnReader,
-		isCommitting bool,
 		mp *mpool.MPool,
 	) (err error)
 	GetDuplicatedRows(

@@ -227,27 +227,6 @@ func (blk *baseObject) Prefetch(idxes []uint16, blkID uint16) error {
 	}
 }
 
-func (blk *baseObject) ResolvePersistedColumnData(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	blkOffset uint16,
-	col int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	var bat *containers.Batch
-	err = blk.Scan(&bat, txn, readSchema, blkOffset, []int{col}, mp)
-	if err != nil {
-		return
-	}
-	if bat == nil {
-		return
-	}
-	view = containers.NewColumnView(col)
-	view.SetData(bat.Vecs[0])
-	return
-}
-
 func (blk *baseObject) getDuplicateRowsWithLoad(
 	ctx context.Context,
 	txn txnif.TxnReader,
@@ -262,27 +241,28 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 ) (err error) {
 	schema := blk.meta.GetSchema()
 	def := schema.GetSingleSortKey()
-	view, err := blk.ResolvePersistedColumnData(
-		ctx,
+	var pk *containers.Batch
+	err = blk.Scan(
+		&pk,
 		txn,
 		schema,
 		blkOffset,
-		def.Idx,
+		[]int{def.Idx},
 		mp,
 	)
 	if err != nil {
 		return
 	}
-	defer view.Close()
+	defer pk.Close()
 	blkID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkOffset)
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, getRowIDAlkFunctions, pk.Vecs[0], rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getDuplicatedRowIDNABlkFunctions, view.GetData(), rowIDs, blkID,
+			keys.GetType().Oid, getDuplicatedRowIDNABlkFunctions, pk.Vecs[0], rowIDs, blkID,
 		)
 	}
 	err = containers.ForeachVector(keys, dedupFn, sels)
@@ -296,17 +276,17 @@ func (blk *baseObject) containsWithLoad(
 	sels *nulls.Bitmap,
 	blkOffset uint16,
 	isAblk bool,
-	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	schema := blk.meta.GetSchema()
 	def := schema.GetSingleSortKey()
-	view, err := blk.ResolvePersistedColumnData(
-		ctx,
+	var pk *containers.Batch
+	err = blk.Scan(
+		&pk,
 		txn,
 		schema,
 		blkOffset,
-		def.Idx,
+		[]int{def.Idx},
 		mp,
 	)
 	if err != nil {
@@ -315,11 +295,11 @@ func (blk *baseObject) containsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, containsAlkFunctions, view.GetData(), keys, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, containsAlkFunctions, pk.Vecs[0], keys, blk.LoadPersistedCommitTS, txn,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, containsNABlkFunctions, view.GetData(), keys,
+			keys.GetType().Oid, containsNABlkFunctions, pk.Vecs[0], keys,
 		)
 	}
 	err = containers.ForeachVector(keys, dedupFn, sels)
@@ -369,7 +349,6 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 func (blk *baseObject) persistedContains(
 	ctx context.Context,
 	txn txnif.TxnReader,
-	isCommitting bool,
 	keys containers.Vector,
 	keysZM index.ZM,
 	isAblk bool,
@@ -395,7 +374,7 @@ func (blk *baseObject) persistedContains(
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 			continue
 		}
-		err = blk.containsWithLoad(ctx, txn, keys, sels, uint16(i), isAblk, isCommitting, mp)
+		err = blk.containsWithLoad(ctx, txn, keys, sels, uint16(i), isAblk, mp)
 		if err != nil {
 			return err
 		}

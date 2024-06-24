@@ -15,12 +15,9 @@
 package catalog
 
 import (
-	"fmt"
-
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 )
 
@@ -136,25 +133,4 @@ func BuildLocation(stats objectio.ObjectStats, blkOffset uint16, blkMaxRows uint
 	}
 	metaloc := objectio.BuildLocation(stats.ObjectName(), stats.Extent(), blkRow, blkOffset)
 	return metaloc
-}
-
-func CNTombstoneView2DNTombstoneView(cnView *containers.BlockView, commitTS types.TS) (dnView *containers.BlockView) {
-	if cnView == nil {
-		return nil
-	}
-	if len(cnView.Columns) != 2 {
-		panic(fmt.Sprintf("logic err, cnView length %d", len(cnView.Columns)))
-	}
-	dnView = containers.NewBlockView()
-	length := cnView.Columns[0].Length()
-
-	rowIDVector := cnView.Columns[0].Orphan()
-	commitTSVector := containers.NewConstFixed(types.T_TS.ToType(), commitTS, length, containers.Options{Allocator: common.MergeAllocator})
-	pkVector := cnView.Columns[1].Orphan()
-	abortVector := containers.NewConstFixed(types.T_bool.ToType(), false, length, containers.Options{Allocator: common.MergeAllocator})
-	dnView.SetData(0, rowIDVector)
-	dnView.SetData(1, commitTSVector)
-	dnView.SetData(2, pkVector)
-	dnView.SetData(3, abortVector)
-	return
 }

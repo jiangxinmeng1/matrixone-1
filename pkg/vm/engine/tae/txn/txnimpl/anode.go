@@ -70,10 +70,6 @@ func (n *anode) AddApplyInfo(srcOff, srcLen, destOff, destLen uint32, dest *comm
 	return info
 }
 
-func (n *anode) IsPersisted() bool {
-	return false
-}
-
 func (n *anode) MakeCommand(id uint32) (cmd txnif.TxnCmd, err error) {
 	if n.data == nil {
 		return
@@ -151,23 +147,6 @@ func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
 	}
 	err = n.data.Vecs[n.table.GetLocalSchema(n.isTombstone).PhyAddrKey.Idx].ExtendVec(col.GetDownstreamVector())
 	col.Close()
-	return
-}
-
-func (n *anode) FillBlockView(
-	view *containers.BlockView, colIdxes []int, mp *mpool.MPool,
-) (err error) {
-	for _, colIdx := range colIdxes {
-		orig := n.data.Vecs[colIdx]
-		view.SetData(colIdx, orig.CloneWindow(0, orig.Length(), mp))
-	}
-	view.DeleteMask = n.data.Deletes
-	return
-}
-func (n *anode) FillColumnView(view *containers.ColumnView, mp *mpool.MPool) (err error) {
-	orig := n.data.Vecs[view.ColIdx]
-	view.SetData(orig.CloneWindow(0, orig.Length(), mp))
-	view.DeleteMask = n.data.Deletes
 	return
 }
 

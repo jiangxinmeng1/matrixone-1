@@ -104,13 +104,12 @@ func (node *memoryNode) Contains(
 	keysZM index.ZM,
 	bf objectio.BloomFilter,
 	txn txnif.TxnReader,
-	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, node.checkConflictLocked(txn, isCommitting), mp)
+	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, node.checkConflictLocked(txn), mp)
 }
 func (node *memoryNode) getDuplicatedRowsLocked(
 	ctx context.Context,
@@ -250,7 +249,7 @@ func (node *memoryNode) GetDuplicatedRows(
 	defer node.object.RUnlock()
 	var checkFn func(uint32) error
 	if checkWWConflict {
-		checkFn = node.checkConflictLocked(txn, isCommitting)
+		checkFn = node.checkConflictLocked(txn)
 	}
 	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, checkFn, mp)
 
@@ -258,7 +257,7 @@ func (node *memoryNode) GetDuplicatedRows(
 }
 
 func (node *memoryNode) checkConflictLocked(
-	txn txnif.TxnReader, isCommitting bool,
+	txn txnif.TxnReader,
 ) func(row uint32) error {
 	return func(row uint32) error {
 		appendnode := node.object.appendMVCC.GetAppendNodeByRowLocked(row)

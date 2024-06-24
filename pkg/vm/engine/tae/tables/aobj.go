@@ -259,7 +259,6 @@ func (obj *aobject) GetMaxRowByTSLocked(ts types.TS) (uint32, error) {
 func (obj *aobject) Contains(
 	ctx context.Context,
 	txn txnif.TxnReader,
-	precommit bool,
 	keys containers.Vector,
 	keysZM index.ZM,
 	bf objectio.BloomFilter,
@@ -279,14 +278,12 @@ func (obj *aobject) Contains(
 			keysZM,
 			bf,
 			txn,
-			precommit,
 			mp,
 		)
 	} else {
 		return obj.persistedContains(
 			ctx,
 			txn,
-			precommit,
 			keys,
 			keysZM,
 			true,

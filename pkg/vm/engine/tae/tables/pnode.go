@@ -60,7 +60,6 @@ func (node *persistedNode) Contains(
 	keysZM index.ZM,
 	bf objectio.BloomFilter,
 	txn txnif.TxnReader,
-	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
 	panic("should not be called")

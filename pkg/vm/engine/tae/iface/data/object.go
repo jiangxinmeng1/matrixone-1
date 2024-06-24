@@ -113,7 +113,6 @@ type Object interface {
 	Contains(
 		ctx context.Context,
 		txn txnif.TxnReader,
-		isCommitting bool,
 		keys containers.Vector,
 		keysZM index.ZM,
 		bf objectio.BloomFilter,

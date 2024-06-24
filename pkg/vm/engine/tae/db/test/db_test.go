@@ -3422,7 +3422,7 @@ func TestImmutableIndexInAblk(t *testing.T) {
 		context.Background(), txn, bat.Vecs[1], nil, false, true, objectio.BloomFilter{}, rowIDs, common.DefaultAllocator,
 	)
 	assert.NoError(t, err)
-	err = meta.GetObjectData().Contains(context.Background(), txn, false, rowIDs, nil, objectio.BloomFilter{}, common.DebugAllocator)
+	err = meta.GetObjectData().Contains(context.Background(), txn, rowIDs, nil, objectio.BloomFilter{}, common.DebugAllocator)
 	assert.NoError(t, err)
 	duplicate := false
 	rowIDs.Foreach(func(v any, isNull bool, row int) error {

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -554,12 +555,12 @@ func (db *txnDB) CleanUp() {
 	}
 }
 
-func (db *txnDB) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error {
+func (db *txnDB) FillInWorkspaceDeletes(id *common.ID, deletes **nulls.Nulls) error {
 	table, err := db.getOrSetTable(id.TableID)
 	if err != nil {
 		return err
 	}
-	return table.FillInWorkspaceDeletes(id.BlockID, view)
+	return table.FillInWorkspaceDeletes(id.BlockID, deletes)
 }
 
 func (db *txnDB) IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error) {

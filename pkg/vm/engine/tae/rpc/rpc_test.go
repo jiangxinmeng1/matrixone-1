@@ -442,24 +442,27 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	rows := 0
 	it := tbH.MakeObjectIt(false, true)
 	for it.Valid() {
+		var cv *containers.Batch
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			cv, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			err := blk.Scan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
-			defer cv.Close()
-			rows += cv.Length()
 		}
 		it.Next()
+		rows += cv.Length()
+		cv.Close()
 	}
 	_ = it.Close()
 	assert.Equal(t, taeBat.Length(), rows)
 
-	var physicals []*containers.BlockView
+	physicals := make([]*containers.Batch, 0)
 	it = tbH.MakeObjectIt(false, true)
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			bv, err := blk.GetColumnDataByIds(context.Background(), uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+			var bv *containers.Batch
+			err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().Scan(
+				&bv, txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			physicals = append(physicals, bv)
 		}
@@ -478,8 +481,8 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.Nil(t, err)
 	for _, view := range physicals {
 		bat := batch.New(true, []string{hideDef[0].Name, schema.GetPrimaryKey().GetName()})
-		bat.Vecs[0], _ = view.GetColumnData(2).GetDownstreamVector().Window(0, 5)
-		bat.Vecs[1], _ = view.GetColumnData(1).GetDownstreamVector().Window(0, 5)
+		bat.Vecs[0], _ = view.Vecs[0].GetDownstreamVector().Window(0, 5)
+		bat.Vecs[1], _ = view.Vecs[1].GetDownstreamVector().Window(0, 5)
 		_, err := writer.WriteBatch(bat)
 		assert.Nil(t, err)
 	}
@@ -489,28 +492,28 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	delLoc1 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[0].GetExtent(),
-		uint32(physicals[0].GetColumnData(2).Length()),
+		uint32(physicals[0].Vecs[0].Length()),
 		blocks[0].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc2 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[1].GetExtent(),
-		uint32(physicals[1].GetColumnData(2).Length()),
+		uint32(physicals[1].Vecs[0].Length()),
 		blocks[1].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc3 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[2].GetExtent(),
-		uint32(physicals[2].GetColumnData(2).Length()),
+		uint32(physicals[2].Vecs[0].Length()),
 		blocks[2].GetID(),
 	).String()
 	assert.Nil(t, err)
 	delLoc4 := blockio.EncodeLocation(
 		writer.GetName(),
 		blocks[3].GetExtent(),
-		uint32(physicals[3].GetColumnData(2).Length()),
+		uint32(physicals[3].Vecs[0].Length()),
 		blocks[3].GetID(),
 	).String()
 	assert.Nil(t, err)
@@ -562,10 +565,11 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			cv, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var cv *containers.Batch
+			err := blk.HybridScan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer cv.Close()
-			cv.ApplyDeletes()
+			cv.Compact()
 			rows += cv.Length()
 		}
 		it.Next()
@@ -751,7 +755,8 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			cv, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var cv *containers.Batch
+			err := blk.Scan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer cv.Close()
 			assert.Equal(t, 100, cv.Length())
@@ -767,18 +772,15 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	it = tbH.MakeObjectIt(false, true)
 	blk := it.GetObject()
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
-	cv, err := blk.GetColumnDataById(context.Background(), 0, hideColIdx, common.DefaultAllocator)
+	var cv *containers.Batch
+	err = blk.Scan(&cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer cv.Close()
 
-	pk, err := blk.GetColumnDataById(context.Background(), 0, schema.GetPrimaryKey().Idx, common.DefaultAllocator)
-	assert.NoError(t, err)
-	defer pk.Close()
-
 	assert.NoError(t, txn.Commit(context.Background()))
 	delBat := batch.New(true, []string{hideCol[0].Name, schema.GetPrimaryKey().GetName()})
-	delBat.Vecs[0], _ = cv.GetData().GetDownstreamVector().Window(0, 20)
-	delBat.Vecs[1], _ = pk.GetData().GetDownstreamVector().Window(0, 20)
+	delBat.Vecs[0], _ = cv.Vecs[0].GetDownstreamVector().Window(0, 20)
+	delBat.Vecs[1], _ = cv.Vecs[1].GetDownstreamVector().Window(0, 20)
 
 	//delete 20 rows
 	deleteTxn := mock1PCTxn(handle.db)
@@ -817,10 +819,11 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			v, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var v *containers.Batch
+			err := blk.HybridScan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
-			v.ApplyDeletes()
+			v.Compact()
 			assert.Equal(t, 80, v.Length())
 		}
 		it.Next()
@@ -1024,7 +1027,8 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	for it.Valid() {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
-			v, err := blk.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var v *containers.Batch
+			err := blk.Scan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			assert.Equal(t, 100, v.Length())
@@ -1038,18 +1042,16 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	assert.NoError(t, err)
 	it = tbH.MakeObjectIt(false, true)
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
-	cv, err := it.GetObject().GetColumnDataById(context.Background(), 0, hideColIdx, common.DefaultAllocator)
+	var cv *containers.Batch
+	err = it.GetObject().Scan(&cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer cv.Close()
-	pk, err := it.GetObject().GetColumnDataById(context.Background(), 0, schema.GetPrimaryKey().Idx, common.DefaultAllocator)
-	assert.NoError(t, err)
-	defer pk.Close()
 
 	_ = it.Close()
 
 	delBat := batch.New(true, []string{hideCol[0].Name, schema.GetPrimaryKey().GetName()})
-	delBat.Vecs[0] = cv.GetData().GetDownstreamVector()
-	delBat.Vecs[1] = pk.GetData().GetDownstreamVector()
+	delBat.Vecs[0] = cv.Vecs[0].GetDownstreamVector()
+	delBat.Vecs[1] = cv.Vecs[1].GetDownstreamVector()
 
 	assert.NoError(t, txn.Commit(ctx))
 
@@ -1123,10 +1125,11 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
-			v, err := obj.GetColumnDataById(context.Background(), uint16(0), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var v *containers.Batch
+			err := obj.HybridScan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
-			v.ApplyDeletes()
+			v.Compact()
 			assert.Equal(t, 80, v.Length())
 		}
 		it.Next()
@@ -1349,7 +1352,8 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
-			v, err := it.GetObject().GetColumnDataById(context.Background(), uint16(0), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var v *containers.Batch
+			err := it.GetObject().Scan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			assert.Equal(t, 100, v.Length())
@@ -1362,18 +1366,15 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	assert.NoError(t, err)
 	it = tbH.MakeObjectIt(false, true)
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
-	v, err := it.GetObject().GetColumnDataById(context.Background(), 0, hideColIdx, common.DefaultAllocator)
+	var v *containers.Batch
+	err = it.GetObject().Scan(&v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer v.Close()
 
-	pk, err := it.GetObject().GetColumnDataById(context.Background(), 0, schema.GetPrimaryKey().Idx, common.DefaultAllocator)
-	assert.NoError(t, err)
-	defer pk.Close()
-
 	_ = it.Close()
 	delBat := batch.New(true, []string{hideCol[0].Name, schema.GetPrimaryKey().GetName()})
-	delBat.Vecs[0] = v.GetData().GetDownstreamVector()
-	delBat.Vecs[1] = pk.GetData().GetDownstreamVector()
+	delBat.Vecs[0] = v.Vecs[0].GetDownstreamVector()
+	delBat.Vecs[1] = v.Vecs[1].GetDownstreamVector()
 
 	assert.NoError(t, txn.Commit(ctx))
 
@@ -1448,10 +1449,11 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	for it.Valid() {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
-			v, err := obj.GetColumnDataById(context.Background(), uint16(j), schema.ColDefs[1].Idx, common.DefaultAllocator)
+			var v *containers.Batch
+			err := obj.HybridScan(&v, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
-			v.ApplyDeletes()
+			v.Compact()
 			assert.Equal(t, 80, v.Length())
 		}
 		it.Next()
@@ -1680,7 +1682,8 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		for it.Valid() {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
-				v, err := obj.GetColumnDataById(context.Background(), 0, schema.ColDefs[1].Idx, common.DefaultAllocator)
+				var v *containers.Batch
+				err := obj.Scan(&v, 0, []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer v.Close()
 				assert.Equal(t, 100, v.Length())
@@ -1716,19 +1719,16 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 
 		it := tbH.MakeObjectIt(false, true)
 		hideColIdx := schema.GetColIdx(hideCol[0].Name)
-		v, err := it.GetObject().GetColumnDataById(context.Background(), 0, hideColIdx, common.DefaultAllocator)
+		var v *containers.Batch
+		err = it.GetObject().Scan(&v, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 		assert.NoError(t, err)
 		defer v.Close()
-
-		pk, err := it.GetObject().GetColumnDataById(context.Background(), 0, schema.GetPrimaryKey().Idx, common.DefaultAllocator)
-		assert.NoError(t, err)
-		defer pk.Close()
 
 		_ = it.Close()
 
 		delBat = batch.New(true, []string{hideCol[0].Name, schema.GetPrimaryKey().GetName()})
-		delBat.Vecs[0] = v.GetData().GetDownstreamVector()
-		delBat.Vecs[1] = pk.GetData().GetDownstreamVector()
+		delBat.Vecs[0] = v.Vecs[0].GetDownstreamVector()
+		delBat.Vecs[1] = v.Vecs[1].GetDownstreamVector()
 
 		assert.NoError(t, txn.Commit(ctx))
 	}
@@ -1773,10 +1773,11 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 		for it.Valid() {
 			obj := it.GetObject()
 			for j := 0; j < obj.BlkCnt(); j++ {
-				v, err := obj.GetColumnDataById(context.Background(), uint16(0), schema.ColDefs[1].Idx, common.DefaultAllocator)
+				var v *containers.Batch
+				err := obj.HybridScan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 				assert.NoError(t, err)
 				defer v.Close()
-				v.ApplyDeletes()
+				v.Compact()
 				assert.Equal(t, 80, v.Length())
 			}
 			it.Next()
@@ -1977,10 +1978,12 @@ func TestApplyDeltaloc(t *testing.T) {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			for j := 0; j < blk.BlkCnt(); j++ {
-				view, err := meta.GetObjectData().GetColumnDataById(context.Background(), txn0, schema, uint16(j), def.Idx, common.DefaultAllocator)
+				var view *containers.Batch
+				blkID := objectio.NewBlockidWithObjectID(&meta.ID, uint16(j))
+				err := meta.GetTable().HybridScan(txn0, &view, schema, []int{def.Idx}, blkID, common.DefaultAllocator)
 				assert.NoError(t, err)
-				view.ApplyDeletes()
-				length += view.GetData().Length()
+				view.Compact()
+				length += view.Length()
 			}
 			it.Next()
 		}

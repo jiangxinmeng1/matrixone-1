@@ -202,9 +202,9 @@ func CheckAllColRowsByScan(t *testing.T, rel handle.Relation, expectRows int, ap
 
 func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDelete bool) int {
 	rows := 0
-	ForEachColumnView(rel, colIdx, func(view *containers.ColumnView) (err error) {
+	ForEachColumnView(rel, colIdx, func(view *containers.Batch) (err error) {
 		if applyDelete {
-			view.ApplyDeletes()
+			view.Compact()
 		}
 		rows += view.Length()
 		// t.Log(view.String())
@@ -213,11 +213,12 @@ func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDel
 	return rows
 }
 
-func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers.ColumnView) error) {
+func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers.Batch) error) {
 	ForEachObject(rel, func(blk handle.Object) (err error) {
 		blkCnt := blk.GetMeta().(*catalog.ObjectEntry).BlockCnt()
 		for i := 0; i < blkCnt; i++ {
-			view, err := blk.GetColumnDataById(context.Background(), uint16(i), colIdx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.HybridScan(&view, uint16(i), []int{colIdx}, common.DefaultAllocator)
 			if view == nil {
 				logutil.Warnf("blk %v", blk.String())
 				continue
@@ -398,7 +399,8 @@ func MockCNDeleteInS3(
 	deleteRows []uint32,
 ) (location objectio.Location, err error) {
 	pkDef := schema.GetPrimaryKey()
-	view, err := obj.GetColumnDataById(context.Background(), txn, schema, blkOffset, pkDef.Idx, common.DefaultAllocator)
+	var view *containers.Batch
+	err = obj.Scan(&view, txn, schema, blkOffset, []int{pkDef.Idx}, common.DefaultAllocator)
 	pkVec := containers.MakeVector(pkDef.Type, common.DefaultAllocator)
 	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)
 	objID := &obj.GetMeta().(*catalog.ObjectEntry).ID
@@ -407,7 +409,7 @@ func MockCNDeleteInS3(
 		return
 	}
 	for _, row := range deleteRows {
-		pkVal := view.GetData().Get(int(row))
+		pkVal := view.Vecs[0].Get(int(row))
 		pkVec.Append(pkVal, false)
 		rowID := objectio.NewRowid(blkID, row)
 		rowIDVec.Append(*rowID, false)

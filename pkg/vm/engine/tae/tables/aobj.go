@@ -24,7 +24,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
-	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -32,7 +31,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/updates"
@@ -162,93 +160,6 @@ func (obj *aobject) Pin() *common.PinnedItem[*aobject] {
 	}
 }
 
-func (obj *aobject) GetColumnDataByIds(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema any,
-	_ uint16,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	return obj.resolveColumnDatas(
-		ctx,
-		txn,
-		readSchema.(*catalog.Schema),
-		colIdxes,
-		false,
-		mp,
-	)
-}
-
-func (obj *aobject) GetColumnDataById(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema any,
-	_ uint16,
-	col int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	return obj.resolveColumnData(
-		ctx,
-		txn,
-		readSchema.(*catalog.Schema),
-		col,
-		false,
-		mp,
-	)
-}
-func (obj *aobject) GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.MustMNode().getCommitTSVec(maxRow, mp)
-	} else {
-		vec, err := obj.LoadPersistedCommitTS(0)
-		return vec, err
-	}
-}
-func (obj *aobject) GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.MustMNode().getCommitTSVecInRange(start, end, mp)
-	} else {
-		vec, err := obj.LoadPersistedCommitTS(0)
-		return vec, err
-	}
-}
-func (obj *aobject) resolveColumnDatas(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	colIdxes []int,
-	skipDeletes bool,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if obj.meta.IsTombstone {
-		skipDeletes = true
-	}
-
-	if !node.IsPersisted() {
-		return node.MustMNode().resolveInMemoryColumnDatas(
-			ctx,
-			txn, readSchema, colIdxes, skipDeletes, mp,
-		)
-	} else {
-		return obj.ResolvePersistedColumnDatas(
-			ctx,
-			txn,
-			readSchema,
-			0,
-			colIdxes,
-			skipDeletes,
-			mp,
-		)
-	}
-}
-
 // check if all rows are committed before the specified ts
 // here we assume that the ts is greater equal than the block's
 // create ts and less than the block's delete ts
@@ -271,82 +182,6 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	// always return false for if the block is persisted
 	// it is a coarse-grained check
 	return false
-}
-func (obj *aobject) GetCommitVec() (containers.Vector, error) {
-	return nil, nil
-}
-func (obj *aobject) resolveColumnData(
-	ctx context.Context,
-	txn txnif.TxnReader,
-	readSchema *catalog.Schema,
-	col int,
-	skipDeletes bool,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-
-	if obj.meta.IsTombstone {
-		skipDeletes = true
-	}
-	if !node.IsPersisted() {
-		return node.MustMNode().resolveInMemoryColumnData(
-			txn, readSchema, col, skipDeletes, mp,
-		)
-	} else {
-		return obj.ResolvePersistedColumnData(
-			ctx,
-			txn,
-			readSchema,
-			0,
-			col,
-			skipDeletes,
-			mp,
-		)
-	}
-}
-
-func (obj *aobject) GetValue(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	_ uint16,
-	row, col int,
-	skipCheckDelete bool,
-	mp *mpool.MPool,
-) (v any, isNull bool, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	schema := readSchema.(*catalog.Schema)
-	if !node.IsPersisted() {
-		return node.MustMNode().getInMemoryValue(txn, schema, row, col, skipCheckDelete, mp)
-	} else {
-		return obj.getPersistedValue(
-			ctx, txn, schema, 0, row, col, true, skipCheckDelete, mp,
-		)
-	}
-}
-
-// GetByFilter will read pk column, which seqnum will not change, no need to pass the read schema.
-func (obj *aobject) GetByFilter(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	filter *handle.Filter,
-	mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	if filter.Op != handle.FilterEq {
-		panic("logic error")
-	}
-	if obj.meta.GetSchema().SortKey == nil {
-		rid := filter.Val.(types.Rowid)
-		offset = rid.GetRowOffset()
-		return
-	}
-
-	node := obj.PinNode()
-	defer node.Unref()
-	_, offset, err = node.GetRowByFilter(ctx, txn, filter, mp, obj.rt.VectorPool.Small)
-	return
 }
 
 func (obj *aobject) GetDuplicatedRows(
@@ -459,86 +294,6 @@ func (obj *aobject) Contains(
 			mp,
 		)
 	}
-}
-
-func (obj *aobject) CollectAppendInRange(
-	ctx context.Context,
-	start, end types.TS,
-	withAborted bool,
-	withPersistedData bool,
-	mp *mpool.MPool,
-) (*containers.BatchWithVersion, error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	if !node.IsPersisted() {
-		return node.CollectAppendInRange(start, end, withAborted, mp)
-	} else {
-		if !withPersistedData {
-			return nil, nil
-		}
-		return obj.persistedCollectAppendInRange(ctx, start, end, withAborted, mp)
-	}
-}
-
-func (obj *aobject) persistedCollectAppendInRange(
-	ctx context.Context,
-	start, end types.TS,
-	withAborted bool,
-	mp *mpool.MPool,
-) (*containers.BatchWithVersion, error) {
-	if !obj.meta.IsTombstone {
-		panic("not support")
-	}
-	obj.meta.RLock()
-	minTS := obj.meta.GetCreatedAtLocked()
-	maxTS := obj.meta.GetDeleteAtLocked()
-	obj.meta.RUnlock()
-	if minTS.Greater(&end) || maxTS.Less(&start) {
-		return nil, nil
-	}
-	var bat *containers.Batch
-	readSchema := obj.meta.GetTable().GetLastestSchema(true)
-	id := obj.meta.AsCommonID()
-	location, err := obj.buildMetalocation(uint16(0))
-	if err != nil {
-		return nil, err
-	}
-	vecs, err := LoadPersistedColumnDatas(ctx, readSchema, obj.rt, id, catalog.TombstoneBatchIdxes, location, mp)
-	if err != nil {
-		return nil, err
-	}
-	commitTSVec, err := obj.GetCommitTSVectorInRange(start, end, mp)
-	if err != nil {
-		return nil, err
-	}
-
-	rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
-	commitTSs := vector.MustFixedCol[types.TS](commitTSVec.GetDownstreamVector())
-	for i := 0; i < vecs[0].Length(); i++ {
-		if commitTSs[0].Less(&start) || commitTSs[0].Greater(&end) {
-			continue
-		}
-		if bat == nil {
-			bat = containers.BuildBatch(
-				readSchema.Attrs(),
-				readSchema.AllTypes(),
-				containers.Options{Allocator: mp})
-			bat.AddVector(
-				catalog.AttrCommitTs,
-				containers.MakeVector(types.T_TS.ToType(),
-					mp))
-		}
-		bat.GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
-		bat.GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
-		bat.GetVectorByName(catalog.AttrCommitTs).Append(commitTSs[i], false)
-	}
-	batchWithVersion := &containers.BatchWithVersion{
-		Version:    readSchema.Version,
-		NextSeqnum: uint16(readSchema.Extra.NextColSeqnum),
-		Seqnums:    readSchema.AllSeqnums(),
-		Batch:      bat,
-	}
-	return batchWithVersion, nil
 }
 
 func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {

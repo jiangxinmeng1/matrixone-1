@@ -234,15 +234,12 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 		defer blk.Close()
 		blkCnt := uint16(blk.BlkCnt())
 		for i := uint16(0); i < blkCnt; i++ {
-			view, err := blk.GetColumnDataById(context.Background(), i, rowIDIdx, common.DefaultAllocator)
+			var view *containers.Batch
+			err := blk.HybridScan(&view, i, []int{rowIDIdx, pkIdx}, common.DefaultAllocator)
 			assert.NoError(e.t, err)
 			defer view.Close()
-			view.ApplyDeletes()
-			pkView, err := blk.GetColumnDataById(context.Background(), i, pkIdx, common.DefaultAllocator)
-			assert.NoError(e.t, err)
-			defer pkView.Close()
-			pkView.ApplyDeletes()
-			err = rel.DeleteByPhyAddrKeys(view.GetData(), pkView.GetData())
+			view.Compact()
+			err = rel.DeleteByPhyAddrKeys(view.Vecs[0], view.Vecs[1])
 			assert.NoError(e.t, err)
 		}
 		it.Next()
@@ -728,13 +725,14 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 		meta := obj.GetMeta().(*catalog.ObjectEntry)
 		blkCnt := obj.BlkCnt()
 		for i := 0; i < blkCnt; i++ {
-			deleteBat, err := meta.GetObjectData().GetColumnDataByIds(
-				context.Background(), txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
+			var deleteBatch *containers.Batch
+			err := meta.GetObjectData().Scan(
+				&deleteBatch, txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
 			)
 			assert.NoError(e.t, err)
 			pkDef := e.schema.GetPrimaryKey()
-			deleteRowIDs := deleteBat.GetColumnData(0)
-			deletePKs := deleteBat.GetColumnData(1)
+			deleteRowIDs := deleteBatch.Vecs[0]
+			deletePKs := deleteBatch.Vecs[1]
 			for i := 0; i < deleteRowIDs.Length(); i++ {
 				rowID := deleteRowIDs.Get(i).(types.Rowid)
 				offset := rowID.GetRowOffset()

@@ -143,10 +143,6 @@ func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVe
 		catalog.AttrRowID,
 		src.GetVectorByName(catalog.AttrRowID).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
 	)
-	mybat.AddVector(
-		catalog.AttrPKVal,
-		src.GetVectorByName(catalog.AttrPKVal).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
-	)
 	tsType := types.T_TS.ToType()
 	commitVec := b.rt.VectorPool.Small.GetVector(&tsType)
 	commitVec.PreExtend(src.Length())
@@ -154,6 +150,10 @@ func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVe
 		commitVec.Append(b.txn.GetPrepareTS(), false)
 	}
 	mybat.AddVector(catalog.AttrCommitTs, commitVec)
+	mybat.AddVector(
+		catalog.AttrPKVal,
+		src.GetVectorByName(catalog.AttrPKVal).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+	)
 
 	if b.batches[dataDelBatch] == nil {
 		b.batches[dataDelBatch] = mybat

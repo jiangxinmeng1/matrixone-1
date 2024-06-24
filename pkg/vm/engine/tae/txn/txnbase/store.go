@@ -17,6 +17,7 @@ package txnbase
 import (
 	"context"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -174,7 +175,7 @@ func (store *NoopTxnStore) GetTransactionType() txnif.TxnType {
 func (store *NoopTxnStore) UpdateObjectStats(*common.ID, *objectio.ObjectStats, bool) error {
 	return nil
 }
-func (store *NoopTxnStore) FillInWorkspaceDeletes(id *common.ID, view *containers.BaseView) error {
+func (store *NoopTxnStore) FillInWorkspaceDeletes(id *common.ID, deletes **nulls.Nulls) error {
 	return nil
 }
 func (store *NoopTxnStore) IsDeletedInWorkSpace(id *common.ID, row uint32) (bool, error) {

@@ -20,12 +20,12 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
@@ -72,12 +72,6 @@ type Object interface {
 	Rows() (int, error)
 	CheckFlushTaskRetry(startts types.TS) bool
 
-	GetColumnDataById(
-		ctx context.Context, txn txnif.TxnReader, readSchema any /*avoid import cycle*/, blkID uint16, colIdx int, mp *mpool.MPool,
-	) (*containers.ColumnView, error)
-	GetColumnDataByIds(
-		ctx context.Context, txn txnif.TxnReader, readSchema any, blkID uint16, colIdxes []int, mp *mpool.MPool,
-	) (*containers.BlockView, error)
 	Prefetch(idxes []uint16, blkID uint16) error
 	GetMeta() any
 
@@ -95,8 +89,6 @@ type Object interface {
 	// if the object is not an appendable object:
 	// only check with the created ts
 	CoarseCheckAllRowsCommittedBefore(ts types.TS) bool
-	GetCommitTSVector(maxRow uint32, mp *mpool.MPool) (containers.Vector, error)
-	GetCommitTSVectorInRange(start, end types.TS, mp *mpool.MPool) (containers.Vector, error)
 	GetDuplicatedRows(
 		ctx context.Context,
 		txn txnif.TxnReader,
@@ -109,14 +101,12 @@ type Object interface {
 		mp *mpool.MPool,
 	) (err error)
 	GetMaxRowByTSLocked(ts types.TS) (uint32, error)
-	GetByFilter(ctx context.Context, txn txnif.AsyncTxn, filter *handle.Filter, mp *mpool.MPool) (uint16, uint32, error)
 	GetValue(ctx context.Context, txn txnif.AsyncTxn, readSchema any, blkID uint16, row, col int, skipCheckDelete bool, mp *mpool.MPool) (any, bool, error)
 	PPString(level common.PPLevel, depth int, prefix string, blkid int) string
 	EstimateMemSize() (int, int)
 	GetRuntime() *dbutils.Runtime
 
 	Init() error
-	CollectAppendInRange(ctx context.Context, start, end types.TS, withAborted, withPersistedData bool, mp *mpool.MPool) (*containers.BatchWithVersion, error)
 	GetFs() *objectio.ObjectFS
 	FreezeAppend()
 
@@ -129,4 +119,30 @@ type Object interface {
 		bf objectio.BloomFilter,
 		mp *mpool.MPool) (err error)
 	Close()
+	Scan(
+		bat **containers.Batch,
+		txn txnif.TxnReader,
+		readSchema any,
+		blkID uint16,
+		colIdxes []int,
+		mp *mpool.MPool,
+	) (err error)
+	FillBlockTombstones(
+		txn txnif.TxnReader,
+		blkID *objectio.Blockid,
+		deletes **nulls.Nulls,
+		mp *mpool.MPool) error
+	CollectObjectTombstoneInRange(
+		ctx context.Context,
+		start, end types.TS,
+		objID *types.Objectid,
+		bat **containers.Batch,
+		mp *mpool.MPool,
+		vpool *containers.VectorPool,
+	) (err error)
+	ScanInMemory(
+		batches map[uint32]*containers.BatchWithVersion,
+		start, end types.TS,
+		mp *mpool.MPool,
+	) (err error)
 }

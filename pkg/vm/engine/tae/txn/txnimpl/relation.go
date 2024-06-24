@@ -357,5 +357,5 @@ func (h *txnRelation) AlterTable(ctx context.Context, req *apipb.AlterTableReq) 
 }
 
 func (h *txnRelation) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
-	return h.table.FillInWorkspaceDeletes(blkID, view)
+	return h.table.FillInWorkspaceDeletes(blkID, &view.DeleteMask)
 }

@@ -15,8 +15,6 @@
 package txnimpl
 
 import (
-	"context"
-
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -225,20 +223,21 @@ func (n *anode) Window(start, end uint32) (bat *containers.Batch, err error) {
 	return
 }
 
-func (n *anode) GetColumnDataByIds(
-	colIdxes []int, mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	view = containers.NewBlockView()
-	err = n.FillBlockView(view, colIdxes, mp)
-	return
-}
-
-func (n *anode) GetColumnDataById(
-	ctx context.Context, colIdx int, mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	view = containers.NewColumnView(colIdx)
-	err = n.FillColumnView(view, mp)
-	return
+func (n *anode) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	if *bat == nil {
+		*bat = containers.NewBatch()
+		for _, colIdx := range colIdxes {
+			orig := n.data.Vecs[colIdx]
+			attr := n.data.Attrs[colIdx]
+			(*bat).AddVector(attr, orig.CloneWindow(0, orig.Length(), mp))
+		}
+		return
+	}
+	for _, colIdx := range colIdxes {
+		orig := n.data.Vecs[colIdx]
+		attr := n.data.Attrs[colIdx]
+		(*bat).GetVectorByName(attr).Extend(orig)
+	}
 }
 
 func (n *anode) Prefetch(idxes []uint16) error {

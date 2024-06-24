@@ -160,6 +160,28 @@ func DataChangeToLogtailBatch(src *containers.BatchWithVersion) *containers.Batc
 	return bat
 }
 
+func TombstoneChangeToLogtailBatch(src *containers.BatchWithVersion) *containers.Batch {
+	seqnums := src.Seqnums
+	if len(seqnums) != len(src.Vecs) {
+		panic("unmatched seqnums length")
+	}
+	if len(src.Vecs) != 4 {
+		panic(fmt.Sprintf("logic err, attr %v", src.Attrs))
+	}
+
+	bat := containers.NewBatchWithCapacity(3)
+
+	// move special column first, no abort column in logtail
+	if src.Seqnums[2] != objectio.SEQNUM_ROWID || src.Seqnums[3] != objectio.SEQNUM_COMMITTS {
+		panic(fmt.Sprintf("bad last seqnums %v", src.Seqnums))
+	}
+	bat.AddVector(src.Attrs[0], src.Vecs[0]) // rowid
+	bat.AddVector(src.Attrs[3], src.Vecs[3]) //committs
+	bat.AddVector(src.Attrs[1], src.Vecs[1]) //pk
+
+	return bat
+}
+
 func containersBatchToProtoBatch(bat *containers.Batch) (*api.Batch, error) {
 	mobat := containers.ToCNBatch(bat)
 	return batch.BatchToProtoBatch(mobat)

@@ -15,9 +15,9 @@
 package txnimpl
 
 import (
-	"context"
 	"fmt"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 
@@ -36,11 +36,11 @@ type tableSpace struct {
 	entry       *catalog.ObjectEntry
 	isTombstone bool
 
-	appendable InsertNode
+	appendable *anode
 	//index for primary key
 	index TableIndex
 	//nodes contains anode and node.
-	nodes       []InsertNode
+	node        *anode
 	table       *txnTable
 	rows        uint32
 	appends     []*appendCtx
@@ -54,7 +54,6 @@ type tableSpace struct {
 
 func newTableSpace(table *txnTable, isTombstone bool) *tableSpace {
 	space := &tableSpace{
-		nodes:       make([]InsertNode, 0),
 		index:       NewSimpleTableIndex(),
 		appends:     make([]*appendCtx, 0),
 		table:       table,
@@ -65,17 +64,6 @@ func newTableSpace(table *txnTable, isTombstone bool) *tableSpace {
 		table.store.txn.GetStartTS(),
 		isTombstone)
 	return space
-}
-
-func (space *tableSpace) GetLocalPhysicalAxis(row uint32) (int, uint32) {
-	var sum uint32
-	for i, node := range space.nodes {
-		sum += node.Rows()
-		if row <= sum-1 {
-			return i, node.Rows() - (sum - (row + 1)) - 1
-		}
-	}
-	panic("Invalid row ")
 }
 
 // register a non-appendable insertNode.
@@ -103,7 +91,7 @@ func (space *tableSpace) registerANode() {
 		space.isTombstone,
 	)
 	space.appendable = n
-	space.nodes = append(space.nodes, n)
+	space.node = n
 }
 
 func (tbl *txnTable) NeedRollback() bool {
@@ -146,8 +134,8 @@ func (space *tableSpace) PrepareApply() (err error) {
 			space.CloseAppends()
 		}
 	}()
-	for _, node := range space.nodes {
-		if err = space.prepareApplyNode(node); err != nil {
+	if space.node != nil {
+		if err = space.prepareApplyNode(space.node); err != nil {
 			return
 		}
 	}
@@ -281,11 +269,8 @@ func (space *tableSpace) prepareApplyObjectStats(stats objectio.ObjectStats) (er
 	return
 }
 
-func (space *tableSpace) prepareApplyNode(node InsertNode) (err error) {
-	if !node.IsPersisted() {
-		return space.prepareApplyANode(node.(*anode), 0)
-	}
-	return nil
+func (space *tableSpace) prepareApplyNode(node *anode) (err error) {
+	return space.prepareApplyANode(node, 0)
 }
 
 // CloseAppends un-reference the appendable blocks
@@ -360,7 +345,7 @@ func (space *tableSpace) AddObjsWithMetaLoc(
 	return nil
 }
 
-func (space *tableSpace) DeleteFromIndex(from, to uint32, node InsertNode) (err error) {
+func (space *tableSpace) DeleteFromIndex(from, to uint32, node *anode) (err error) {
 	schema := space.table.GetLocalSchema(space.isTombstone)
 	for i := from; i <= to; i++ {
 		v, _, err := node.GetValue(schema.GetSingleSortKeyIdx(), i)
@@ -376,86 +361,46 @@ func (space *tableSpace) DeleteFromIndex(from, to uint32, node InsertNode) (err 
 
 // RangeDelete delete rows : [start, end]
 func (space *tableSpace) RangeDelete(start, end uint32) error {
-	first, firstOffset := space.GetLocalPhysicalAxis(start)
-	last, lastOffset := space.GetLocalPhysicalAxis(end)
-	var err error
-	if last == first {
-		node := space.nodes[first]
-		err = node.RangeDelete(firstOffset, lastOffset)
-		if err != nil {
-			return err
-		}
-		if !space.table.GetLocalSchema(space.isTombstone).HasPK() {
-			// If no pk defined
-			return err
-		}
-		err = space.DeleteFromIndex(firstOffset, lastOffset, node)
+	err := space.node.RangeDelete(start, end)
+	if err != nil {
 		return err
 	}
-
-	node := space.nodes[first]
-	if err = node.RangeDelete(firstOffset, node.Rows()-1); err != nil {
-
+	if !space.table.GetLocalSchema(space.isTombstone).HasPK() {
+		// If no pk defined
 		return err
 	}
-	if err = space.DeleteFromIndex(firstOffset, node.Rows()-1, node); err != nil {
-		return err
-	}
-	node = space.nodes[last]
-	if err = node.RangeDelete(0, lastOffset); err != nil {
-		return err
-	}
-	if err = space.DeleteFromIndex(0, lastOffset, node); err != nil {
-		return err
-	}
-	if last > first+1 {
-		for i := first + 1; i < last; i++ {
-			node = space.nodes[i]
-			if err = node.RangeDelete(0, node.Rows()-1); err != nil {
-				break
-			}
-			if err = space.DeleteFromIndex(0, node.Rows()-1, node); err != nil {
-				break
-			}
-		}
-	}
+	err = space.DeleteFromIndex(start, start, space.node)
 	return err
 }
 
 // CollectCmd collect txnCmd for anode whose data resides in memory.
 func (space *tableSpace) CollectCmd(cmdMgr *commandManager) (err error) {
-	for _, node := range space.nodes {
-		csn := uint32(0xffff) // Special cmd
-		cmd, err := node.MakeCommand(csn)
-		if err != nil {
-			panic(err)
-		}
-		if cmd != nil {
-			cmdMgr.AddInternalCmd(cmd)
-		}
+	if space.node == nil {
+		return
+	}
+	csn := uint32(0xffff) // Special cmd
+	cmd, err := space.node.MakeCommand(csn)
+	if err != nil {
+		panic(err)
+	}
+	if cmd != nil {
+		cmdMgr.AddInternalCmd(cmd)
 	}
 	return
 }
 
 func (space *tableSpace) DeletesToString() string {
 	var s string
-	for i, n := range space.nodes {
-		s = fmt.Sprintf("%s\t<INode-%d>: %s\n", s, i, n.PrintDeletes())
-	}
+	s = fmt.Sprintf("%s\t<INode>: %s\n", s, space.node.PrintDeletes())
 	return s
 }
 
 func (space *tableSpace) IsDeleted(row uint32) bool {
-	npos, noffset := space.GetLocalPhysicalAxis(row)
-	n := space.nodes[npos]
-	return n.IsRowDeleted(noffset)
+	return space.node.IsRowDeleted(row)
 }
 
 func (space *tableSpace) Rows() (n uint32) {
-	for _, node := range space.nodes {
-		n += node.Rows()
-	}
-	return
+	return space.node.Rows()
 }
 
 func (space *tableSpace) GetByFilter(filter *handle.Filter) (id *common.ID, offset uint32, err error) {
@@ -491,46 +436,36 @@ func (space *tableSpace) BatchDedup(key containers.Vector) error {
 	return space.index.BatchDedup(space.table.GetLocalSchema(space.isTombstone).GetSingleSortKey().Name, key)
 }
 
-func (space *tableSpace) GetColumnDataByIds(
-	obj *catalog.ObjectEntry,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.BlockView, err error) {
-	n := space.nodes[0]
-	return n.GetColumnDataByIds(colIdxes, mp)
+func (space *tableSpace) Scan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	n := space.node
+	n.Scan(bat, colIdxes, mp)
 }
 
-func (space *tableSpace) GetColumnDataById(
-	ctx context.Context,
-	obj *catalog.ObjectEntry,
-	colIdx int,
-	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	n := space.nodes[0]
-	return n.GetColumnDataById(ctx, colIdx, mp)
+func (space *tableSpace) HybridScan(bat **containers.Batch, colIdxes []int, mp *mpool.MPool) {
+	space.node.Scan(bat, colIdxes, mp)
+	if (*bat).Deletes == nil {
+		(*bat).Deletes = &nulls.Nulls{}
+	}
+	(*bat).Deletes.Merge(space.node.data.Deletes)
 }
 
 func (space *tableSpace) Prefetch(obj *catalog.ObjectEntry, idxes []uint16) error {
-	n := space.nodes[0]
+	n := space.node
 	return n.Prefetch(idxes)
 }
 
 func (space *tableSpace) GetValue(row uint32, col uint16) (any, bool, error) {
-	npos, noffset := space.GetLocalPhysicalAxis(row)
-	n := space.nodes[npos]
-	return n.GetValue(int(col), noffset)
+	return space.node.GetValue(int(col), row)
 }
 
 // Close free the resource when transaction commits.
 func (space *tableSpace) Close() (err error) {
-	for _, node := range space.nodes {
-		if err = node.Close(); err != nil {
-			return
-		}
+	if space.node != nil {
+		space.node.Close()
 	}
 	space.index.Close()
 	space.index = nil
-	space.nodes = nil
+	space.node = nil
 	space.appendable = nil
 	return
 }

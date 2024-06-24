@@ -15,15 +15,12 @@
 package tables
 
 import (
-	"context"
 	"testing"
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/updates"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
@@ -33,11 +30,9 @@ import (
 func TestGetActiveRow(t *testing.T) {
 	defer testutils.AfterTest(t)()
 	ts1 := types.BuildTS(1, 0)
-	ts2 := types.BuildTS(2, 0)
 	schema := catalog.MockSchema(1, 0)
 	c := catalog.MockCatalog()
 	defer c.Close()
-	vpool := dbutils.MakeDefaultSmallPool("small-vector-pool")
 
 	db, _ := c.CreateDBEntry("db", "", "", nil)
 	table, _ := db.CreateTableEntry(schema, nil, nil)
@@ -80,22 +75,4 @@ func TestGetActiveRow(t *testing.T) {
 	err := idx.BatchUpsert(vec.GetDownstreamVector(), 0)
 	assert.NoError(t, err)
 	blk.node.Load().MustMNode().pkIndex = idx
-
-	node := blk.node.Load().MustMNode()
-	// row, err := blk.GetActiveRow(int8(1), ts2)
-	_, row, err := node.GetRowByFilter(
-		context.Background(), updates.MockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)), common.DefaultAllocator, vpool,
-	)
-	assert.NoError(t, err)
-	assert.Equal(t, uint32(1), row)
-
-	//abort appendnode2
-	an2.Aborted = true
-
-	_, row, err = node.GetRowByFilter(
-		context.Background(), updates.MockTxnWithStartTS(ts2), handle.NewEQFilter(int8(1)), common.DefaultAllocator, vpool,
-	)
-	// row, err = blk.GetActiveRow(int8(1), ts2)
-	assert.NoError(t, err)
-	assert.Equal(t, uint32(0), row)
 }

@@ -463,39 +463,23 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 	}
 
 	var obj handle.Object
-	var schema *catalog.Schema
 	if isTombstone {
 		obj = task.aTombstoneHandles[objIdx]
-		schema = task.tombstoneSchema
+		err = obj.Scan(&bat, 0, idxs, common.MergeAllocator)
 	} else {
 		obj = task.aObjHandles[objIdx]
-		schema = task.schema
+		err = obj.HybridScan(&bat, 0, idxs, common.MergeAllocator)
 	}
 
-	views, err := obj.GetColumnDataByIds(ctx, 0, idxs, common.MergeAllocator)
 	if err != nil {
 		return
 	}
-	bat = containers.NewBatch()
-	totalRowCnt := views.Columns[0].Length()
-	bat.Deletes = views.DeleteMask.Clone()
-	task.aObjDeletesCnt += bat.Deletes.GetCardinality()
-	defer views.Close()
-	for i, colidx := range idxs {
-		colview := views.Columns[i]
-		if colview == nil {
-			empty = true
-			return
-		}
-		vec := colview.Orphan()
-		if vec.Length() == 0 {
-			empty = true
-			vec.Close()
-			bat.Close()
-			return
-		}
-		bat.AddVector(schema.ColDefs[colidx].Name, vec.TryConvertConst())
+	if bat == nil {
+		empty = true
+		return
 	}
+	totalRowCnt := bat.Length()
+	task.aObjDeletesCnt += bat.Deletes.GetCardinality()
 
 	if isTombstone && bat.Deletes != nil {
 		panic(fmt.Sprintf("logic err, tombstone %v has deletes", obj.GetID().String()))
@@ -737,23 +721,30 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 	subtasks = make([]*flushObjTask, len(metas))
 	// fire flush task
 	for i, obj := range metas {
-		var data *containers.Batch
-		var dataVer *containers.BatchWithVersion
+		dataVers := make(map[uint32]*containers.BatchWithVersion)
 		objData := obj.GetObjectData()
-		if dataVer, err = objData.CollectAppendInRange(
-			task.txn.GetContext(), types.TS{}, task.txn.GetStartTS(), true, false, common.MergeAllocator,
+		if err = objData.ScanInMemory(
+			dataVers, types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
 		); err != nil {
 			return
 		}
-		data = dataVer.Batch
-		if data == nil || data.Length() == 0 {
+		if len(dataVers) == 0 {
 			// the new appendable block might has no data when we flush the table, just skip it
 			// In previous impl, runner will only pass non-empty obj to NewCompactBlackTask
 			continue
 		}
+		if len(dataVers) != 1 {
+			panic("logic err")
+		}
+		var dataVer *containers.BatchWithVersion
+		for _, data := range dataVers {
+			dataVer = data
+			break
+		}
+
 		// do not close data, leave that to wait phase
 		if isTombstone {
-			_, err = mergesort.SortBlockColumns(data.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
+			_, err = mergesort.SortBlockColumns(dataVer.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
 			if err != nil {
 				return
 			}
@@ -765,7 +756,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 			dataVer.Seqnums,
 			objData.GetFs(),
 			obj,
-			data,
+			dataVer.Batch,
 			nil,
 			true,
 			task.ID(),

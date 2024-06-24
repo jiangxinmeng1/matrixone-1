@@ -53,18 +53,9 @@ func (entry *TableEntry) CollectTombstoneInRange(
 			}
 			// TODO: Bloomfilter
 		}
-		deletes, err := tombstone.collectTombstoneInRange(ctx, objectID, start, end, mp, vpool)
+		err = tombstone.GetObjectData().CollectObjectTombstoneInRange(ctx, start, end, &objectID, &bat, mp, vpool)
 		if err != nil {
 			return nil, err
-		}
-		if deletes == nil {
-			continue
-		}
-		if bat == nil {
-			bat = deletes
-		} else {
-			bat.Extend(deletes)
-			deletes.Close()
 		}
 	}
 	return
@@ -128,7 +119,10 @@ func (entry *TableEntry) FillDeletes(
 		if !visible {
 			continue
 		}
-		tombstone.fillDeletes(ctx, blkID, txn, view, mp)
+		tombstone.GetObjectData().FillBlockTombstones(txn, &blkID, &view.DeleteMask, mp)
+		if err != nil {
+			return err
+		}
 	}
 	return
 }
@@ -138,4 +132,38 @@ func (entry *TableEntry) OnApplyDelete(
 	ts types.TS) (err error) {
 	entry.RemoveRows(deleted)
 	return
+}
+
+func (entry *TableEntry) HybridScan(
+	txn txnif.TxnReader,
+	bat **containers.Batch,
+	readSchema *Schema,
+	colIdxs []int,
+	blkID *objectio.Blockid,
+	mp *mpool.MPool,
+) error {
+	dataObject, err := entry.GetObjectByID(blkID.Object(), false)
+	if err != nil {
+		return err
+	}
+	_, offset := blkID.Offsets()
+	err = dataObject.GetObjectData().Scan(bat, txn, readSchema, offset, colIdxs, mp)
+	if err != nil {
+		return err
+	}
+	if *bat == nil {
+		return nil
+	}
+	it := entry.MakeObjectIt(false, true)
+	for ; it.Valid(); it.Next() {
+		tombstone := it.Get().GetPayload()
+		err := tombstone.GetObjectData().FillBlockTombstones(txn, blkID, &(*bat).Deletes, mp)
+		if err != nil {
+			return err
+		}
+	}
+	id := dataObject.AsCommonID()
+	id.BlockID = *blkID
+	err = txn.GetStore().FillInWorkspaceDeletes(id, &(*bat).Deletes)
+	return err
 }

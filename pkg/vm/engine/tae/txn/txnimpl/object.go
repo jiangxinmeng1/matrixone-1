@@ -15,7 +15,6 @@
 package txnimpl
 
 import (
-	"context"
 	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -121,8 +120,8 @@ func newObjectIt(table *txnTable, reverse bool, isTombstone bool) handle.ObjectI
 		curr.RUnlock()
 		it.linkIt.Next()
 	}
-	if table.getBaseTable(isTombstone).tableSpace != nil &&
-		len(table.getBaseTable(isTombstone).tableSpace.nodes) != 0 {
+	if table.getBaseTable(isTombstone) != nil && table.getBaseTable(isTombstone).tableSpace != nil &&
+		table.getBaseTable(isTombstone).tableSpace.node != nil {
 		cit := &composedObjectIt{
 			ObjectIt:    it,
 			uncommitted: table.getBaseTable(isTombstone).tableSpace.entry,
@@ -285,32 +284,36 @@ func (obj *txnObject) Prefetch(idxes []int) error {
 
 func (obj *txnObject) Fingerprint() *common.ID { return obj.entry.AsCommonID() }
 
-func (obj *txnObject) GetByFilter(
-	ctx context.Context, filter *handle.Filter, mp *mpool.MPool,
-) (blkID uint16, offset uint32, err error) {
-	return obj.entry.GetObjectData().GetByFilter(ctx, obj.table.store.txn, filter, mp)
-}
-
-func (obj *txnObject) GetColumnDataById(
-	ctx context.Context, blkID uint16, colIdx int, mp *mpool.MPool,
-) (*containers.ColumnView, error) {
-	if obj.entry.IsLocal {
-		return obj.table.dataTable.tableSpace.GetColumnDataById(ctx, obj.entry, colIdx, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataById(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdx, mp)
-}
-
-func (obj *txnObject) GetColumnDataByIds(
-	ctx context.Context, blkID uint16, colIdxes []int, mp *mpool.MPool,
-) (*containers.BlockView, error) {
-	if obj.entry.IsLocal {
-		return obj.table.dataTable.tableSpace.GetColumnDataByIds(obj.entry, colIdxes, mp)
-	}
-	return obj.entry.GetObjectData().GetColumnDataByIds(ctx, obj.Txn, obj.table.GetLocalSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
-}
-
 func (obj *txnObject) UpdateDeltaLoc(blkID uint16, deltaLoc objectio.Location) error {
 	id := obj.entry.AsCommonID()
 	id.SetBlockOffset(blkID)
 	return obj.table.store.UpdateDeltaLoc(id, deltaLoc)
+}
+
+func (obj *txnObject) Scan(
+	bat **containers.Batch,
+	blkID uint16,
+	colIdxes []int,
+	mp *mpool.MPool,
+) (err error) {
+	if obj.entry.IsLocal {
+		obj.table.dataTable.tableSpace.Scan(bat, colIdxes, mp)
+		return
+	}
+	return obj.entry.GetObjectData().Scan(bat, obj.Txn, obj.table.getSchema(obj.entry.IsTombstone), blkID, colIdxes, mp)
+}
+
+func (obj *txnObject) HybridScan(
+	bat **containers.Batch,
+	blkOffset uint16,
+	colIdxs []int,
+	mp *mpool.MPool,
+) error {
+	if obj.entry.IsLocal {
+		obj.table.dataTable.tableSpace.HybridScan(bat, colIdxs, mp)
+		return nil
+	}
+	blkID := objectio.NewBlockidWithObjectID(obj.GetID(), blkOffset)
+	return obj.entry.GetTable().HybridScan(
+		obj.Txn, bat, obj.table.getSchema(obj.entry.IsTombstone), colIdxs, blkID, mp)
 }

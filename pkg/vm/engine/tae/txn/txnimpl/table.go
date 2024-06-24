@@ -863,7 +863,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		bf objectio.BloomFilter
 	)
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
-	it := tbl.entry.MakeObjectIt(false, true)
+	it := tbl.entry.MakeTombstoneObjectIt(false)
 	for ; it.Valid(); it.Next() {
 		obj := it.Get().GetPayload()
 		ObjectHint := obj.SortHint

@@ -47,7 +47,7 @@ func HybridScanByBlock(
 	if *bat == nil {
 		return nil
 	}
-	it := tableEntry.MakeObjectIt(false, true)
+	it := tableEntry.MakeTombstoneObjectIt(false)
 	for ; it.Valid(); it.Next() {
 		tombstone := it.Get().GetPayload()
 		err := tombstone.GetObjectData().FillBlockTombstones(ctx, txn, blkID, &(*bat).Deletes, mp)

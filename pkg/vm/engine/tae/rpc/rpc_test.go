@@ -462,7 +462,8 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var bv *containers.Batch
 			err := blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().Scan(
-				&bv, txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+				ctx, &bv, txnR, schema, uint16(j), []int{schema.GetColIdx(hideDef[0].Name), schema.GetPrimaryKey().Idx}, common.DefaultAllocator,
+			)
 			assert.NoError(t, err)
 			physicals = append(physicals, bv)
 		}
@@ -566,7 +567,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var cv *containers.Batch
-			err := blk.HybridScan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := blk.HybridScan(ctx, &cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer cv.Close()
 			cv.Compact()
@@ -756,7 +757,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 		blk := it.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var cv *containers.Batch
-			err := blk.Scan(&cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := blk.Scan(ctx, &cv, uint16(j), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer cv.Close()
 			assert.Equal(t, 100, cv.Length())
@@ -773,7 +774,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	blk := it.GetObject()
 	hideColIdx := schema.GetColIdx(hideCol[0].Name)
 	var cv *containers.Batch
-	err = blk.Scan(&cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
+	err = blk.Scan(ctx, &cv, 0, []int{hideColIdx, schema.GetPrimaryKey().Idx}, common.DefaultAllocator)
 	assert.NoError(t, err)
 	defer cv.Close()
 
@@ -1126,7 +1127,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 		obj := it.GetObject()
 		for j := 0; j < obj.BlkCnt(); j++ {
 			var v *containers.Batch
-			err := obj.HybridScan(&v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
+			err := obj.HybridScan(ctx, &v, uint16(0), []int{schema.ColDefs[1].Idx}, common.DefaultAllocator)
 			assert.NoError(t, err)
 			defer v.Close()
 			v.Compact()

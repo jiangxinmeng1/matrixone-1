@@ -727,7 +727,7 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 		for i := 0; i < blkCnt; i++ {
 			var deleteBatch *containers.Batch
 			err := meta.GetObjectData().Scan(
-				&deleteBatch, txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
+				context.Background(), &deleteBatch, txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
 			)
 			assert.NoError(e.t, err)
 			pkDef := e.schema.GetPrimaryKey()

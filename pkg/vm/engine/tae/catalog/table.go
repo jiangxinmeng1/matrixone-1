@@ -227,6 +227,10 @@ func (entry *TableEntry) getTombstoneObjectByID(id *types.Objectid) (obj *Object
 	return entry.tombstoneObjects.GetObjectByID(id)
 }
 
+func (entry *TableEntry) MakeTombstoneObjectIt(reverse bool) *common.GenericSortedDListIt[*ObjectEntry] {
+	return entry.MakeObjectIt(reverse, true)
+}
+
 func (entry *TableEntry) MakeObjectIt(reverse bool, isTombstone bool) *common.GenericSortedDListIt[*ObjectEntry] {
 	entry.RLock()
 	defer entry.RUnlock()

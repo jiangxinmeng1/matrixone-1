@@ -228,7 +228,15 @@ func (entry *TableEntry) getTombstoneObjectByID(id *types.Objectid) (obj *Object
 }
 
 func (entry *TableEntry) MakeTombstoneObjectIt(reverse bool) *common.GenericSortedDListIt[*ObjectEntry] {
-	return entry.MakeObjectIt(reverse, true)
+	entry.RLock()
+	defer entry.RUnlock()
+	return entry.tombstoneObjects.MakeObjectIt(entry.RWMutex, reverse)
+}
+
+func (entry *TableEntry) MakeDataObjectIt(reverse bool) *common.GenericSortedDListIt[*ObjectEntry] {
+	entry.RLock()
+	defer entry.RUnlock()
+	return entry.dataObjects.MakeObjectIt(entry.RWMutex, reverse)
 }
 
 func (entry *TableEntry) MakeObjectIt(reverse bool, isTombstone bool) *common.GenericSortedDListIt[*ObjectEntry] {
@@ -353,7 +361,7 @@ func (entry *TableEntry) PPString(level common.PPLevel, depth int, prefix string
 	if level == common.PPL0 {
 		return w.String()
 	}
-	it := entry.MakeObjectIt(true, false)
+	it := entry.MakeDataObjectIt(true)
 	for it.Valid() {
 		objectEntry := it.Get().GetPayload()
 		_ = w.WriteByte('\n')
@@ -361,7 +369,7 @@ func (entry *TableEntry) PPString(level common.PPLevel, depth int, prefix string
 		it.Next()
 	}
 	if level > common.PPL2 {
-		it := entry.MakeObjectIt(true, true)
+		it := entry.MakeTombstoneObjectIt(true)
 		for it.Valid() {
 			objectEntry := it.Get().GetPayload()
 			_ = w.WriteByte('\n')
@@ -382,7 +390,7 @@ type TableStat struct {
 
 func (entry *TableEntry) ObjectStats(level common.PPLevel, start, end int) (stat TableStat, w bytes.Buffer) {
 
-	it := entry.MakeObjectIt(true, false)
+	it := entry.MakeDataObjectIt(true)
 	zonemapKind := common.ZonemapPrintKindNormal
 	if schema := entry.GetLastestSchemaLocked(false); schema.HasSortKey() && strings.HasPrefix(schema.GetSingleSortKey().Name, "__") {
 		zonemapKind = common.ZonemapPrintKindCompose
@@ -511,7 +519,7 @@ func (entry *TableEntry) RecurLoop(processor Processor) (err error) {
 			err = nil
 		}
 	}()
-	objIt := entry.MakeObjectIt(true, false)
+	objIt := entry.MakeDataObjectIt(true)
 	for objIt.Valid() {
 		objectEntry := objIt.Get().GetPayload()
 		if err := processor.OnObject(objectEntry); err != nil {
@@ -526,7 +534,7 @@ func (entry *TableEntry) RecurLoop(processor Processor) (err error) {
 		}
 		objIt.Next()
 	}
-	objIt = entry.MakeObjectIt(true, true)
+	objIt = entry.MakeTombstoneObjectIt(true)
 	for objIt.Valid() {
 		objectEntry := objIt.Get().GetPayload()
 		if err := processor.OnTombstone(objectEntry); err != nil {

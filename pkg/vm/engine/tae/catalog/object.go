@@ -672,7 +672,7 @@ func (entry *ObjectEntry) PrintPrepareCompactDebugLog() {
 	if lastNode.Txn != nil {
 		s = fmt.Sprintf("%s txn is %x.", s, lastNode.Txn.GetID())
 	}
-	it := entry.GetTable().MakeObjectIt(false, false)
+	it := entry.GetTable().MakeDataObjectIt(false)
 	for ; it.Valid(); it.Next() {
 		obj := it.Get().GetPayload()
 		obj.RLock()

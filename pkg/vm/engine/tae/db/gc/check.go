@@ -15,6 +15,8 @@
 package gc
 
 import (
+	"time"
+
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
@@ -23,7 +25,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
-	"time"
 )
 
 const NotFoundLimit = 10
@@ -147,14 +148,14 @@ func (c *checker) Check() error {
 		itTable := db.MakeTableIt(true)
 		for itTable.Valid() {
 			table := itTable.Get().GetPayload()
-			itObject := table.MakeObjectIt(true, false)
+			itObject := table.MakeDataObjectIt(true)
 			for itObject.Valid() {
 				objectEntry := itObject.Get().GetPayload()
 				stats := objectEntry.GetObjectStats()
 				delete(allObjects, stats.ObjectName().String())
 				itObject.Next()
 			}
-			itObject = table.MakeObjectIt(true, true)
+			itObject = table.MakeTombstoneObjectIt(true)
 			for itObject.Valid() {
 				objectEntry := itObject.Get().GetPayload()
 				stats := objectEntry.GetObjectStats()

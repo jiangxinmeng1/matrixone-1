@@ -160,7 +160,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 			continue
 		}
 		var bat *containers.Batch
-		if bat, err = tables.RangeScanTombstoneByObject(
+		if bat, err = tables.TombstoneRangeScanByObject(
 			ctx,
 			entry.tableEntry,
 			obj.ID,

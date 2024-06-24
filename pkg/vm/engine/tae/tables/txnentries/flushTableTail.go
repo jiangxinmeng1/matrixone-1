@@ -34,6 +34,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 )
 
@@ -159,16 +160,18 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 			continue
 		}
 		var bat *containers.Batch
-		bat, err = obj.CollectTombstoneInRange(
+		if bat, err = tables.RangeScanTombstoneByObject(
 			ctx,
+			entry.tableEntry,
+			obj.ID,
 			from.Next(), // NOTE HERE
 			to,
 			common.MergeAllocator,
 			entry.rt.VectorPool.Small,
-		)
-		if err != nil {
+		); err != nil {
 			return
 		}
+
 		if bat == nil || bat.Length() == 0 {
 			continue
 		}

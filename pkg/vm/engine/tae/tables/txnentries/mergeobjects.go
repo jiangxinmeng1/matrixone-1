@@ -33,6 +33,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 )
 
 type mergeObjectsEntry struct {
@@ -173,8 +174,10 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 	blkOffsetBase int,
 ) (transCnt int, collect, transfer time.Duration, err error) {
 	inst := time.Now()
-	bat, err := dropped.CollectTombstoneInRange(
+	bat, err := tables.RangeScanTombstoneByObject(
 		ctx,
+		dropped.GetTable(),
+		dropped.ID,
 		from.Next(),
 		to,
 		common.MergeAllocator,

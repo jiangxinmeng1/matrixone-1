@@ -40,6 +40,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/txnentries"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 	"go.uber.org/zap"
@@ -723,9 +724,8 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 	// fire flush task
 	for i, obj := range metas {
 		dataVers := make(map[uint32]*containers.BatchWithVersion)
-		objData := obj.GetObjectData()
-		if err = objData.ScanInMemory(
-			dataVers, types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
+		if err = tables.RangeScanInMemoryByObject(
+			ctx, obj, dataVers, types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
 		); err != nil {
 			return
 		}
@@ -755,7 +755,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 			tasks.WaitableCtx,
 			dataVer.Version,
 			dataVer.Seqnums,
-			objData.GetFs(),
+			task.rt.Fs,
 			obj,
 			dataVer.Batch,
 			nil,

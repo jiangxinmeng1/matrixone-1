@@ -143,6 +143,7 @@ type Object interface {
 		vpool *containers.VectorPool,
 	) (err error)
 	ScanInMemory(
+		ctx context.Context,
 		batches map[uint32]*containers.BatchWithVersion,
 		start, end types.TS,
 		mp *mpool.MPool,

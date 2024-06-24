@@ -93,6 +93,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 	"go.uber.org/zap"
 )
@@ -520,12 +521,11 @@ func (b *TableLogtailRespBuilder) skipObjectData(e *catalog.ObjectEntry, lastMVC
 	}
 }
 func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
-	data := e.GetObjectData()
 	var err error
 	if e.IsTombstone {
-		err = data.ScanInMemory(b.dataDelBatches, b.start, b.end, common.LogtailAllocator)
+		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataDelBatches, b.start, b.end, common.LogtailAllocator)
 	} else {
-		err = data.ScanInMemory(b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
+		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
 	}
 	if err != nil {
 		return err

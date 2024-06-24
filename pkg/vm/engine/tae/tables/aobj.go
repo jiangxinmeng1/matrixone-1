@@ -25,7 +25,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -191,7 +190,6 @@ func (obj *aobject) GetDuplicatedRows(
 	keysZM index.ZM,
 	precommit bool,
 	checkWWConflict bool,
-	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
 	mp *mpool.MPool,
 ) (err error) {
@@ -216,7 +214,6 @@ func (obj *aobject) GetDuplicatedRows(
 			keys,
 			keysZM,
 			rowIDs,
-			bf,
 			precommit,
 			checkWWConflict,
 			mp,
@@ -231,7 +228,6 @@ func (obj *aobject) GetDuplicatedRows(
 			rowIDs,
 			true,
 			maxRow,
-			bf,
 			mp,
 		)
 	}
@@ -262,7 +258,6 @@ func (obj *aobject) Contains(
 	precommit bool,
 	keys containers.Vector,
 	keysZM index.ZM,
-	bf objectio.BloomFilter,
 	mp *mpool.MPool,
 ) (err error) {
 	defer func() {
@@ -277,7 +272,6 @@ func (obj *aobject) Contains(
 			ctx,
 			keys,
 			keysZM,
-			bf,
 			txn,
 			precommit,
 			mp,
@@ -290,7 +284,6 @@ func (obj *aobject) Contains(
 			keys,
 			keysZM,
 			true,
-			bf,
 			mp,
 		)
 	}

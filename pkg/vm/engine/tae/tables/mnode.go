@@ -102,7 +102,6 @@ func (node *memoryNode) Contains(
 	ctx context.Context,
 	keys containers.Vector,
 	keysZM index.ZM,
-	bf objectio.BloomFilter,
 	txn txnif.TxnReader,
 	isCommitting bool,
 	mp *mpool.MPool,
@@ -110,20 +109,19 @@ func (node *memoryNode) Contains(
 	node.object.RLock()
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, node.checkConflictLocked(txn, isCommitting), mp)
+	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting), mp)
 }
 func (node *memoryNode) getDuplicatedRowsLocked(
 	ctx context.Context,
 	keys containers.Vector,
 	keysZM index.ZM,
-	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
 	maxRow uint32,
 	skipFn func(uint32) error,
 	mp *mpool.MPool,
 ) (err error) {
 	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
-	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, bf, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
+	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
 }
 
 func (node *memoryNode) Rows() (uint32, error) {
@@ -242,7 +240,6 @@ func (node *memoryNode) GetDuplicatedRows(
 	keys containers.Vector,
 	keysZM index.ZM,
 	rowIDs containers.Vector,
-	bf objectio.BloomFilter,
 	isCommitting bool,
 	checkWWConflict bool,
 	mp *mpool.MPool,
@@ -253,7 +250,7 @@ func (node *memoryNode) GetDuplicatedRows(
 	if checkWWConflict {
 		checkFn = node.checkConflictLocked(txn, isCommitting)
 	}
-	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, bf, rowIDs, maxVisibleRow, checkFn, mp)
+	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, rowIDs, maxVisibleRow, checkFn, mp)
 
 	return
 }

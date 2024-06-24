@@ -21,7 +21,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
-	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -86,7 +85,6 @@ func (obj *object) GetDuplicatedRows(
 	keysZM index.ZM,
 	precommit bool,
 	checkWWConflict bool,
-	bf objectio.BloomFilter,
 	rowIDs containers.Vector,
 	mp *mpool.MPool,
 ) (err error) {
@@ -108,7 +106,6 @@ func (obj *object) GetDuplicatedRows(
 		rowIDs,
 		false,
 		0,
-		bf,
 		mp,
 	)
 }
@@ -121,7 +118,6 @@ func (obj *object) Contains(
 	isCommitting bool,
 	keys containers.Vector,
 	keysZM index.ZM,
-	bf objectio.BloomFilter,
 	mp *mpool.MPool) (err error) {
 	defer func() {
 		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
@@ -139,7 +135,6 @@ func (obj *object) Contains(
 		keys,
 		keysZM,
 		false,
-		bf,
 		mp,
 	)
 }

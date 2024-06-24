@@ -859,9 +859,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	if err = index.BatchUpdateZM(keysZM, rowIDs.GetDownstreamVector()); err != nil {
 		return
 	}
-	var (
-		bf objectio.BloomFilter
-	)
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
 	it := tbl.entry.MakeTombstoneObjectIt(false)
 	for ; it.Valid(); it.Next() {
@@ -899,7 +896,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 			isCommitting,
 			rowIDs,
 			keysZM,
-			bf,
 			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)

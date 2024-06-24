@@ -160,10 +160,6 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 	if err != nil {
 		return
 	}
-	var (
-		name objectio.ObjectNameShort
-		bf   objectio.BloomFilter
-	)
 	maxObjectHint := uint64(0)
 	for ; it.Valid(); it.Next() {
 		obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
@@ -184,23 +180,12 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 			continue
 		}
 		if obj.HasCommittedPersistedData() {
-			stats := obj.GetObjectStats()
 			var skip bool
 			if skip, err = quickSkipThisObject(ctx, keysZM, obj); err != nil {
 				return
 			} else if skip {
 				continue
 			}
-			if bf, err = tryGetCurrentObjectBF(
-				ctx,
-				stats.ObjectLocation(),
-				bf,
-				&name,
-				tbl.txnTable.store.rt.Fs.Service,
-			); err != nil {
-				return
-			}
-			name = *stats.ObjectShortName()
 		}
 		err = obj.GetObjectData().GetDuplicatedRows(
 			ctx,
@@ -209,7 +194,6 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 			nil,
 			false,
 			checkWW,
-			objectio.BloomFilter{},
 			rowIDs,
 			common.WorkspaceAllocator,
 		)
@@ -253,7 +237,6 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 			nil,
 			true,
 			true,
-			objectio.BloomFilter{},
 			rowIDs,
 			common.WorkspaceAllocator,
 		)

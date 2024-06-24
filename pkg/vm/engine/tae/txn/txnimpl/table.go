@@ -115,6 +115,10 @@ func newTxnTable(store *txnStore, entry *catalog.TableEntry) (*txnTable, error) 
 		txnEntries: newTxnEntries(),
 	}
 	tbl.dataTable = newBaseTable(schema, false, tbl)
+	if schema.HasPK() {
+		tombstoneSchema := entry.GetVisibleSchema(store.txn, true)
+		tbl.tombstoneTable = newBaseTable(tombstoneSchema, true, tbl)
+	}
 	return tbl, nil
 }
 

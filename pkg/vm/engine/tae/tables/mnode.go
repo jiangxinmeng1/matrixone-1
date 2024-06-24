@@ -141,6 +141,7 @@ func (node *memoryNode) EstimateMemSizeLocked() int {
 }
 
 func (node *memoryNode) getDataWindowOnWriteSchema(
+	ctx context.Context,
 	batches map[uint32]*containers.BatchWithVersion,
 	start, end types.TS, mp *mpool.MPool,
 ) (err error) {

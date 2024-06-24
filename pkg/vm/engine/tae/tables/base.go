@@ -473,6 +473,7 @@ func (blk *baseObject) FillBlockTombstones(
 }
 
 func (blk *baseObject) ScanInMemory(
+	ctx context.Context,
 	batches map[uint32]*containers.BatchWithVersion,
 	start, end types.TS,
 	mp *mpool.MPool,
@@ -483,7 +484,7 @@ func (blk *baseObject) ScanInMemory(
 		return nil
 	}
 	mnode := node.MustMNode()
-	return mnode.getDataWindowOnWriteSchema(batches, start, end, mp)
+	return mnode.getDataWindowOnWriteSchema(ctx, batches, start, end, mp)
 }
 
 func (blk *baseObject) CollectObjectTombstoneInRange(

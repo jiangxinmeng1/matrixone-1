@@ -19,6 +19,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 )
 
@@ -93,7 +95,20 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 		writer.SetAppendable()
 	}
 	if task.meta.IsTombstone {
-		writer.SetPrimaryKey(uint16(catalog.TombstonePrimaryKeyIdx))
+		writer.SetPrimaryKeyWithType(
+			uint16(catalog.TombstonePrimaryKeyIdx),
+			index.HBF,
+			index.PrefixFn{
+				Id: 1,
+				Fn: func(b []byte) []byte {
+					return b[:types.ObjectBytesSize]
+				}},
+			index.PrefixFn{
+				Id: 2,
+				Fn: func(b []byte) []byte {
+					return b[:types.BlockidSize]
+				}},
+		)
 	} else {
 		if task.meta.GetSchema().HasPK() {
 			writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))

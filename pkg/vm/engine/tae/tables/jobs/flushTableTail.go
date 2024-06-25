@@ -39,6 +39,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/txnentries"
@@ -664,7 +665,24 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 	if schema.HasPK() {
 		pkIdx := schema.GetSingleSortKeyIdx()
-		writer.SetPrimaryKey(uint16(pkIdx))
+		if isTombstone {
+			writer.SetPrimaryKeyWithType(
+				uint16(catalog.TombstonePrimaryKeyIdx),
+				index.HBF,
+				index.PrefixFn{
+					Id: 1,
+					Fn: func(b []byte) []byte {
+						return b[:types.ObjectBytesSize]
+					}},
+				index.PrefixFn{
+					Id: 2,
+					Fn: func(b []byte) []byte {
+						return b[:types.BlockidSize]
+					}},
+			)
+		} else {
+			writer.SetPrimaryKey(uint16(pkIdx))
+		}
 	} else if schema.HasSortKey() {
 		writer.SetSortKey(uint16(schema.GetSingleSortKeyIdx()))
 	}

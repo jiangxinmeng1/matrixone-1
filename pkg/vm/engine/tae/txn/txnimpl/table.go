@@ -1356,7 +1356,7 @@ func (tbl *txnTable) contains(
 		}
 		idx := indexwrapper.NewImmutIndex(stats.SortKeyZoneMap(), bf, stats.ObjectLocation())
 		for i := uint16(0); i < uint16(blkCount); i++ {
-			sel, err := idx.BatchDedup(ctx, keys, keysZM, tbl.store.rt, uint32(i))
+			sel, err := idx.BatchDedup(ctx, keys, keysZM, tbl.store.rt, true, uint32(i))
 			if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 				continue
 			}

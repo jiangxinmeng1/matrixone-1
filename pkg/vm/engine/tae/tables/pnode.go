@@ -170,7 +170,7 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 		if err = index.DecodeBloomFilter(bfIndex, buf); err != nil {
 			return
 		}
-		containes, err := bfIndex.PrefixMayContainsKey(objID[:], 1, 1)
+		containes, err := bfIndex.PrefixMayContainsKey(objID[:], index.PrefixFnID_Object, 1)
 		if err != nil {
 			return err
 		}
@@ -260,7 +260,7 @@ func (node *persistedNode) FillBlockTombstones(
 		if err := index.DecodeBloomFilter(bfIndex, buf); err != nil {
 			return err
 		}
-		containes, err := bfIndex.PrefixMayContainsKey(blkID[:], 2, 2)
+		containes, err := bfIndex.PrefixMayContainsKey(blkID[:], index.PrefixFnID_Block, 2)
 		if err != nil {
 			return err
 		}

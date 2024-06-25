@@ -352,7 +352,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 			keys,
 			keysZM,
 			blk.rt,
-			false,
+			blk.meta.IsTombstone,
 			uint32(i),
 		)
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {

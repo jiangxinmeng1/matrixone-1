@@ -103,16 +103,8 @@ func GetNewWriter(
 				writer.SetPrimaryKeyWithType(
 					uint16(catalog.TombstonePrimaryKeyIdx),
 					index.HBF,
-					index.PrefixFn{
-						Id: 1,
-						Fn: func(b []byte) []byte {
-							return b[:types.ObjectBytesSize]
-						}},
-					index.PrefixFn{
-						Id: 2,
-						Fn: func(b []byte) []byte {
-							return b[:types.BlockidSize]
-						}},
+					index.ObjectPrefixFn,
+					index.BlockPrefixFn,
 				)
 			} else {
 				writer.SetPrimaryKey(uint16(sortkeyPos))

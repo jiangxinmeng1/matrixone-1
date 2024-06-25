@@ -154,7 +154,29 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 		}
 	}
 	id := node.object.meta.AsCommonID()
+
+	var bf objectio.BloomFilter
+	if bf, err = objectio.FastLoadBF(
+		ctx,
+		node.object.meta.GetLocation(),
+		false,
+		node.object.rt.Fs.Service,
+	); err != nil {
+		return
+	}
 	for blkID := 0; blkID < node.object.meta.BlockCnt(); blkID++ {
+		buf := bf.GetBloomFilter(uint32(blkID))
+		bfIndex := index.NewEmptyBloomFilterWithType(index.HBF)
+		if err = index.DecodeBloomFilter(bfIndex, buf); err != nil {
+			return
+		}
+		containes, err := bfIndex.PrefixMayContainsKey(objID[:], index.PrefixFnID_Object, 1)
+		if err != nil {
+			return err
+		}
+		if !containes {
+			continue
+		}
 		id.SetBlockOffset(uint16(blkID))
 		location, err := node.object.buildMetalocation(uint16(blkID))
 		if err != nil {
@@ -222,7 +244,29 @@ func (node *persistedNode) FillBlockTombstones(
 	}
 	id := node.object.meta.AsCommonID()
 	readSchema := node.object.meta.GetTable().GetLastestSchema(true)
+	var bf objectio.BloomFilter
+	var err error
+	if bf, err = objectio.FastLoadBF(
+		ctx,
+		node.object.meta.GetLocation(),
+		false,
+		node.object.rt.Fs.Service,
+	); err != nil {
+		return err
+	}
 	for tombstoneBlkID := 0; tombstoneBlkID < node.object.meta.BlockCnt(); tombstoneBlkID++ {
+		buf := bf.GetBloomFilter(uint32(tombstoneBlkID))
+		bfIndex := index.NewEmptyBloomFilterWithType(index.HBF)
+		if err := index.DecodeBloomFilter(bfIndex, buf); err != nil {
+			return err
+		}
+		containes, err := bfIndex.PrefixMayContainsKey(blkID[:], index.PrefixFnID_Block, 2)
+		if err != nil {
+			return err
+		}
+		if !containes {
+			continue
+		}
 		id.SetBlockOffset(uint16(tombstoneBlkID))
 		location, err := node.object.buildMetalocation(uint16(tombstoneBlkID))
 		if err != nil {

@@ -352,6 +352,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 			keys,
 			keysZM,
 			blk.rt,
+			blk.meta.IsTombstone,
 			uint32(i),
 		)
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
@@ -389,6 +390,7 @@ func (blk *baseObject) persistedContains(
 			keys,
 			keysZM,
 			blk.rt,
+			true,
 			uint32(i),
 		)
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {

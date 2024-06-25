@@ -27,6 +27,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
 )
 
@@ -93,7 +94,12 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 		writer.SetAppendable()
 	}
 	if task.meta.IsTombstone {
-		writer.SetPrimaryKey(uint16(catalog.TombstonePrimaryKeyIdx))
+		writer.SetPrimaryKeyWithType(
+			uint16(catalog.TombstonePrimaryKeyIdx),
+			index.HBF,
+			index.ObjectPrefixFn,
+			index.BlockPrefixFn,
+		)
 	} else {
 		if task.meta.GetSchema().HasPK() {
 			writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))

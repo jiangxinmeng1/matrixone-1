@@ -130,7 +130,7 @@ func (entry *flushTableTailEntry) addTransferPages() {
 		}
 		id := entry.aobjHandles[i].Fingerprint()
 		entry.pageIds = append(entry.pageIds, id)
-		page := model.NewTransferHashPage(id, time.Now(), isTransient)
+		page := model.NewTransferHashPage(id, time.Now(), len(m), isTransient)
 		for srcRow, dst := range m {
 			blkid := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(dst.BlkIdx))
 			page.Train(uint32(srcRow), *objectio.NewRowid(blkid, uint32(dst.RowIdx)))
@@ -247,7 +247,7 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 	logutil.Warnf("[FlushTabletail] FT task %d rollback", entry.taskID)
 	// remove transfer page
 	for _, id := range entry.pageIds {
-		_ = entry.rt.TransferTable.DeletePage(id)
+		entry.rt.TransferTable.DeletePage(id)
 	}
 
 	// why not clean TranDel?

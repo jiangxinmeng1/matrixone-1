@@ -69,7 +69,14 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"net/http"
+	_ "net/http/pprof"
 )
+
+func init() {
+	go http.ListenAndServe("0.0.0.0:6060", nil)
+}
 
 const (
 	ModuleName               = "TAEDB"
@@ -5616,6 +5623,87 @@ func TestUpdatePerf(t *testing.T) {
 	p, _ := ants.NewPool(poolSize)
 	defer p.Release()
 	now := time.Now()
+	for i := 0; i < poolSize; i++ {
+		wg.Add(1)
+		_ = p.Submit(run(i))
+	}
+	wg.Wait()
+	t.Log(time.Since(now))
+}
+
+func TestUpdatePerf2(t *testing.T) {
+	t.Skip(any("for debug"))
+	ctx := context.Background()
+
+	totalCnt := 10000000
+	deleteCnt := 1000000
+	updateCnt := 100000
+	poolSize := 200
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(3, 2)
+	schema.BlockMaxRows = 1000
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+
+	bat := catalog.MockBatch(schema, totalCnt)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	it := rel.MakeObjectIt(false, false)
+	blkCnt := totalCnt / int(schema.BlockMaxRows)
+	deleteEachBlock := deleteCnt / blkCnt
+	t.Logf("%d blocks", blkCnt)
+	blkIdx := 0
+	for ; it.Valid(); it.Next() {
+		txn2, rel2 := tae.GetRelation()
+		obj := it.GetObject()
+		meta := obj.GetMeta().(*catalog.ObjectEntry)
+		id := meta.AsCommonID()
+		for i := 0; i < meta.BlockCnt(); i++ {
+			id.SetBlockOffset(uint16(i))
+			for j := 0; j < deleteEachBlock; j++ {
+				idx := uint32(rand.Intn(int(schema.BlockMaxRows)))
+				rel2.RangeDelete(id, idx, idx, handle.DT_Normal)
+			}
+			blkIdx++
+			if blkIdx%50 == 0 {
+				t.Logf("lalala %d blk", blkIdx)
+			}
+		}
+		txn2.Commit(ctx)
+		tae.CompactBlocks(true)
+	}
+	txn.Commit(ctx)
+
+	var wg sync.WaitGroup
+	var now time.Time
+	run := func(index int) func() {
+		return func() {
+			defer wg.Done()
+			for i := 0; i < (updateCnt)/poolSize; i++ {
+				idx := rand.Intn(totalCnt)
+				v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(idx)
+				filter := handle.NewEQFilter(v)
+				txn, rel := tae.GetRelation()
+				rel.UpdateByFilter(context.Background(), filter, 0, int8(0), false)
+				txn.Commit(context.Background())
+				if index == 0 && i%50 == 0 {
+					logutil.Infof("lalala %d", i)
+				}
+			}
+		}
+	}
+	t.Log("start update")
+	now = time.Now()
+
+	p, _ := ants.NewPool(poolSize)
+	defer p.Release()
 	for i := 0; i < poolSize; i++ {
 		wg.Add(1)
 		_ = p.Submit(run(i))

@@ -8835,3 +8835,43 @@ func TestFlushAndAppend2(t *testing.T) {
 	}
 	tae.Catalog.RecurLoop(p)
 }
+
+func TestDeletesInMerge(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 50
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 50)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	objID := rel.MakeObjectIt(false, false).GetObject().Fingerprint()
+	rel.RangeDelete(objID, 0, 0, handle.DT_Normal)
+	txn.Commit(ctx)
+
+	t.Log(tae.Catalog.SimplePPString(3))
+
+	txn, _ = tae.StartTxn(nil)
+	obj := rel.MakeObjectIt(false, false).GetObject().GetMeta().(*catalog.ObjectEntry)
+	task, _ := jobs.NewMergeObjectsTask(
+		nil, txn, []*catalog.ObjectEntry{obj}, tae.Runtime,
+		common.DefaultMaxOsizeObjMB*common.Const1MBytes, false)
+	task.Execute(ctx)
+	{
+		txn, rel := tae.GetRelation()
+		obj := rel.MakeObjectIt(true, true).GetObject().GetMeta().(*catalog.ObjectEntry)
+		task, _ := jobs.NewFlushTableTailTask(nil, txn, nil, []*catalog.ObjectEntry{obj}, tae.Runtime, tae.TxnMgr.Now())
+		task.Execute(ctx)
+		txn.Commit(ctx)
+	}
+
+	txn.Commit(ctx)
+}

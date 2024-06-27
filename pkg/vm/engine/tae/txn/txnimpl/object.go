@@ -270,6 +270,10 @@ func (obj *txnObject) Prefetch(idxes []int) error {
 	schema := obj.table.GetLocalSchema(obj.entry.IsTombstone)
 	seqnums := make([]uint16, 0, len(idxes))
 	for _, idx := range idxes {
+		if idx == catalog.COLIDX_COMMITS {
+			seqnums = append(seqnums, objectio.SEQNUM_COMMITTS)
+			continue
+		}
 		seqnums = append(seqnums, schema.ColDefs[idx].SeqNum)
 	}
 	if obj.IsUncommitted() {

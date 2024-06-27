@@ -114,6 +114,14 @@ func (node *persistedNode) Scan(
 			var attr string
 			if idx == catalog.COLIDX_COMMITS {
 				attr = catalog.AttrCommitTs
+				if vecs[i].GetType().Oid != types.T_TS {
+					vecs[i].Close()
+					vecs[i] = node.object.rt.VectorPool.Transient.GetVector(&catalog.CommitTSType)
+					node.object.RLock()
+					createTS := node.object.meta.GetCreatedAtLocked()
+					node.object.RUnlock()
+					vector.AppendMultiFixed(vecs[i].GetDownstreamVector(), createTS, false, vecs[0].Length(), mp)
+				}
 			} else {
 				attr = readSchema.ColDefs[idx].Name
 			}
@@ -124,6 +132,14 @@ func (node *persistedNode) Scan(
 			var attr string
 			if idx == catalog.COLIDX_COMMITS {
 				attr = catalog.AttrCommitTs
+				if vecs[i].GetType().Oid != types.T_TS {
+					vecs[i].Close()
+					vecs[i] = node.object.rt.VectorPool.Transient.GetVector(&catalog.CommitTSType)
+					node.object.RLock()
+					createTS := node.object.meta.GetCreatedAtLocked()
+					node.object.RUnlock()
+					vector.AppendMultiFixed(vecs[i].GetDownstreamVector(), createTS, false, vecs[0].Length(), mp)
+				}
 			} else {
 				attr = readSchema.ColDefs[idx].Name
 			}

@@ -130,6 +130,10 @@ func NewMergeObjectsTask(
 		task.idxs = append(task.idxs, def.Idx)
 		task.attrs = append(task.attrs, def.Name)
 	}
+	if isTombstone {
+		task.idxs = append(task.idxs, catalog.COLIDX_COMMITS)
+		task.attrs = append(task.attrs, catalog.AttrCommitTs)
+	}
 	task.BaseTask = tasks.NewBaseTask(task, tasks.DataCompactionTask, ctx)
 	return
 }

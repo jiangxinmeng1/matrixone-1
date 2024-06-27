@@ -61,8 +61,7 @@ const (
 		"		mo_catalog.mo_database AS md" +
 		"	ON " +
 		"		mt.account_id = md.account_id AND" +
-		"		mt.relkind IN ('v','e','r','cluster') AND" +
-		"		md.dat_type != 'subscription'" +
+		"		mt.relkind IN ('v','e','r','cluster') " +
 		"	GROUP BY" +
 		"		mt.account_id" +
 		")," +
@@ -499,10 +498,22 @@ func getAccountInfo(ctx context.Context,
 	if err != nil {
 		return nil, nil, err
 	}
-
-	rsOfMoAccount = bh.GetExecResultBatches()
+	//the resultBatches referred outside this function far away
+	rsOfMoAccount = Copy[*batch.Batch](bh.GetExecResultBatches())
 	if len(rsOfMoAccount) == 0 {
 		return nil, nil, moerr.NewInternalError(ctx, "no account info")
+	}
+
+	//copy rsOfMoAccount from backgroundExec
+	//the original batches to be released at the ClearExecResultBatches or the backgroundExec.Close
+	//the rsOfMoAccount to be released at the end of the doShowAccounts
+	for i := 0; i < len(rsOfMoAccount); i++ {
+		originBat := rsOfMoAccount[i]
+
+		rsOfMoAccount[i], err = originBat.Dup(mp)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	batchCount := len(rsOfMoAccount)

@@ -320,12 +320,12 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	inst := time.Now()
 	snapshotSubtasks, err := task.flushAObjsForSnapshot(ctx, false)
 	statFlushAobj := time.Since(inst)
-	if err != nil {
-		return
-	}
 	defer func() {
 		releaseFlushObjTasks(snapshotSubtasks, err)
 	}()
+	if err != nil {
+		return
+	}
 
 	/////////////////////
 	//// phase seperator
@@ -761,6 +761,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 		if isTombstone {
 			_, err = mergesort.SortBlockColumns(dataVer.Vecs, catalog.TombstonePrimaryKeyIdx, task.rt.VectorPool.Transient)
 			if err != nil {
+				dataVer.Close()
 				return
 			}
 		}

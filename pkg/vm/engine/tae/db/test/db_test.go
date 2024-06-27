@@ -69,7 +69,14 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"net/http"
+	_ "net/http/pprof"
 )
+
+func init() {
+	go http.ListenAndServe("0.0.0.0:6060", nil)
+}
 
 const (
 	ModuleName               = "TAEDB"
@@ -5624,6 +5631,87 @@ func TestUpdatePerf(t *testing.T) {
 	t.Log(time.Since(now))
 }
 
+func TestUpdatePerf2(t *testing.T) {
+	t.Skip(any("for debug"))
+	ctx := context.Background()
+
+	totalCnt := 10000000
+	deleteCnt := 1000000
+	updateCnt := 100000
+	poolSize := 200
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(3, 2)
+	schema.BlockMaxRows = 1000
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+
+	bat := catalog.MockBatch(schema, totalCnt)
+	defer bat.Close()
+
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	it := rel.MakeObjectIt(false, false)
+	blkCnt := totalCnt / int(schema.BlockMaxRows)
+	deleteEachBlock := deleteCnt / blkCnt
+	t.Logf("%d blocks", blkCnt)
+	blkIdx := 0
+	for ; it.Valid(); it.Next() {
+		txn2, rel2 := tae.GetRelation()
+		obj := it.GetObject()
+		meta := obj.GetMeta().(*catalog.ObjectEntry)
+		id := meta.AsCommonID()
+		for i := 0; i < meta.BlockCnt(); i++ {
+			id.SetBlockOffset(uint16(i))
+			for j := 0; j < deleteEachBlock; j++ {
+				idx := uint32(rand.Intn(int(schema.BlockMaxRows)))
+				rel2.RangeDelete(id, idx, idx, handle.DT_Normal)
+			}
+			blkIdx++
+			if blkIdx%50 == 0 {
+				t.Logf("lalala %d blk", blkIdx)
+			}
+		}
+		txn2.Commit(ctx)
+		tae.CompactBlocks(true)
+	}
+	txn.Commit(ctx)
+
+	var wg sync.WaitGroup
+	var now time.Time
+	run := func(index int) func() {
+		return func() {
+			defer wg.Done()
+			for i := 0; i < (updateCnt)/poolSize; i++ {
+				idx := rand.Intn(totalCnt)
+				v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(idx)
+				filter := handle.NewEQFilter(v)
+				txn, rel := tae.GetRelation()
+				rel.UpdateByFilter(context.Background(), filter, 0, int8(0), false)
+				txn.Commit(context.Background())
+				if index == 0 && i%50 == 0 {
+					logutil.Infof("lalala %d", i)
+				}
+			}
+		}
+	}
+	t.Log("start update")
+	now = time.Now()
+
+	p, _ := ants.NewPool(poolSize)
+	defer p.Release()
+	for i := 0; i < poolSize; i++ {
+		wg.Add(1)
+		_ = p.Submit(run(i))
+	}
+	wg.Wait()
+	t.Log(time.Since(now))
+}
+
 func TestDeletePerf(t *testing.T) {
 	t.Skip(any("for debug"))
 	ctx := context.Background()
@@ -6839,6 +6927,173 @@ func TestSnapshotGC(t *testing.T) {
 	err = db.DiskCleaner.GetCleaner().CheckGC()
 	assert.Nil(t, err)
 
+}
+
+func TestSnapshotMeta(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	testutils.EnsureNoLeak(t)
+	ctx := context.Background()
+
+	opts := new(options.Options)
+	opts = config.WithQuickScanAndCKPOpts(opts)
+	options.WithDisableGCCheckpoint()(opts)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	db := tae.DB
+	db.DiskCleaner.GetCleaner().SetMinMergeCountForTest(1)
+
+	snapshotSchema := catalog.MockSnapShotSchema()
+	snapshotSchema.BlockMaxRows = 2
+	snapshotSchema.ObjectMaxBlocks = 1
+	snapshotSchema1 := catalog.MockSnapShotSchema()
+	snapshotSchema1.BlockMaxRows = 2
+	snapshotSchema1.ObjectMaxBlocks = 1
+	snapshotSchema2 := catalog.MockSnapShotSchema()
+	snapshotSchema2.BlockMaxRows = 2
+	snapshotSchema2.ObjectMaxBlocks = 1
+	var rel3, rel4, rel5 handle.Relation
+	{
+		txn, _ := db.StartTxn(nil)
+		database, err := txn.CreateDatabase("db", "", "")
+		assert.Nil(t, err)
+		database2, err := txn.CreateDatabase("db2", "", "")
+		assert.Nil(t, err)
+		database3, err := txn.CreateDatabase("db3", "", "")
+		assert.Nil(t, err)
+		rel3, err = database.CreateRelation(snapshotSchema)
+		assert.Nil(t, err)
+		rel4, err = database2.CreateRelation(snapshotSchema1)
+		assert.Nil(t, err)
+		rel5, err = database3.CreateRelation(snapshotSchema2)
+		assert.Nil(t, err)
+		assert.Nil(t, txn.Commit(context.Background()))
+	}
+	//db.DiskCleaner.GetCleaner().DisableGCForTest()
+
+	snapshots := make([]int64, 0)
+	for i := 0; i < 10; i++ {
+		time.Sleep(20 * time.Millisecond)
+		snapshot := time.Now().UTC().Unix()
+		snapshots = append(snapshots, snapshot)
+	}
+	testutils.WaitExpect(10000, func() bool {
+		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0
+	})
+	if db.Runtime.Scheduler.GetPenddingLSNCnt() != 0 {
+		return
+	}
+	tae.Restart(ctx)
+	db = tae.DB
+	db.DiskCleaner.GetCleaner().DisableGCForTest()
+	db.DiskCleaner.GetCleaner().SetMinMergeCountForTest(1)
+	for i, snapshot := range snapshots {
+		attrs := []string{"col0", "col1", "ts", "col3", "col4", "col5", "col6", "id"}
+		vecTypes := []types.Type{types.T_uint64.ToType(),
+			types.T_uint64.ToType(), types.T_int64.ToType(),
+			types.T_enum.ToType(), types.T_uint64.ToType(), types.T_uint64.ToType(),
+			types.T_uint64.ToType(), types.T_uint64.ToType()}
+		opt := containers.Options{}
+		opt.Capacity = 0
+		data1 := containers.BuildBatch(attrs, vecTypes, opt)
+		data1.Vecs[0].Append(uint64(0), false)
+		data1.Vecs[1].Append(uint64(0), false)
+		data1.Vecs[2].Append(snapshot, false)
+		data1.Vecs[3].Append(types.Enum(1), false)
+		data1.Vecs[4].Append(uint64(0), false)
+		data1.Vecs[5].Append(uint64(0), false)
+		data1.Vecs[6].Append(uint64(0), false)
+		data1.Vecs[7].Append(uint64(0), false)
+		txn1, _ := db.StartTxn(nil)
+		var database handle.Database
+		var id uint64
+		if i%3 == 0 {
+			id = rel3.ID()
+			database, _ = txn1.GetDatabase("db")
+		} else if i%3 == 1 {
+			id = rel4.ID()
+			database, _ = txn1.GetDatabase("db2")
+		} else {
+			id = rel5.ID()
+			database, _ = txn1.GetDatabase("db3")
+		}
+		rel, _ := database.GetRelationByID(id)
+		err := rel.Append(context.Background(), data1)
+		data1.Close()
+		assert.Nil(t, err)
+		assert.Nil(t, txn1.Commit(context.Background()))
+	}
+	testutils.WaitExpect(10000, func() bool {
+		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0
+	})
+	if db.Runtime.Scheduler.GetPenddingLSNCnt() != 0 {
+		return
+	}
+	initMinMerged := db.DiskCleaner.GetCleaner().GetMinMerged()
+	db.DiskCleaner.GetCleaner().EnableGCForTest()
+	t.Log(tae.Catalog.SimplePPString(common.PPL1))
+	assert.Equal(t, uint64(0), db.Runtime.Scheduler.GetPenddingLSNCnt())
+	testutils.WaitExpect(3000, func() bool {
+		if db.DiskCleaner.GetCleaner().GetMinMerged() == nil {
+			return false
+		}
+		minEnd := db.DiskCleaner.GetCleaner().GetMinMerged().GetEnd()
+		if minEnd.IsEmpty() {
+			return false
+		}
+		if initMinMerged == nil {
+			return true
+		}
+		initMinEnd := initMinMerged.GetEnd()
+		return minEnd.Greater(&initMinEnd)
+	})
+	minMerged := db.DiskCleaner.GetCleaner().GetMinMerged()
+	if minMerged == nil {
+		return
+	}
+	minEnd := minMerged.GetEnd()
+	if minEnd.IsEmpty() {
+		return
+	}
+	if initMinMerged != nil {
+		initMinEnd := initMinMerged.GetEnd()
+		if !minEnd.Greater(&initMinEnd) {
+			return
+		}
+	}
+
+	assert.NotNil(t, minMerged)
+	snaps, err := db.DiskCleaner.GetCleaner().GetSnapshots()
+	assert.Nil(t, err)
+	defer logtail.CloseSnapshotList(snaps)
+	assert.Equal(t, 1, len(snaps))
+	for _, snap := range snaps {
+		assert.Equal(t, len(snapshots), snap.Length())
+	}
+	err = db.DiskCleaner.GetCleaner().CheckGC()
+	assert.Nil(t, err)
+	tae.RestartDisableGC(ctx)
+	db = tae.DB
+	db.DiskCleaner.GetCleaner().SetMinMergeCountForTest(1)
+	testutils.WaitExpect(5000, func() bool {
+		if db.DiskCleaner.GetCleaner().GetMaxConsumed() == nil {
+			return false
+		}
+		end := db.DiskCleaner.GetCleaner().GetMaxConsumed().GetEnd()
+		minEnd := minMerged.GetEnd()
+		return end.GreaterEq(&minEnd)
+	})
+	end := db.DiskCleaner.GetCleaner().GetMaxConsumed().GetEnd()
+	minEnd = minMerged.GetEnd()
+	assert.True(t, end.GreaterEq(&minEnd))
+	snaps, err = db.DiskCleaner.GetCleaner().GetSnapshots()
+	assert.Nil(t, err)
+	defer logtail.CloseSnapshotList(snaps)
+	assert.Equal(t, 1, len(snaps))
+	for _, snap := range snaps {
+		assert.Equal(t, len(snapshots), snap.Length())
+	}
+	err = db.DiskCleaner.GetCleaner().CheckGC()
+	assert.Nil(t, err)
 }
 
 func TestGlobalCheckpoint2(t *testing.T) {

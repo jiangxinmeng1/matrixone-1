@@ -27,7 +27,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 
 	"github.com/RoaringBitmap/roaring"
-
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/moprobe"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -37,6 +36,9 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	apipb "github.com/matrixorigin/matrixone/pkg/pb/api"
+	"github.com/matrixorigin/matrixone/pkg/perfcounter"
+	"github.com/matrixorigin/matrixone/pkg/util"
+	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -48,6 +50,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
+	"go.uber.org/zap"
 )
 
 type txnEntries struct {
@@ -641,16 +644,22 @@ func (tbl *txnTable) dedup(ctx context.Context, pk containers.Vector, isTombston
 }
 func (tbl *txnTable) Append(ctx context.Context, data *containers.Batch) (err error) {
 	schema := tbl.dataTable.schema
+	var dedupDur float64
 	if schema.HasPK() && !schema.IsSecondaryIndexTable() {
+		now := time.Now()
 		err = tbl.dedup(ctx, data.Vecs[schema.GetSingleSortKeyIdx()], false)
 		if err != nil {
 			return err
 		}
+		dedupDur += time.Since(now).Seconds()
 	}
 	if tbl.dataTable.tableSpace == nil {
 		tbl.dataTable.tableSpace = newTableSpace(tbl, false)
 	}
-	return tbl.dataTable.tableSpace.Append(data)
+	dur, err := tbl.dataTable.tableSpace.Append(data)
+	dedupDur += dur
+	v2.TxnTNAppendDeduplicateDurationHistogram.Observe(dedupDur)
+	return
 }
 func (tbl *txnTable) AddObjsWithMetaLoc(ctx context.Context, stats containers.Vector) (err error) {
 	return stats.Foreach(func(v any, isNull bool, row int) error {

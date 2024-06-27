@@ -245,7 +245,18 @@ func (task *mergeObjectsTask) LoadNextBatch(ctx context.Context, objIdx uint32) 
 
 	bat := batch.New(true, task.attrs)
 	for i, idx := range task.idxs {
-		bat.Vecs[idx] = view.Vecs[i].GetDownstreamVector()
+		if idx == catalog.COLIDX_COMMITS {
+			id := 0
+			for i, attr := range task.attrs {
+				if attr == catalog.AttrCommitTs {
+					id = i
+				}
+			}
+			bat.Vecs[id] = view.Vecs[i].GetDownstreamVector()
+		} else {
+
+			bat.Vecs[idx] = view.Vecs[i].GetDownstreamVector()
+		}
 	}
 	bat.SetRowCount(view.Length())
 	return bat, view.Deletes, releaseF, nil

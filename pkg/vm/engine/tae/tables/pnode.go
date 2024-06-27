@@ -175,6 +175,13 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 	); err != nil {
 		return
 	}
+	objLocation := node.object.meta.GetLocation()
+	objDataMeta, err := objectio.FastLoadObjectMeta(ctx, &objLocation, false, node.object.GetFs().Service)
+	if err != nil {
+		return err
+	}
+	colCount := objDataMeta.MustGetMeta(objectio.SchemaData).GetBlockMeta(0).GetColumnCount()
+	persistedByCN := colCount == 2
 	for blkID := 0; blkID < node.object.meta.BlockCnt(); blkID++ {
 		buf := bf.GetBloomFilter(uint32(blkID))
 		bfIndex := index.NewEmptyBloomFilterWithType(index.HBF)
@@ -199,20 +206,37 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 		if err != nil {
 			return err
 		}
-		commitTSs := vector.MustFixedCol[types.TS](vecs[2].GetDownstreamVector())
-		rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
-		for i := 0; i < len(commitTSs); i++ {
-			commitTS := commitTSs[i]
-			if commitTS.GreaterEq(&start) && commitTS.LessEq(&end) &&
-				types.PrefixCompare(rowIDs[i][:], objID[:]) == 0 { // TODO
-				if *bat == nil {
-					pkIdx := readSchema.GetColIdx(catalog.AttrPKVal)
-					pkType := readSchema.ColDefs[pkIdx].GetType()
-					*bat = catalog.NewTombstoneBatchByPKType(pkType, mp)
+		var commitTSs []types.TS
+		if !persistedByCN {
+			commitTSs = vector.MustFixedCol[types.TS](vecs[2].GetDownstreamVector())
+			rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
+			for i := 0; i < len(commitTSs); i++ {
+				commitTS := commitTSs[i]
+				if commitTS.GreaterEq(&start) && commitTS.LessEq(&end) &&
+					types.PrefixCompare(rowIDs[i][:], objID[:]) == 0 { // TODO
+					if *bat == nil {
+						pkIdx := readSchema.GetColIdx(catalog.AttrPKVal)
+						pkType := readSchema.ColDefs[pkIdx].GetType()
+						*bat = catalog.NewTombstoneBatchByPKType(pkType, mp)
+					}
+					(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
+					(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
+					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(commitTS[i], false)
 				}
-				(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
-				(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
-				(*bat).GetVectorByName(catalog.AttrCommitTs).Append(commitTS[i], false)
+			}
+		} else {
+			rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
+			for i := 0; i < len(rowIDs); i++ {
+				if types.PrefixCompare(rowIDs[i][:], objID[:]) == 0 { // TODO
+					if *bat == nil {
+						pkIdx := readSchema.GetColIdx(catalog.AttrPKVal)
+						pkType := readSchema.ColDefs[pkIdx].GetType()
+						*bat = catalog.NewTombstoneBatchByPKType(pkType, mp)
+					}
+					(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
+					(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
+					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(startTS, false)
+				}
 			}
 		}
 	}

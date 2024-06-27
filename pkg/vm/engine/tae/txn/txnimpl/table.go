@@ -22,9 +22,6 @@ import (
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
-	"github.com/matrixorigin/matrixone/pkg/util"
-
-	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -50,7 +47,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
-	"go.uber.org/zap"
 )
 
 type txnEntries struct {
@@ -1305,7 +1301,7 @@ func (tbl *txnTable) RangeDelete(
 	if tbl.tombstoneTable.tableSpace == nil {
 		tbl.tombstoneTable.tableSpace = newTableSpace(tbl, true)
 	}
-	err = tbl.tombstoneTable.tableSpace.Append(deleteBatch)
+	_, err = tbl.tombstoneTable.tableSpace.Append(deleteBatch)
 	if err != nil {
 		return
 	}

@@ -294,6 +294,9 @@ func (task *mergeObjectsTask) PrepareNewWriter() *blockio.BlockWriter {
 		}
 		seqnums = append(seqnums, def.SeqNum)
 	}
+	if task.isTombstone {
+		seqnums = append(seqnums, objectio.SEQNUM_COMMITTS)
+	}
 	sortkeyIsPK := false
 	sortkeyPos := -1
 

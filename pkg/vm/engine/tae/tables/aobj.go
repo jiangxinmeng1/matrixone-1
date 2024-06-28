@@ -202,9 +202,7 @@ func (obj *aobject) GetDuplicatedRows(
 	defer node.Unref()
 	maxRow := uint32(math.MaxUint32)
 	if !precommit {
-		obj.RLock()
-		maxRow, err = obj.GetMaxRowByTSLocked(txn.GetStartTS())
-		obj.RUnlock()
+		maxRow, err = obj.GetMaxRowByTS(txn.GetStartTS())
 	}
 	if !node.IsPersisted() {
 		return node.GetDuplicatedRows(
@@ -233,10 +231,12 @@ func (obj *aobject) GetDuplicatedRows(
 	}
 }
 
-func (obj *aobject) GetMaxRowByTSLocked(ts types.TS) (uint32, error) {
+func (obj *aobject) GetMaxRowByTS(ts types.TS) (uint32, error) {
 	node := obj.PinNode()
 	defer node.Unref()
 	if !node.IsPersisted() {
+		obj.RLock()
+		defer obj.RUnlock()
 		return obj.appendMVCC.GetMaxRowByTSLocked(ts), nil
 	} else {
 		vec, err := obj.LoadPersistedCommitTS(0)

@@ -109,7 +109,7 @@ func (obj *object) GetDuplicatedRows(
 		mp,
 	)
 }
-func (obj *object) GetMaxRowByTSLocked(ts types.TS) (uint32, error) {
+func (obj *object) GetMaxRowByTS(ts types.TS) (uint32, error) {
 	panic("not support")
 }
 func (obj *object) Contains(

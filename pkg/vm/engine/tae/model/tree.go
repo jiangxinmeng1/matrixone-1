@@ -426,37 +426,36 @@ func (ttree *TableTree) ReadFromWithVersion(r io.Reader, ver uint16) (n int64, e
 		return
 	}
 	n += 8 + 8 + 4
-	if cnt == 0 {
-		return
-	}
 	var tmpn int64
-	for i := 0; i < int(cnt); i++ {
-		id := objectio.NewObjectid()
-		if ver < MemoTreeVersion2 {
-			objs, tmpn, err := ReadObjectTreesV1(r)
-			if err != nil {
-				return n, err
-			}
-			for _, obj := range objs {
+	if cnt != 0 {
+		for i := 0; i < int(cnt); i++ {
+			id := objectio.NewObjectid()
+			if ver < MemoTreeVersion2 {
+				objs, tmpn, err := ReadObjectTreesV1(r)
+				if err != nil {
+					return n, err
+				}
+				for _, obj := range objs {
+					ttree.Objs[*obj.ID] = obj
+				}
+				n += tmpn
+
+			} else if ver < MemoTreeVersion3 {
+				obj := NewObjectTree(id)
+				if tmpn, err = obj.ReadFromV2(r); err != nil {
+					return
+				}
 				ttree.Objs[*obj.ID] = obj
-			}
-			n += tmpn
+				n += tmpn
+			} else {
+				obj := NewObjectTree(id)
+				if tmpn, err = obj.ReadFromV3(r); err != nil {
+					return
+				}
+				ttree.Objs[*obj.ID] = obj
+				n += tmpn
 
-		} else if ver < MemoTreeVersion3 {
-			obj := NewObjectTree(id)
-			if tmpn, err = obj.ReadFromV2(r); err != nil {
-				return
 			}
-			ttree.Objs[*obj.ID] = obj
-			n += tmpn
-		} else {
-			obj := NewObjectTree(id)
-			if tmpn, err = obj.ReadFromV3(r); err != nil {
-				return
-			}
-			ttree.Objs[*obj.ID] = obj
-			n += tmpn
-
 		}
 	}
 

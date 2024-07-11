@@ -156,7 +156,7 @@ func DoMergeAndWrite(
 	}
 
 	if hasSortKey {
-		if err = mergeObjs(ctx, mergehost, sortkeyPos isTombstone); err != nil {
+		if err = mergeObjs(ctx, mergehost, sortkeyPos, isTombstone); err != nil {
 			return err
 		}
 	} else {

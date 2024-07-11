@@ -16,7 +16,6 @@ package db
 
 import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
-	"github.com/matrixorigin/matrixone/pkg/common/util"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -156,44 +155,6 @@ func (s *MergeTaskBuilder) onTable(tableEntry *catalog.TableEntry) (err error) {
 	tableEntry.RUnlock()
 	s.resetForTable(tableEntry)
 
-	deltaLocRows := uint32(0)
-	distinctDeltaLocs := 0
-	tblRows := 0
-	for objIt := tableEntry.MakeObjectIt(true); objIt.Valid(); objIt.Next() {
-		objectEntry := objIt.Get().GetPayload()
-		if !objectValid(objectEntry) {
-			continue
-		}
-
-		var rows int
-		rows, err = objectEntry.GetObjectData().Rows()
-		if err != nil {
-			return
-		}
-		dels := objectEntry.GetObjectData().GetTotalChanges()
-		objectEntry.SetRemainingRows(rows - dels)
-		s.tableRowCnt += rows
-		s.tableRowDel += dels
-		tblRows += rows - dels
-
-		tombstone := tableEntry.TryGetTombstone(objectEntry.ID)
-		if tombstone == nil {
-			continue
-		}
-		for j := range objectEntry.BlockCnt() {
-			deltaLoc := tombstone.GetLatestDeltaloc(uint16(j))
-			if deltaLoc == nil || deltaLoc.IsEmpty() {
-				continue
-			}
-			if _, ok := s.distinctDeltaLocs[util.UnsafeBytesToString(deltaLoc)]; !ok {
-				s.distinctDeltaLocs[util.UnsafeBytesToString(deltaLoc)] = struct{}{}
-				s.objDeltaLocCnt[objectEntry]++
-				s.objDeltaLocRowCnt[objectEntry] += deltaLoc.Rows()
-				deltaLocRows += deltaLoc.Rows()
-				distinctDeltaLocs++
-			}
-		}
-	}
 	return
 }
 

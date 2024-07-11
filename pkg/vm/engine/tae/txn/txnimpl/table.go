@@ -24,7 +24,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 
 	"github.com/RoaringBitmap/roaring"
-	"go.uber.org/zap"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/moprobe"
@@ -49,10 +48,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index/indexwrapper"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
-)
-
-var (
-	ErrDuplicateNode = moerr.NewInternalErrorNoCtx("tae: duplicate node")
 )
 
 type txnEntries struct {

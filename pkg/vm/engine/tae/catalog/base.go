@@ -223,14 +223,13 @@ func (be *BaseEntryImpl[T]) HasDropIntentLocked() bool {
 	return un.HasDropIntent()
 }
 
-func (be *BaseEntryImpl[T]) ensureVisibleAndNotDropped(txn txnif.TxnReader) bool {
-	visible, dropped := be.ensureVisibleAndNotDroppedLocked(txn)
+func (be *BaseEntryImpl[T]) ensureVisibleAndNotDroppedLocked(txn txnif.TxnReader) bool {
+	visible, dropped := be.GetVisibilityLocked(txn)
 	if !visible {
 		return false
 	}
 	return !dropped
 }
-
 func (be *BaseEntryImpl[T]) GetVisibilityLocked(txn txnif.TxnReader) (visible, dropped bool) {
 	un := be.GetVisibleNodeLocked(txn)
 	if un == nil {

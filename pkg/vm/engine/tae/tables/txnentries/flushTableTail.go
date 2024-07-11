@@ -88,7 +88,6 @@ func NewFlushTableTailEntry(
 
 	entry := &flushTableTailEntry{
 		txn:                     txn,
-		taskID:                  taskID,
 		taskName:                taskName,
 		transMappings:           mapping,
 		tableEntry:              tableEntry,
@@ -264,13 +263,13 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 	fs := entry.rt.Fs.Service
 
 	// object for snapshot read of aobjects
-	ablkNames := make([]string, 0, len(entry.ablksMetas))
-	for _, blk := range entry.aobjMetas {
-		if !blk.HasPersistedData() {
+	aobjNames := make([]string, 0, len(entry.aobjMetas))
+	for _, obj := range entry.aobjMetas {
+		if !obj.HasPersistedData() {
 			logutil.Info(
 				"[FLUSH-PREPARE-ROLLBACK]",
 				zap.String("task", entry.taskName),
-				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", blk.ID.String())),
+				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", obj.ID.String())),
 			)
 			continue
 		}

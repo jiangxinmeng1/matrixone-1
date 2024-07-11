@@ -355,7 +355,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 		return
 	}
 	defer func() {
-		releaseFlushObjTasks(tombstoneSnapshotSubtasks, err)
+		releaseFlushObjTasks(task, tombstoneSnapshotSubtasks, err)
 	}()
 
 	/////////////////////
@@ -751,7 +751,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTombstone bool) (subtasks []*flushObjTask, err error) {
 	defer func() {
 		if err != nil {
-			releaseFlushObjTasks(subtasks, err)
+			releaseFlushObjTasks(task, subtasks, err)
 		}
 	}()
 
@@ -837,7 +837,7 @@ func (task *flushTableTailTask) waitFlushAObjForSnapshot(ctx context.Context, su
 	return nil
 }
 
-func releaseFlushObjTasks(subtasks []*flushObjTask, err error) {
+func releaseFlushObjTasks(ftask *flushTableTailTask, subtasks []*flushObjTask, err error) {
 	if err != nil {
 		logutil.Info(
 			"[FLUSH-AOBJ-ERR]",

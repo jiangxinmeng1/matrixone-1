@@ -40,6 +40,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/mergesort"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables/txnentries"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tasks"
+	"go.uber.org/zap"
 )
 
 type mergeObjectsTask struct {
@@ -314,19 +315,26 @@ func (task *mergeObjectsTask) DoTransfer() bool {
 	return task.doTransfer
 }
 
+func (task *mergeObjectsTask) Name() string {
+	return fmt.Sprintf("[MT-%d]-%d-%s", task.ID(), task.rel.ID(), task.schema.Name)
+}
+
 func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	phaseDesc := ""
 	defer func() {
 		if err != nil {
-			logutil.Error("[DoneWithErr] Mergeblocks", common.OperationField(task.Name()),
-				common.AnyField("error", err),
-				common.AnyField("phase", phaseDesc),
+			logutil.Error("[MERGE-ERR]",
+				zap.String("task", task.Name()),
+				zap.String("phase", phaseDesc),
+				zap.Error(err),
 			)
 		}
 	}()
 
 	if time.Since(task.createAt) > time.Second*10 {
-		logutil.Warn("[Slow] Mergeblocks wait", common.OperationField(task.Name()),
+		logutil.Warn(
+			"[MERGE-SLOW-SCHED]",
+			zap.String("task", task.Name()),
 			common.AnyField("duration", time.Since(task.createAt)),
 		)
 	}
@@ -337,12 +345,12 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 		sortkeyPos = schema.GetSingleSortKeyIdx()
 	}
 	phaseDesc = "1-DoMergeAndWrite"
-	if err = mergesort.DoMergeAndWrite(ctx, sortkeyPos, task, task.isTombstone); err != nil {
+	if err = mergesort.DoMergeAndWrite(ctx, task.txn.String(), sortkeyPos, task, task.isTombstone); err != nil {
 		return err
 	}
 
 	phaseDesc = "2-HandleMergeEntryInTxn"
-	if task.createdBObjs, err = HandleMergeEntryInTxn(ctx, task.txn, task.commitEntry, task.rt, task.isTombstone); err != nil {
+	if task.createdBObjs, err = HandleMergeEntryInTxn(task.txn, task.Name(), task.commitEntry, task.rt, task.isTombstone); err != nil {
 		return err
 	}
 
@@ -352,9 +360,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	return nil
 }
 
-func HandleMergeEntryInTxn(
-	ctx context.Context, txn txnif.AsyncTxn, entry *api.MergeCommitEntry, rt *dbutils.Runtime, isTombstone bool,
-) ([]*catalog.ObjectEntry, error) {
+func HandleMergeEntryInTxn(txn txnif.AsyncTxn, taskName string, entry *api.MergeCommitEntry, rt *dbutils.Runtime, isTombstone bool) ([]*catalog.ObjectEntry, error) {
 	database, err := txn.GetDatabaseByID(entry.DbId)
 	if err != nil {
 		return nil, err
@@ -402,6 +408,7 @@ func HandleMergeEntryInTxn(
 	txnEntry, err := txnentries.NewMergeObjectsEntry(
 		ctx,
 		txn,
+		taskName,
 		rel,
 		mergedObjs,
 		createdObjs,
@@ -426,10 +433,10 @@ func HandleMergeEntryInTxn(
 	return createdObjs, nil
 }
 
-func (task *mergeObjectsTask) GetTotalSize() uint32 {
-	totalSize := uint32(0)
+func (task *mergeObjectsTask) GetTotalSize() uint64 {
+	totalSize := uint64(0)
 	for _, obj := range task.mergedObjs {
-		totalSize += uint32(obj.GetOriginSize())
+		totalSize += uint64(obj.GetOriginSize())
 	}
 	return totalSize
 }

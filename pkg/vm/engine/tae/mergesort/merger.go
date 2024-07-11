@@ -70,6 +70,7 @@ type merger[T any] struct {
 
 func newMerger[T any](host MergeTaskHost, lessFunc sort.LessFunc[T], sortKeyPos int, isTombstone bool, mustColFunc func(*vector.Vector) []T) Merger {
 	size := host.GetObjectCnt()
+	rowSizeU64 := host.GetTotalSize() / uint64(host.GetTotalRowCnt())
 	m := &merger[T]{
 		host:       host,
 		objCnt:     size,
@@ -86,7 +87,7 @@ func newMerger[T any](host MergeTaskHost, lessFunc sort.LessFunc[T], sortKeyPos 
 		rowPerBlk:     host.GetBlockMaxRows(),
 		stats: mergeStats{
 			totalRowCnt:   host.GetTotalRowCnt(),
-			rowSize:       host.GetTotalSize() / host.GetTotalRowCnt(),
+			rowSize:       uint32(rowSizeU64),
 			targetObjSize: host.GetTargetObjSize(),
 			blkPerObj:     host.GetObjectMaxBlocks(),
 		},

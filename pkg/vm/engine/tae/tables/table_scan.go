@@ -47,9 +47,9 @@ func HybridScanByBlock(
 	if *bat == nil {
 		return nil
 	}
-	it := tableEntry.MakeTombstoneObjectIt(false)
-	for ; it.Valid(); it.Next() {
-		tombstone := it.Get().GetPayload()
+	it := tableEntry.MakeTombstoneObjectIt()
+	for it.Next() {
+		tombstone := it.Item()
 		err := tombstone.GetObjectData().FillBlockTombstones(ctx, txn, blkID, &(*bat).Deletes, mp)
 		if err != nil {
 			return err
@@ -69,13 +69,10 @@ func TombstoneRangeScanByObject(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (bat *containers.Batch, err error) {
-	it := tableEntry.MakeTombstoneObjectIt(false)
-	for ; it.Valid(); it.Next() {
-		node := it.Get()
-		tombstone := node.GetPayload()
-		tombstone.RLock()
-		skip := tombstone.IsCreatingOrAbortedLocked() || tombstone.HasDropCommittedLocked()
-		tombstone.RUnlock()
+	it := tableEntry.MakeTombstoneObjectIt()
+	for it.Next() {
+		tombstone := it.Item()
+		skip := tombstone.IsCreatingOrAborted() || tombstone.HasDropCommitted()
 		if skip {
 			continue
 		}

@@ -14,6 +14,8 @@
 package catalog
 
 import (
+	"fmt"
+
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -354,31 +356,47 @@ func (catalog *Catalog) onReplayUpdateObject(
 	if err != nil {
 		panic(err)
 	}
-	tbl, err := db.GetTableEntryByID(cmd.ID.TableID)
+	rel, err := db.GetTableEntryByID(cmd.ID.TableID)
 	if err != nil {
 		logutil.Debugf("tbl %d-%d", cmd.ID.DbID, cmd.ID.TableID)
 		logutil.Info(catalog.SimplePPString(3))
 		panic(err)
 	}
-	obj, err := tbl.GetObjectByID(cmd.ID.ObjectID(), cmd.node.IsTombstone)
-	un := cmd.mvccNode
-	if err != nil {
+	var obj *ObjectEntry
+	if cmd.mvccNode.CreatedAt.Equal(&txnif.UncommitTS) {
 		obj = NewReplayObjectEntry()
-		obj.ID = *cmd.ID.ObjectID()
-		obj.table = tbl
-		obj.InsertLocked(un)
-		obj.ObjectNode = cmd.node
-		tbl.AddEntryLocked(obj)
-	} else {
-		node := obj.SearchNodeLocked(un)
-		if node == nil {
-			obj.InsertLocked(un)
-		} else {
-			node.BaseNode.Update(un.BaseNode)
-		}
+		obj.table = rel
+		obj.ObjectNode = *cmd.node
+		obj.SortHint = catalog.NextObject()
+		obj.EntryMVCCNode = *cmd.mvccNode.EntryMVCCNode
+		obj.CreateNode = *cmd.mvccNode.TxnMVCCNode
+		cmd.mvccNode.TxnMVCCNode = &obj.CreateNode
+		cmd.mvccNode.EntryMVCCNode = &obj.EntryMVCCNode
+		obj.ObjectMVCCNode = *cmd.mvccNode.BaseNode
+		obj.remainingRows = &common.FixedSampleIII[int]{}
+		obj.ObjectState = ObjectState_Create_ApplyCommit
+		rel.AddEntryLocked(obj)
 	}
+	if cmd.mvccNode.DeletedAt.Equal(&txnif.UncommitTS) {
+		obj, err = rel.GetObjectByID(cmd.ID.ObjectID(), cmd.node.IsTombstone)
+		if err != nil {
+			panic(fmt.Sprintf("obj %v not existed, table:\n%v", cmd.ID.String(), rel.StringWithLevel(3)))
+		}
+		obj.EntryMVCCNode = *cmd.mvccNode.EntryMVCCNode
+		obj.DeleteNode = *cmd.mvccNode.TxnMVCCNode
+		obj.ObjectMVCCNode = *cmd.mvccNode.BaseNode
+		cmd.mvccNode.TxnMVCCNode = &obj.DeleteNode
+		cmd.mvccNode.EntryMVCCNode = &obj.EntryMVCCNode
+		obj.ObjectState = ObjectState_Delete_ApplyCommit
+	}
+
 	if obj.objData == nil {
 		obj.objData = dataFactory.MakeObjectFactory()(obj)
+	} else {
+		deleteAt := obj.GetDeleteAt()
+		if !obj.IsAppendable() || (obj.IsAppendable() && !deleteAt.IsEmpty()) {
+			obj.objData.TryUpgrade()
+		}
 	}
 }
 
@@ -420,32 +438,40 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		logutil.Info(catalog.SimplePPString(common.PPL3))
 		panic(err)
 	}
-	obj, _ := rel.GetObjectByID(objid, isTombstone)
-	if obj == nil {
+	var obj *ObjectEntry
+	if entryNode.CreatedAt.Equal(&txnNode.End) {
 		obj = NewReplayObjectEntry()
-		obj.ID = *objid
 		obj.table = rel
-		obj.ObjectNode = &ObjectNode{
+		obj.ObjectNode = ObjectNode{
 			state:       state,
 			sorted:      state == ES_NotAppendable,
 			SortHint:    catalog.NextObject(),
 			IsTombstone: isTombstone,
 		}
+		obj.EntryMVCCNode = *entryNode
+		obj.ObjectMVCCNode = *objNode
+		obj.CreateNode = *txnNode
+		obj.remainingRows = &common.FixedSampleIII[int]{}
+		obj.ObjectState = ObjectState_Create_ApplyCommit
 		rel.AddEntryLocked(obj)
 	}
-	un := &MVCCNode[*ObjectMVCCNode]{
-		EntryMVCCNode: entryNode,
-		BaseNode:      objNode,
-		TxnMVCCNode:   txnNode,
-	}
-	node := obj.SearchNodeLocked(un)
-	if node == nil {
-		obj.InsertLocked(un)
-	} else {
-		node.BaseNode.Update(un.BaseNode)
+	if entryNode.DeletedAt.Equal(&txnNode.End) {
+		obj, err = rel.GetObjectByID(objid, isTombstone)
+		if err != nil {
+			panic(fmt.Sprintf("obj %v(%v) not existed, table:\n%v", objid.String(), isTombstone, rel.PPString(3, 0, "")))
+		}
+		obj.EntryMVCCNode = *entryNode
+		obj.ObjectMVCCNode = *objNode
+		obj.DeleteNode = *txnNode
+		obj.ObjectState = ObjectState_Delete_ApplyCommit
 	}
 	if obj.objData == nil {
 		obj.objData = dataFactory.MakeObjectFactory()(obj)
+	} else {
+		deleteAt := obj.GetDeleteAt()
+		if !obj.IsAppendable() || (obj.IsAppendable() && !deleteAt.IsEmpty()) {
+			obj.objData.TryUpgrade()
+		}
 	}
 }
 
@@ -459,11 +485,11 @@ func (catalog *Catalog) ReplayTableRows() {
 		rows += be.GetObjectData().GetRowsOnReplay()
 		return nil
 	}
-	tableProcessor.TombstoneFn = func(t *ObjectEntry) error {
-		if !t.IsActive() {
+	tableProcessor.TombstoneFn = func(be *ObjectEntry) error {
+		if !be.IsActive() {
 			return nil
 		}
-		rows -= t.GetObjectData().GetRowsOnReplay()
+		rows -= be.GetObjectData().GetRowsOnReplay()
 		return nil
 	}
 	processor := new(LoopProcessor)

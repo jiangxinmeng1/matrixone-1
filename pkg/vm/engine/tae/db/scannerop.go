@@ -196,7 +196,7 @@ func (s *MergeTaskBuilder) onObject(objectEntry *catalog.ObjectEntry) (err error
 		rate := float64(deltaLocRows) / float64(remainingRows)
 		logutil.Infof(
 			"[DeltaLoc Merge] tblId: %s(%d), obj: %s, deltaLoc: %d, rows: %d, deltaLocRows: %d, rate: %f",
-			s.name, s.tid, objectEntry.ID.String(), deltaLocCnt, remainingRows, deltaLocRows, rate)
+			s.name, s.tid, objectEntry.ID().String(), deltaLocCnt, remainingRows, deltaLocRows, rate)
 		s.objPolicy.OnObject(objectEntry, true)
 	} else {
 		s.objPolicy.OnObject(objectEntry, false)
@@ -211,9 +211,7 @@ func (s *MergeTaskBuilder) onPostObject(obj *catalog.ObjectEntry) (err error) {
 }
 
 func objectValid(objectEntry *catalog.ObjectEntry) bool {
-	objectEntry.RLock()
-	defer objectEntry.RUnlock()
-	if !objectEntry.IsCommittedLocked() || !catalog.ActiveObjectWithNoTxnFilter(objectEntry.BaseEntryImpl) {
+	if !objectEntry.IsCommitted() || !catalog.ActiveObjectWithNoTxnFilter(objectEntry) {
 		return false
 	}
 

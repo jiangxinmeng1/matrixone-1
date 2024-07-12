@@ -50,7 +50,7 @@ type mergeObjectsEntry struct {
 	rt                   *dbutils.Runtime
 	pageIds              []*common.ID
 	isTombstone          bool
-	delTbls              [][]*model.TransDels
+	delTbls              map[objectio.ObjectId]map[uint16]struct{}
 	collectTs            types.TS
 	transCntBeforeCommit int
 }
@@ -66,8 +66,9 @@ func NewMergeObjectsEntry(
 	rt *dbutils.Runtime,
 ) (*mergeObjectsEntry, error) {
 	totalCreatedBlkCnt := 0
-	for _, obj := range createdObjs {
-		totalCreatedBlkCnt += obj.BlockCnt()
+	for i, obj := range createdObjs {
+		createdObjs[i] = obj.GetLatestNode()
+		totalCreatedBlkCnt += createdObjs[i].BlockCnt()
 	}
 	entry := &mergeObjectsEntry{
 		txn:           txn,
@@ -82,10 +83,7 @@ func NewMergeObjectsEntry(
 	}
 
 	if !entry.skipTransfer && totalCreatedBlkCnt > 0 {
-		entry.delTbls = make([][]*model.TransDels, len(createdObjs))
-		for i := 0; i < len(createdObjs); i++ {
-			entry.delTbls[i] = make([]*model.TransDels, createdObjs[i].BlockCnt())
-		}
+		entry.delTbls = make(map[types.Objectid]map[uint16]struct{})
 		entry.collectTs = rt.Now()
 		var err error
 		// phase 1 transfer
@@ -116,8 +114,8 @@ func (entry *mergeObjectsEntry) prepareTransferPage() {
 			id.SetBlockOffset(uint16(j))
 			page := model.NewTransferHashPage(id, time.Now(), len(m), isTransient)
 			for srcRow, dst := range m {
-				objID := entry.createdObjs[dst.ObjIdx].ID
-				blkID := objectio.NewBlockidWithObjectID(&objID, uint16(dst.BlkIdx))
+				objID := entry.createdObjs[dst.ObjIdx].ID()
+				blkID := objectio.NewBlockidWithObjectID(objID, uint16(dst.BlkIdx))
 				page.Train(uint32(srcRow), *objectio.NewRowid(blkID, uint32(dst.RowIdx)))
 			}
 			entry.pageIds = append(entry.pageIds, id)
@@ -132,6 +130,12 @@ func (entry *mergeObjectsEntry) prepareTransferPage() {
 func (entry *mergeObjectsEntry) PrepareRollback() (err error) {
 	for _, id := range entry.pageIds {
 		entry.rt.TransferTable.DeletePage(id)
+	}
+	for objectID, blkMap := range entry.delTbls {
+		for blkOffset := range blkMap {
+			blkID := objectio.NewBlockidWithObjectID(&objectID, blkOffset)
+			entry.rt.TransferDelsMap.DeleteDelsForBlk(*blkID)
+		}
 	}
 	entry.pageIds = nil
 	return
@@ -177,7 +181,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 	bat, err := tables.TombstoneRangeScanByObject(
 		ctx,
 		dropped.GetTable(),
-		dropped.ID,
+		*dropped.ID(),
 		from.Next(),
 		to,
 		common.MergeAllocator,
@@ -221,14 +225,16 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 			}
 			panic(fmt.Sprintf(
 				"%s-%d find no transfer mapping for row %d, mapping range (%d, %d)",
-				dropped.ID.String(), blkOffsetInObj, row, _min, _max))
+				dropped.ID().String(), blkOffsetInObj, row, _min, _max))
 		}
-		if entry.delTbls[destpos.ObjIdx][destpos.BlkIdx] == nil {
-			entry.delTbls[destpos.ObjIdx][destpos.BlkIdx] = model.NewTransDels(entry.txn.GetPrepareTS())
+		if entry.delTbls[*entry.createdObjs[destpos.ObjIdx].ID()] == nil {
+			entry.delTbls[*entry.createdObjs[destpos.ObjIdx].ID()] = make(map[uint16]struct{})
 		}
-		entry.delTbls[destpos.ObjIdx][destpos.BlkIdx].Mapping[int(destpos.RowIdx)] = ts[i]
+		entry.delTbls[*entry.createdObjs[destpos.ObjIdx].ID()][uint16(destpos.BlkIdx)] = struct{}{}
+		blkID := objectio.NewBlockidWithObjectID(entry.createdObjs[destpos.ObjIdx].ID(), uint16(destpos.BlkIdx))
+		entry.rt.TransferDelsMap.SetDelsForBlk(*blkID, int(destpos.RowIdx), entry.txn.GetPrepareTS(), ts[i])
 		var targetObj handle.Object
-		targetObj, err = entry.relation.GetObject(&entry.createdObjs[destpos.ObjIdx].ID, entry.isTombstone)
+		targetObj, err = entry.relation.GetObject(entry.createdObjs[destpos.ObjIdx].ID(), entry.isTombstone)
 		if err != nil {
 			return
 		}
@@ -340,14 +346,6 @@ func (entry *mergeObjectsEntry) PrepareCommit() (err error) {
 
 	inst1 := time.Now()
 
-	for objIdx := range entry.delTbls {
-		for blkIdx, delTbl := range entry.delTbls[objIdx] {
-			if delTbl != nil {
-				destId := objectio.NewBlockidWithObjectID(&entry.createdObjs[objIdx].ID, uint16(blkIdx))
-				entry.rt.TransferDelsMap.SetDelsForBlk(*destId, delTbl)
-			}
-		}
-	}
 	total := time.Since(inst)
 	fields := make([]zap.Field, 0, 9)
 	fields = append(fields,

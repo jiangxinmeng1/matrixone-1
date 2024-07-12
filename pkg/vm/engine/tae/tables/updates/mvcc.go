@@ -56,7 +56,7 @@ type AppendMVCCHandle struct {
 
 func NewAppendMVCCHandle(meta *catalog.ObjectEntry) *AppendMVCCHandle {
 	node := &AppendMVCCHandle{
-		RWMutex: meta.RWMutex,
+		RWMutex: &sync.RWMutex{},
 		meta:    meta,
 		appends: txnbase.NewMVCCSlice(NewEmptyAppendNode, CompareAppendNode),
 	}
@@ -169,8 +169,8 @@ func (n *AppendMVCCHandle) FillInCommitTSVecLocked(commitTSVec containers.Vector
 }
 
 func (n *AppendMVCCHandle) GetCommitTSVecInRange(start, end types.TS, mp *mpool.MPool) containers.Vector {
-	n.meta.RLock()
-	defer n.meta.RUnlock()
+	n.RLock()
+	defer n.RUnlock()
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	n.appends.ForEach(
 		func(node *AppendNode) bool {
@@ -318,14 +318,18 @@ func (n *AppendMVCCHandle) PrepareCompact() bool {
 func (n *AppendMVCCHandle) GetLatestAppendPrepareTSLocked() types.TS {
 	return n.appends.GetUpdateNodeLocked().Prepare
 }
+func (n *AppendMVCCHandle) GetMeta() *catalog.ObjectEntry {
+	return n.meta
+}
 
 // check if all appendnodes are committed.
 func (n *AppendMVCCHandle) allAppendsCommittedLocked() bool {
 	if n.appends == nil {
+		meta := n.GetMeta()
 		logutil.Warnf("[MetadataCheck] appends mvcc is nil, obj %v, has dropped %v, deleted at %v",
-			n.meta.ID.String(),
-			n.meta.HasDropCommittedLocked(),
-			n.meta.GetDeleteAtLocked().ToString())
+			meta.ID().String(),
+			meta.HasDropCommitted(),
+			meta.GetDeleteAt().ToString())
 		return false
 	}
 	return n.appends.IsCommitted()

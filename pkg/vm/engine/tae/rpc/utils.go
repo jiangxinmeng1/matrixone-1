@@ -354,15 +354,15 @@ func traverseCatalogForNewAccounts(c *catalog.Catalog, memo *logtail.TNUsageMemo
 				continue
 			}
 
-			objIt := tblEntry.MakeTombstoneObjectIt(false)
-			for objIt.Valid() {
-				objEntry := objIt.Get().GetPayload()
+			objIt := tblEntry.MakeTombstoneObjectIt()
+			for objIt.Next() {
+				objEntry := objIt.Item()
 				// PXU TODO
 				if !objEntry.IsAppendable() && !objEntry.HasDropCommitted() && objEntry.IsCommitted() {
 					insUsage.Size += uint64(objEntry.GetCompSize())
 				}
-				objIt.Next()
 			}
+			objIt.Release()
 
 			if insUsage.Size > 0 {
 				memo.UpdateNewAccCache(insUsage, false)

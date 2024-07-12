@@ -146,4 +146,5 @@ type Object interface {
 		start, end types.TS,
 		mp *mpool.MPool,
 	) (err error)
+	UpdateMeta(any)
 }

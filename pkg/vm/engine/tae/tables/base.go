@@ -49,7 +49,7 @@ type baseObject struct {
 	common.RefHelper
 	*sync.RWMutex
 	rt         *dbutils.Runtime
-	meta       *catalog.ObjectEntry
+	meta       atomic.Pointer[catalog.ObjectEntry]
 	appendMVCC *updates.AppendMVCCHandle
 	impl       data.Object
 
@@ -64,22 +64,27 @@ func newBaseObject(
 	blk := &baseObject{
 		impl:       impl,
 		rt:         rt,
-		meta:       meta,
 		appendMVCC: updates.NewAppendMVCCHandle(meta),
 	}
+	blk.meta.Store(meta)
 	blk.appendMVCC.SetAppendListener(blk.OnApplyAppend)
-	blk.RWMutex = meta.RWMutex
+	blk.RWMutex = blk.appendMVCC.RWMutex
 	return blk
+}
+
+func (blk *baseObject) GetMutex() *sync.RWMutex { return blk.RWMutex }
+func (blk *baseObject) UpdateMeta(meta any) {
+	blk.meta.Store(meta.(*catalog.ObjectEntry))
 }
 
 func (blk *baseObject) OnApplyAppend(n txnif.AppendNode) (err error) {
 	if n.IsTombstone() {
-		blk.meta.GetTable().RemoveRows(
+		blk.meta.Load().GetTable().RemoveRows(
 			uint64(n.GetMaxRow() - n.GetStartRow()),
 		)
 		return
 	}
-	blk.meta.GetTable().AddRows(
+	blk.meta.Load().GetTable().AddRows(
 		uint64(n.GetMaxRow() - n.GetStartRow()),
 	)
 	return
@@ -132,12 +137,12 @@ func (blk *baseObject) TryUpgrade() (err error) {
 	return
 }
 
-func (blk *baseObject) GetMeta() any { return blk.meta }
+func (blk *baseObject) GetMeta() any { return blk.meta.Load() }
 func (blk *baseObject) CheckFlushTaskRetry(startts types.TS) bool {
-	if !blk.meta.IsAppendable() {
+	if !blk.meta.Load().IsAppendable() {
 		panic("not support")
 	}
-	if blk.meta.HasDropCommitted() {
+	if blk.meta.Load().HasDropCommitted() {
 		panic("not support")
 	}
 	blk.RLock()
@@ -146,22 +151,22 @@ func (blk *baseObject) CheckFlushTaskRetry(startts types.TS) bool {
 	return x.Greater(&startts)
 }
 func (blk *baseObject) GetFs() *objectio.ObjectFS { return blk.rt.Fs }
-func (blk *baseObject) GetID() *common.ID         { return blk.meta.AsCommonID() }
+func (blk *baseObject) GetID() *common.ID         { return blk.meta.Load().AsCommonID() }
 
 func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) {
-	if !blk.meta.ObjectPersisted() {
+	if !blk.meta.Load().ObjectPersisted() {
 		panic("logic error")
 	}
-	stats, err := blk.meta.MustGetObjectStats()
+	stats, err := blk.meta.Load().MustGetObjectStats()
 	if err != nil {
 		return nil, err
 	}
-	blkMaxRows := blk.meta.GetSchema().BlockMaxRows
+	blkMaxRows := blk.meta.Load().GetSchema().BlockMaxRows
 	return catalog.BuildLocation(stats, bid, blkMaxRows), nil
 }
 
 func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector, err error) {
-	if !blk.meta.IsAppendable() {
+	if !blk.meta.Load().IsAppendable() {
 		panic("not support")
 	}
 	location, err := blk.buildMetalocation(bid)
@@ -187,7 +192,7 @@ func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector,
 		return
 	}
 	if vectors[0].GetType().Oid != types.T_TS {
-		panic(fmt.Sprintf("%s: bad commits layout", blk.meta.ID.String()))
+		panic(fmt.Sprintf("%s: bad commits layout", blk.meta.Load().ID().String()))
 	}
 	vec = vectors[0]
 	return
@@ -201,7 +206,7 @@ func (blk *baseObject) LoadPersistedColumnData(
 	if err != nil {
 		return nil, err
 	}
-	id := blk.meta.AsCommonID()
+	id := blk.meta.Load().AsCommonID()
 	id.SetBlockOffset(blkID)
 	return LoadPersistedColumnData(
 		ctx,
@@ -260,7 +265,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	maxVisibleRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
-	schema := blk.meta.GetSchema()
+	schema := blk.meta.Load().GetSchema()
 	def := schema.GetSingleSortKey()
 	view, err := blk.ResolvePersistedColumnData(
 		ctx,
@@ -274,7 +279,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		return
 	}
 	defer view.Close()
-	blkID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkOffset)
+	blkID := objectio.NewBlockidWithObjectID(blk.meta.Load().ID(), blkOffset)
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
@@ -299,7 +304,7 @@ func (blk *baseObject) containsWithLoad(
 	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
-	schema := blk.meta.GetSchema()
+	schema := blk.meta.Load().GetSchema()
 	def := schema.GetSingleSortKey()
 	view, err := blk.ResolvePersistedColumnData(
 		ctx,
@@ -339,20 +344,20 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 ) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
-		blk.meta,
+		blk.meta.Load(),
 		nil,
 		blk.rt,
 	)
 	if err != nil {
 		return
 	}
-	for i := 0; i < blk.meta.BlockCnt(); i++ {
+	for i := 0; i < blk.meta.Load().BlockCnt(); i++ {
 		sels, err := pkIndex.BatchDedup(
 			ctx,
 			keys,
 			keysZM,
 			blk.rt,
-			blk.meta.IsTombstone,
+			blk.meta.Load().IsTombstone,
 			uint32(i),
 		)
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
@@ -377,14 +382,14 @@ func (blk *baseObject) persistedContains(
 ) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
-		blk.meta,
+		blk.meta.Load(),
 		nil,
 		blk.rt,
 	)
 	if err != nil {
 		return
 	}
-	for i := 0; i < blk.meta.BlockCnt(); i++ {
+	for i := 0; i < blk.meta.Load().BlockCnt(); i++ {
 		sels, err := pkIndex.BatchDedup(
 			ctx,
 			keys,
@@ -417,7 +422,7 @@ func (blk *baseObject) MakeAppender() (appender data.ObjectAppender, err error) 
 }
 
 func (blk *baseObject) GetTotalChanges() int {
-	return int(blk.meta.GetDeleteCount())
+	return int(blk.meta.Load().GetDeleteCount())
 }
 
 func (blk *baseObject) IsAppendable() bool { return false }
@@ -425,9 +430,9 @@ func (blk *baseObject) IsAppendable() bool { return false }
 func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
 	rows, err := blk.Rows()
 	if err != nil {
-		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)
+		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.Load().ID().String(), err)
 	}
-	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.PPString(level, depth, prefix), rows)
+	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.Load().PPString(level, depth, prefix), rows)
 	if level >= common.PPL1 {
 		blk.RLock()
 		var appendstr, deletestr string
@@ -444,7 +449,6 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 	}
 	return s
 }
-
 func (blk *baseObject) Scan(
 	ctx context.Context,
 	bat **containers.Batch,
@@ -467,7 +471,7 @@ func (blk *baseObject) FillBlockTombstones(
 	mp *mpool.MPool) error {
 	node := blk.PinNode()
 	defer node.Unref()
-	if !blk.meta.IsTombstone {
+	if !blk.meta.Load().IsTombstone {
 		panic("logic err")
 	}
 	return node.FillBlockTombstones(ctx, txn, blkID, deletes, mp)
@@ -496,7 +500,7 @@ func (blk *baseObject) CollectObjectTombstoneInRange(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (err error) {
-	if !blk.meta.IsTombstone {
+	if !blk.meta.Load().IsTombstone {
 		panic("logic err")
 	}
 	node := blk.PinNode()
@@ -514,14 +518,14 @@ func (obj *baseObject) GetValue(
 	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
-	if !obj.meta.IsTombstone && !skipCheckDelete {
+	if !obj.meta.Load().IsTombstone && !skipCheckDelete {
 		var bat *containers.Batch
-		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
-		err = HybridScanByBlock(ctx, obj.meta.GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		blkID := objectio.NewBlockidWithObjectID(obj.meta.Load().ID(), blkOffset)
+		err = HybridScanByBlock(ctx, obj.meta.Load().GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
 		if err != nil {
 			return
 		}
-		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &bat.Deletes)
+		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.Load().AsCommonID(), &bat.Deletes)
 		if err != nil {
 			return
 		}

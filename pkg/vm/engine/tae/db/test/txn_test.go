@@ -241,9 +241,9 @@ func (c *APP1Client) CheckBound() {
 // TODO: rewrite
 func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint32, count uint64, err error) {
 	rel, _ := c.DB.GetRelationByName(repertory.Name)
-	blockIt := rel.MakeObjectIt(false, true)
+	blockIt := rel.MakeObjectIt(false)
 	found := false
-	for blockIt.Valid() {
+	for blockIt.Next() {
 		blk := blockIt.GetObject()
 		for j := 0; j < blk.BlkCnt(); j++ {
 			var view *containers.Batch
@@ -275,8 +275,8 @@ func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint3
 				return
 			}
 		}
-		blockIt.Next()
 	}
+	blockIt.Close()
 	err = moerr.NewNotFoundNoCtx()
 	return
 }
@@ -549,8 +549,7 @@ func TestWarehouse(t *testing.T) {
 		txn, _ = db.StartTxn(nil)
 		rel, err := GetWarehouseRelation("test", txn)
 		assert.Nil(t, err)
-		it := rel.MakeObjectIt(false, true)
-		blk := it.GetObject()
+		blk := testutil.GetOneObject(rel)
 		var view *containers.Batch
 		blk.Scan(ctx, &view, 0, []int{1}, common.DefaultAllocator)
 		t.Log(view.Vecs[0].String())

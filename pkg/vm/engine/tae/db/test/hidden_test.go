@@ -54,8 +54,8 @@ func TestHiddenWithPK1(t *testing.T) {
 	err := rel.Append(context.Background(), bats[0])
 	{
 		offsets := make([]uint32, 0)
-		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		it := rel.MakeObjectIt(false)
+		for it.Next() {
 			blk := it.GetObject()
 			var view *containers.Batch
 			err := blk.Scan(ctx, &view, 0, []int{schema.PhyAddrKey.Idx}, common.DefaultAllocator)
@@ -70,7 +70,6 @@ func TestHiddenWithPK1(t *testing.T) {
 				return
 			}, nil)
 			view.Close()
-			it.Next()
 		}
 		// sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 		// assert.Equal(t, []uint32{0, 1, 2, 3}, offsets)
@@ -121,8 +120,8 @@ func TestHiddenWithPK1(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		it := rel.MakeObjectIt(false)
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -136,7 +135,7 @@ func TestHiddenWithPK1(t *testing.T) {
 					rid := v.(types.Rowid)
 					bid, offset := rid.Decode()
 					// t.Logf("sid=%d,bid=%d,offset=%d", sid, bid, offset)
-					expectedBid := objectio.NewBlockidWithObjectID(&meta.ID, uint16(j))
+					expectedBid := objectio.NewBlockidWithObjectID(meta.ID(), uint16(j))
 					assert.Equal(t, *expectedBid, bid, "expect %v, get %v", expectedBid.String(), bid.String())
 					offsets = append(offsets, offset)
 					return
@@ -152,7 +151,6 @@ func TestHiddenWithPK1(t *testing.T) {
 					}
 				}
 			}
-			it.Next()
 		}
 	}
 
@@ -164,9 +162,9 @@ func TestHiddenWithPK1(t *testing.T) {
 
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		objIdx := -1
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			objIdx++
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -182,7 +180,7 @@ func TestHiddenWithPK1(t *testing.T) {
 					rid := v.(types.Rowid)
 					bid, offset := rid.Decode()
 					// t.Logf("sid=%d,bid=%d,offset=%d", sid, bid, offset)
-					assert.Equal(t, *objectio.NewBlockidWithObjectID(&meta.ID, uint16(j)), bid)
+					assert.Equal(t, *objectio.NewBlockidWithObjectID(meta.ID(), uint16(j)), bid)
 					offsets = append(offsets, offset)
 					return
 				}, nil)
@@ -198,7 +196,6 @@ func TestHiddenWithPK1(t *testing.T) {
 				}
 
 			}
-			it.Next()
 		}
 	}
 
@@ -312,9 +309,9 @@ func TestHidden2(t *testing.T) {
 
 	txn, rel = testutil.GetDefaultRelation(t, tae, schema.Name)
 	{
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		rows := 0
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var hidden *containers.Batch
@@ -324,7 +321,6 @@ func TestHidden2(t *testing.T) {
 				hidden.Compact()
 				rows += hidden.Length()
 			}
-			it.Next()
 		}
 		assert.Equal(t, 26, rows)
 	}

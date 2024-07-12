@@ -619,52 +619,48 @@ func TestObject1(t *testing.T) {
 	assert.Nil(t, err)
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.Nil(t, err)
-	objIt := rel.MakeObjectIt(false, true)
+	objIt := rel.MakeObjectIt(false)
 	cnt := 0
-	for objIt.Valid() {
+	for objIt.Next() {
 		iobj := objIt.GetObject()
 		t.Log(iobj.String())
 		cnt++
-		objIt.Next()
 	}
 	assert.Equal(t, 1, cnt)
 
 	_, err = rel.CreateObject(false)
 	assert.Nil(t, err)
 
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
-	for objIt.Valid() {
+	for objIt.Next() {
 		iobj := objIt.GetObject()
 		t.Log(iobj.String())
 		cnt++
-		objIt.Next()
 	}
 	assert.Equal(t, 2, cnt)
 
 	txn3, _ := mgr.StartTxn(nil)
 	db, _ = txn3.GetDatabase(name)
 	rel, _ = db.GetRelationByName(schema.Name)
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
-	for objIt.Valid() {
+	for objIt.Next() {
 		iobj := objIt.GetObject()
 		t.Log(iobj.String())
 		cnt++
-		objIt.Next()
 	}
 	assert.Equal(t, 1, cnt)
 
 	err = txn2.Commit(context.Background())
 	assert.Nil(t, err)
 
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
-	for objIt.Valid() {
+	for objIt.Next() {
 		iobj := objIt.GetObject()
 		t.Log(iobj.String())
 		cnt++
-		objIt.Next()
 	}
 	assert.Equal(t, 1, cnt)
 }
@@ -689,12 +685,11 @@ func TestObject2(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
 	cnt := 0
-	for it.Valid() {
+	for it.Next() {
 		cnt++
 		// iobj := it.GetObject()
-		it.Next()
 	}
 	assert.Equal(t, objCnt, cnt)
 	// err := txn1.Commit()

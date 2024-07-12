@@ -155,31 +155,38 @@ func GetDefaultRelation(t *testing.T, e *db.DB, name string) (txn txnif.AsyncTxn
 }
 
 func GetOneObject(rel handle.Relation) handle.Object {
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
+	it.Next()
+	defer it.Close()
 	return it.GetObject()
 }
 
 func GetOneBlockMeta(rel handle.Relation) *catalog.ObjectEntry {
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
+	it.Next()
+	defer it.Close()
 	return it.GetObject().GetMeta().(*catalog.ObjectEntry)
 }
 
 func GetOneTombstoneMeta(rel handle.Relation) *catalog.ObjectEntry {
-	it := rel.MakeObjectIt(true, true)
+	it := rel.MakeObjectIt(true)
+	it.Next()
+	it.Close()
 	return it.GetObject().GetMeta().(*catalog.ObjectEntry)
 }
 
 func GetAllBlockMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.ObjectEntry) {
-	it := rel.MakeObjectIt(isTombstone, true)
-	for ; it.Valid(); it.Next() {
+	it := rel.MakeObjectIt(isTombstone)
+	for it.Next() {
 		blk := it.GetObject()
 		metas = append(metas, blk.GetMeta().(*catalog.ObjectEntry))
 	}
+	it.Close()
 	return
 }
 func GetAllAppendableMetas(rel handle.Relation, isTombstone bool) (metas []*catalog.ObjectEntry) {
-	it := rel.MakeObjectIt(isTombstone, true)
-	for ; it.Valid(); it.Next() {
+	it := rel.MakeObjectIt(isTombstone)
+	for it.Next() {
 		blk := it.GetObject()
 		meta := blk.GetMeta().(*catalog.ObjectEntry)
 		if !meta.IsAppendable() {
@@ -238,9 +245,9 @@ func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers
 }
 
 func ForEachObject(rel handle.Relation, fn func(obj handle.Object) error) {
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
 	var err error
-	for it.Valid() {
+	for it.Next() {
 		obj := it.GetObject()
 		defer obj.Close()
 		if err = fn(obj); err != nil {
@@ -250,14 +257,13 @@ func ForEachObject(rel handle.Relation, fn func(obj handle.Object) error) {
 				panic(err)
 			}
 		}
-		it.Next()
 	}
 }
 
 func ForEachTombstone(rel handle.Relation, fn func(obj handle.Object) error) {
-	it := rel.MakeObjectIt(true, true)
+	it := rel.MakeObjectIt(true)
 	var err error
-	for it.Valid() {
+	for it.Next() {
 		obj := it.GetObject()
 		defer obj.Close()
 		if err = fn(obj); err != nil {
@@ -267,7 +273,6 @@ func ForEachTombstone(rel handle.Relation, fn func(obj handle.Object) error) {
 				panic(err)
 			}
 		}
-		it.Next()
 	}
 }
 
@@ -338,13 +343,12 @@ func mergeBlocks(t *testing.T, tenantID uint32, e *db.DB, dbName string, schema 
 	rel, _ := db.GetRelationByName(schema.Name)
 
 	var objs []*catalog.ObjectEntry
-	objIt := rel.MakeObjectIt(isTombstone, true)
-	for objIt.Valid() {
+	objIt := rel.MakeObjectIt(isTombstone)
+	for objIt.Next() {
 		obj := objIt.GetObject().GetMeta().(*catalog.ObjectEntry)
 		if !obj.IsAppendable() {
 			objs = append(objs, obj)
 		}
-		objIt.Next()
 	}
 	_ = txn.Commit(context.Background())
 	metas := make([]*catalog.ObjectEntry, 0)
@@ -353,7 +357,7 @@ func mergeBlocks(t *testing.T, tenantID uint32, e *db.DB, dbName string, schema 
 		txn.BindAccessInfo(tenantID, 0, 0)
 		db, _ = txn.GetDatabase(dbName)
 		rel, _ = db.GetRelationByName(schema.Name)
-		objHandle, err := rel.GetObject(&obj.ID, isTombstone)
+		objHandle, err := rel.GetObject(obj.ID(), isTombstone)
 		if err != nil {
 			if skipConflict {
 				continue
@@ -404,7 +408,7 @@ func MockCNDeleteInS3(
 	err = obj.Scan(context.Background(), &view, txn, schema, blkOffset, []int{pkDef.Idx}, common.DefaultAllocator)
 	pkVec := containers.MakeVector(pkDef.Type, common.DefaultAllocator)
 	rowIDVec := containers.MakeVector(types.T_Rowid.ToType(), common.DefaultAllocator)
-	objID := &obj.GetMeta().(*catalog.ObjectEntry).ID
+	objID := obj.GetMeta().(*catalog.ObjectEntry).ID()
 	blkID := objectio.NewBlockidWithObjectID(objID, blkOffset)
 	if err != nil {
 		return

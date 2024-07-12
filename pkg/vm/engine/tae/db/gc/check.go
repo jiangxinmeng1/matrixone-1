@@ -148,19 +148,11 @@ func (c *checker) Check() error {
 		itTable := db.MakeTableIt(true)
 		for itTable.Valid() {
 			table := itTable.Get().GetPayload()
-			itObject := table.MakeDataObjectIt(true)
-			for itObject.Valid() {
-				objectEntry := itObject.Get().GetPayload()
+			itObject := table.MakeObjectIt(true)
+			for itObject.Next() {
+				objectEntry := itObject.Item()
 				stats := objectEntry.GetObjectStats()
 				delete(allObjects, stats.ObjectName().String())
-				itObject.Next()
-			}
-			itObject = table.MakeTombstoneObjectIt(true)
-			for itObject.Valid() {
-				objectEntry := itObject.Get().GetPayload()
-				stats := objectEntry.GetObjectStats()
-				delete(allObjects, stats.ObjectName().String())
-				itObject.Next()
 			}
 		}
 	}

@@ -149,9 +149,7 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 		return nil
 	}
 	processor.ObjectFn = func(se *ObjectEntry) error {
-		se.RLock()
 		needGC := se.DeleteBeforeLocked(ts)
-		se.RUnlock()
 		if needGC {
 			tbl := se.table
 			tbl.RemoveEntry(se)
@@ -159,9 +157,7 @@ func (catalog *Catalog) GCByTS(ctx context.Context, ts types.TS) {
 		return nil
 	}
 	processor.TombstoneFn = func(obj *ObjectEntry) error {
-		obj.RLock()
 		needGC := obj.DeleteBeforeLocked(ts)
-		obj.RUnlock()
 		if needGC {
 			tbl := obj.table
 			tbl.RemoveEntry(obj)

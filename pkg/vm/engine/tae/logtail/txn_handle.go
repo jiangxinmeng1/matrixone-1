@@ -106,7 +106,7 @@ func (b *TxnLogtailRespBuilder) CollectLogtail(txn txnif.AsyncTxn) (*[]logtail.T
 
 func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 	obj := iobj.(*catalog.ObjectEntry)
-	node := obj.GetLatestNodeLocked()
+	node := obj.GetLatestNode()
 	var batchIdx int8
 	if obj.IsTombstone {
 		batchIdx = tombstoneObjectInfoBatch
@@ -117,14 +117,14 @@ func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 		if b.batches[batchIdx] == nil {
 			b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 		}
-		visitObject(b.batches[batchIdx], obj, node, true, b.txn.GetPrepareTS())
+		visitObject(b.batches[batchIdx], obj, node,true,  true, b.txn.GetPrepareTS())
 		return
 	}
 
 	if b.batches[batchIdx] == nil {
 		b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	}
-	visitObject(b.batches[batchIdx], obj, node, true, b.txn.GetPrepareTS())
+	visitObject(b.batches[objectInfoBatch], obj, node, false, true, b.txn.GetPrepareTS())
 }
 
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {

@@ -49,7 +49,7 @@ type baseObject struct {
 	common.RefHelper
 	*sync.RWMutex
 	rt         *dbutils.Runtime
-	meta       *catalog.ObjectEntry
+	meta       atomic.Pointer[catalog.ObjectEntry]
 	appendMVCC *updates.AppendMVCCHandle
 	impl       data.Object
 
@@ -64,22 +64,27 @@ func newBaseObject(
 	blk := &baseObject{
 		impl:       impl,
 		rt:         rt,
-		meta:       meta,
 		appendMVCC: updates.NewAppendMVCCHandle(meta),
 	}
+	blk.meta.Store(meta)
 	blk.appendMVCC.SetAppendListener(blk.OnApplyAppend)
-	blk.RWMutex = meta.RWMutex
+	blk.RWMutex = blk.appendMVCC.RWMutex
 	return blk
+}
+
+func (blk *baseObject) GetMutex() *sync.RWMutex { return blk.RWMutex }
+func (blk *baseObject) UpdateMeta(meta any) {
+	blk.meta.Store(meta.(*catalog.ObjectEntry))
 }
 
 func (blk *baseObject) OnApplyAppend(n txnif.AppendNode) (err error) {
 	if n.IsTombstone() {
-		blk.meta.GetTable().RemoveRows(
+		blk.meta.Load().GetTable().RemoveRows(
 			uint64(n.GetMaxRow() - n.GetStartRow()),
 		)
 		return
 	}
-	blk.meta.GetTable().AddRows(
+	blk.meta.Load().GetTable().AddRows(
 		uint64(n.GetMaxRow() - n.GetStartRow()),
 	)
 	return
@@ -132,12 +137,12 @@ func (blk *baseObject) TryUpgrade() (err error) {
 	return
 }
 
-func (blk *baseObject) GetMeta() any { return blk.meta }
+func (blk *baseObject) GetMeta() any { return blk.meta.Load() }
 func (blk *baseObject) CheckFlushTaskRetry(startts types.TS) bool {
-	if !blk.meta.IsAppendable() {
+	if !blk.meta.Load().IsAppendable() {
 		panic("not support")
 	}
-	if blk.meta.HasDropCommitted() {
+	if blk.meta.Load().HasDropCommitted() {
 		panic("not support")
 	}
 	blk.RLock()
@@ -146,13 +151,13 @@ func (blk *baseObject) CheckFlushTaskRetry(startts types.TS) bool {
 	return x.Greater(&startts)
 }
 func (blk *baseObject) GetFs() *objectio.ObjectFS { return blk.rt.Fs }
-func (blk *baseObject) GetID() *common.ID         { return blk.meta.AsCommonID() }
+func (blk *baseObject) GetID() *common.ID         { return blk.meta.Load().AsCommonID() }
 
 func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) {
-	if !blk.meta.ObjectPersisted() {
+	if !blk.meta.Load().ObjectPersisted() {
 		panic("logic error")
 	}
-	stats, err := blk.meta.MustGetObjectStats()
+	stats, err := blk.meta.Load().MustGetObjectStats()
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +166,7 @@ func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) 
 }
 
 func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector, err error) {
-	if !blk.meta.IsAppendable() {
+	if !blk.meta.Load().IsAppendable() {
 		panic("not support")
 	}
 	location, err := blk.buildMetalocation(bid)
@@ -187,7 +192,7 @@ func (blk *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector,
 		return
 	}
 	if vectors[0].GetType().Oid != types.T_TS {
-		panic(fmt.Sprintf("%s: bad commits layout", blk.meta.ID.String()))
+		panic(fmt.Sprintf("%s: bad commits layout", blk.meta.Load().ID().String()))
 	}
 	vec = vectors[0]
 	return
@@ -201,7 +206,7 @@ func (blk *baseObject) LoadPersistedColumnData(
 	if err != nil {
 		return nil, err
 	}
-	id := blk.meta.AsCommonID()
+	id := blk.meta.Load().AsCommonID()
 	id.SetBlockOffset(blkID)
 	return LoadPersistedColumnData(
 		ctx,
@@ -260,7 +265,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	maxVisibleRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
-	schema := blk.meta.GetSchema()
+	schema := blk.meta.Load().GetSchema()
 	def := schema.GetSingleSortKey()
 	view, err := blk.ResolvePersistedColumnData(
 		ctx,
@@ -339,14 +344,14 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 ) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
-		blk.meta,
+		blk.meta.Load(),
 		nil,
 		blk.rt,
 	)
 	if err != nil {
 		return
 	}
-	for i := 0; i < blk.meta.BlockCnt(); i++ {
+	for i := 0; i < blk.meta.Load().BlockCnt(); i++ {
 		sels, err := pkIndex.BatchDedup(
 			ctx,
 			keys,
@@ -425,7 +430,7 @@ func (blk *baseObject) IsAppendable() bool { return false }
 func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, blkid int) string {
 	rows, err := blk.Rows()
 	if err != nil {
-		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.ID.String(), err)
+		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.Load().ID().String(), err)
 	}
 	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.PPString(level, depth, prefix), rows)
 	if level >= common.PPL1 {
@@ -442,6 +447,10 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 			s = fmt.Sprintf("%s\n Deletes: %s", s, deletestr)
 		}
 	}
+	s := fmt.Sprintf("Block %s Mutation Info: Changes=%d/%d",
+		blk.meta.Load().AsCommonID().BlockString(),
+		deleteCnt,
+		rows)
 	return s
 }
 

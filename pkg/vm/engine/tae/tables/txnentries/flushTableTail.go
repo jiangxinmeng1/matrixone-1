@@ -62,7 +62,7 @@ type flushTableTailEntry struct {
 	collectTs types.TS
 	// we have to record the ACTUAL commit time of those deletes that happened
 	// in the flushing process, before packed them into the created object.
-	delTbls []*model.TransDels
+	delTbls []*objectio.Blockid
 	// some statistics
 	pageIds              []*common.ID
 	transCntBeforeCommit int
@@ -104,7 +104,7 @@ func NewFlushTableTailEntry(
 
 	if entry.transMappings != nil {
 		if entry.createdObjHandle != nil {
-			entry.delTbls = make([]*model.TransDels, entry.createdObjHandle.GetMeta().(*catalog.ObjectEntry).BlockCnt())
+			entry.delTbls = make([]*model.TransDels, entry.createdObjHandle.GetMeta().(*catalog.ObjectEntry).GetLatestNode().BlockCnt())
 			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
@@ -185,16 +185,15 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 			row := rowid[i].GetRowOffset()
 			destpos, ok := mapping[int32(row)]
 			if !ok {
-				panic(fmt.Sprintf("%s find no transfer mapping for row %d", obj.ID.String(), row))
+				panic(fmt.Sprintf("%s find no transfer mapping for row %d", blk.ID().String(), row))
 			}
-			if entry.delTbls[destpos.BlkIdx] == nil {
-				entry.delTbls[destpos.BlkIdx] = model.NewTransDels(entry.txn.GetPrepareTS())
-			}
-			entry.delTbls[destpos.BlkIdx].Mapping[int(destpos.RowIdx)] = ts[i]
+			blkID := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(destpos.BlkIdx))
+			entry.delTbls[destpos.BlkIdx] = blkID
+			entry.rt.TransferDelsMap.SetDelsForBlk(*blkID, int(destpos.RowIdx), entry.txn.GetPrepareTS(), ts[i])
 			id := entry.createdObjHandle.Fingerprint()
 			id.SetBlockOffset(uint16(destpos.BlkIdx))
-			if err = entry.createdObjHandle.GetRelation().RangeDelete(
-				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
+			if err = entry.createdObjHandle.GetRelataion().RangeDelete(
+				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact, common.MergeAllocator,
 			); err != nil {
 				bat.Close()
 				return
@@ -222,13 +221,6 @@ func (entry *flushTableTailEntry) PrepareCommit() error {
 		return err
 	}
 
-	for i, delTbl := range entry.delTbls {
-		if delTbl != nil {
-			destid := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(i))
-			entry.rt.TransferDelsMap.SetDelsForBlk(*destid, delTbl)
-		}
-	}
-
 	if aconflictCnt, totalTrans := len(entry.nextRoundDirties), trans+entry.transCntBeforeCommit; aconflictCnt > 0 || totalTrans > 0 {
 		logutil.Info(
 			"[FLUSH-PREPARE-COMMIT]",
@@ -253,6 +245,12 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 		entry.rt.TransferTable.DeletePage(id)
 	}
 
+	for _, blkID := range entry.delTbls {
+		if blkID != nil {
+			entry.rt.TransferDelsMap.DeleteDelsForBlk(*blkID)
+		}
+	}
+
 	// why not clean TranDel?
 	// 1. There's little tiny chance for a txn to fail after PrepareCommit
 	// 2. If txn failed, no txn will see the transfered deletes,
@@ -269,11 +267,11 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 			logutil.Info(
 				"[FLUSH-PREPARE-ROLLBACK]",
 				zap.String("task", entry.taskName),
-				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", obj.ID.String())),
+				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", blk.ID().String())),
 			)
 			continue
 		}
-		seg := obj.ID.Segment()
+		seg := blk.ID().Segment()
 		name := objectio.BuildObjectName(seg, 0).String()
 		aobjNames = append(aobjNames, name)
 	}

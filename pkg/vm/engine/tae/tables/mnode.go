@@ -49,7 +49,7 @@ func newMemoryNode(object *baseObject, isTombstone bool) *memoryNode {
 
 	var schema *catalog.Schema
 	// Get the lastest schema, it will not be modified, so just keep the pointer
-	schema = object.meta.GetTable().GetLastestSchemaLocked(isTombstone)
+	schema = object.meta.Load().GetTable().GetLastestSchemaLocked(isTombstone)
 	impl.writeSchema = schema
 	// impl.data = containers.BuildBatchWithPool(
 	// 	schema.AllNames(), schema.AllTypes(), 0, object.rt.VectorPool.Memtable,
@@ -83,7 +83,7 @@ func (node *memoryNode) initPKIndex(schema *catalog.Schema) {
 
 func (node *memoryNode) close() {
 	mvcc := node.object.appendMVCC
-	logutil.Debugf("Releasing Memorynode BLK-%s", node.object.meta.ID.String())
+	logutil.Debugf("Releasing Memorynode BLK-%s", node.object.meta.Load().ID().String())
 	if node.data != nil {
 		node.data.Close()
 		node.data = nil

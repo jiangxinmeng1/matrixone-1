@@ -402,16 +402,17 @@ func (c *objectPruneArg) Run() error {
 
 	selectedObjs := make([]*catalog.ObjectEntry, 0, 64)
 
-	for ; it.Valid(); it.Next() {
-		obj := it.Get().GetPayload()
+	for it.Next() {
+		obj := it.Item()
+		if obj.ObjectState != catalog.ObjectState_Create_ApplyCommit {
+			continue
+		}
 		if !obj.IsActive() || obj.IsAppendable() {
 			continue
 		}
 		total++
 
-		obj.RLock()
-		createTs := obj.GetCreatedAtLocked()
-		obj.RUnlock()
+		createTs := obj.GetCreatedAt()
 		if createTs.GreaterEq(&ago) {
 			continue
 		}
@@ -436,6 +437,7 @@ func (c *objectPruneArg) Run() error {
 		}
 		totalS += sz
 	}
+	it.Release()
 
 	if selected == 0 {
 		c.ctx.resp.Payload = []byte(fmt.Sprintf(
@@ -497,11 +499,11 @@ func (c *objectPruneArg) executePrune(objs []*catalog.ObjectEntry) error {
 	notfound := 0
 	w := &bytes.Buffer{}
 	for _, obj := range objs {
-		if err := tblHdl.SoftDeleteObject(&obj.ID, obj.IsTombstone); err != nil {
-			logutil.Errorf("objprune: del obj %s: %v", obj.ID.String(), err)
+		if err := tblHdl.SoftDeleteObject(obj.ID(), obj.IsTombstone); err != nil {
+			logutil.Errorf("objprune: del obj %s: %v", obj.ID().String(), err)
 			return err
 		}
-		w.WriteString(obj.ID.String())
+		w.WriteString(obj.ID().String())
 		w.WriteRune(',')
 	}
 	if err := txn.Commit(context.Background()); err != nil {
@@ -698,7 +700,7 @@ func (c *infoArg) String() string {
 	}
 
 	if c.obj != nil {
-		t = fmt.Sprintf("%s o-%s b-%d", t, c.obj.ID.String(), c.blkn)
+		t = fmt.Sprintf("%s o-%s b-%d", t, c.obj.ID().String(), c.blkn)
 	}
 
 	return fmt.Sprintf("info: %v", t)
@@ -716,7 +718,7 @@ func (c *infoArg) Run() error {
 		r, reason := c.obj.GetObjectData().PrepareCompactInfo()
 		rows, err := c.obj.GetObjectData().Rows()
 		if err != nil {
-			logutil.Warnf("get object rows failed, obj: %v, err %v", c.obj.ID.String(), err)
+			logutil.Warnf("get object rows failed, obj: %v, err %v", c.obj.ID().String(), err)
 		}
 		dels := c.obj.GetObjectData().GetTotalChanges()
 		b.WriteString(fmt.Sprintf("prepareCompact: %v, %q\n", r, reason))

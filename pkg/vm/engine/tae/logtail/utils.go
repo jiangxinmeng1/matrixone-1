@@ -36,6 +36,8 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 )
 
@@ -968,6 +970,10 @@ func (data *CheckpointData) prepareMeta() {
 		}
 	}
 }
+<<<<<<< HEAD
+=======
+
+>>>>>>> main
 func (data *CheckpointData) updateTableMeta(tid uint64, metaIdx int, start, end int32) {
 	meta, ok := data.meta[tid]
 	if !ok {
@@ -2017,21 +2023,21 @@ func (collector *GlobalCollector) VisitTable(entry *catalog.TableEntry) error {
 }
 
 func (collector *BaseCollector) visitObjectEntry(entry *catalog.ObjectEntry) error {
-	mvccNodes := entry.ClonePreparedInRange(collector.start, collector.end)
+	mvccNodes := entry.GetMVCCNodeInRange(collector.start, collector.end)
 	if len(mvccNodes) == 0 {
 		return nil
 	}
 
-	entry.SetObjectStatsForPreviousNode(mvccNodes)
 	err := collector.fillObjectInfoBatch(entry, mvccNodes)
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
-
-func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, mvccNodes []*catalog.MVCCNode[*catalog.ObjectMVCCNode]) error {
+func (collector *BaseCollector) loadObjectInfo() error {
+	panic("not support")
+}
+func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, mvccNodes []*txnbase.TxnMVCCNode) error {
 	if len(mvccNodes) == 0 {
 		return nil
 	}
@@ -2043,14 +2049,14 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 			continue
 		}
 		if entry.IsTombstone {
-			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, false, types.TS{})
+			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry,create, node, false, types.TS{})
 		} else {
-			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, false, types.TS{})
+			visitObject(collector.data.bats[ObjectInfoIDX], entry, node,create false, types.TS{})
 		}
 		objNode := node
 
 		// collect usage info
-		if objNode.HasDropCommitted() {
+		if !entry.DeletedAt.IsEmpty() && objNode.End.Equal(&entry.DeletedAt) {
 			// deleted and non-append, record into the usage del bat
 			if !entry.IsAppendable() && objNode.IsCommitted() {
 				collector.Usage.ObjDeletes = append(collector.Usage.ObjDeletes, entry)
@@ -2071,23 +2077,23 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 }
 
 func (collector *BaseCollector) VisitObjForBackup(entry *catalog.ObjectEntry) (err error) {
-	entry.RLock()
-	createTS := entry.GetCreatedAtLocked()
+	createTS := entry.GetCreatedAt()
 	if createTS.Greater(&collector.start) {
-		entry.RUnlock()
 		return nil
 	}
-	entry.RUnlock()
 	return collector.visitObjectEntry(entry)
 }
 
 func (collector *BaseCollector) VisitObj(entry *catalog.ObjectEntry) (err error) {
+	if !entry.IsCommitted() {
+		return
+	}
 	collector.visitObjectEntry(entry)
 	return nil
 }
 
 func (collector *GlobalCollector) VisitObj(entry *catalog.ObjectEntry) error {
-	if collector.isEntryDeletedBeforeThreshold(entry.BaseEntryImpl) {
+	if entry.DeleteBefore(collector.versionThershold)  {
 		return nil
 	}
 	if collector.isEntryDeletedBeforeThreshold(entry.GetTable().BaseEntryImpl) {

@@ -148,19 +148,20 @@ func (c *checker) Check() error {
 		itTable := db.MakeTableIt(true)
 		for itTable.Valid() {
 			table := itTable.Get().GetPayload()
-			itObject := table.MakeDataObjectIt(true)
-			for itObject.Valid() {
-				objectEntry := itObject.Get().GetPayload()
+			itObject := table.MakeObjectIt(true)
+			for itObject.Next() {
+				objectEntry := itObject.Item()
 				stats := objectEntry.GetObjectStats()
 				delete(allObjects, stats.ObjectName().String())
-				itObject.Next()
 			}
-			itObject = table.MakeTombstoneObjectIt(true)
-			for itObject.Valid() {
-				objectEntry := itObject.Get().GetPayload()
-				stats := objectEntry.GetObjectStats()
-				delete(allObjects, stats.ObjectName().String())
-				itObject.Next()
+			itObject.Release()
+			it2 := table.GetDeleteList().Items()
+			for _, itt := range it2 {
+				_, _, _, err = itt.VisitDeletes(c.cleaner.ctx, maxTs, end, bat, nil, true, false)
+				if err != nil {
+					logutil.Errorf("visit deletes failed: %v", err)
+					continue
+				}
 			}
 		}
 	}

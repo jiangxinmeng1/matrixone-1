@@ -47,7 +47,7 @@ func newPersistedNode(object *baseObject) *persistedNode {
 func (node *persistedNode) close() {}
 
 func (node *persistedNode) Rows() (uint32, error) {
-	stats, err := node.object.meta.MustGetObjectStats()
+	stats, err := node.object.meta.Load().MustGetObjectStats()
 	if err != nil {
 		return 0, err
 	}

@@ -152,7 +152,7 @@ func (tbl *txnTable) TransferDeleteIntent(
 		panic(err)
 	}
 	ts := types.BuildTS(time.Now().UTC().UnixNano(), 0)
-	if err = readWriteConfilictCheck(entry.BaseEntryImpl, ts); err == nil {
+	if err = readWriteConfilictCheck(entry, ts); err == nil {
 		return
 	}
 	err = nil
@@ -328,13 +328,15 @@ func (tbl *txnTable) recurTransferDelete(
 			return err
 		}
 		common.DoIfInfoEnabled(func() {
-			logutil.Infof("depth-%d %s transfer delete from blk-%s row-%d to blk-%s row-%d",
+			logutil.Infof("depth-%d %s transfer delete from blk-%s row-%d to blk-%s row-%d, txn %x, val %v",
 				depth,
 				tbl.dataTable.schema.Name,
 				id.BlockID.String(),
 				row,
 				blockID.String(),
-				offset)
+				offset,
+				tbl.store.txn.GetID(),
+				pk.Get(0))
 		})
 		return nil
 	}
@@ -497,7 +499,7 @@ func (tbl *txnTable) createObject(state catalog.EntryState, opts *objectio.Creat
 	}
 	obj = newObject(tbl, meta)
 	tbl.store.IncreateWriteCnt()
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
+	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, meta.ID(), isTombstone)
 	tbl.txnEntries.Append(meta)
 	return
 }
@@ -732,7 +734,7 @@ func (tbl *txnTable) UpdateObjectStats(id *common.ID, stats *objectio.ObjectStat
 	if err != nil {
 		return err
 	}
-	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, &meta.ID, isTombstone)
+	tbl.store.txn.GetMemo().AddObject(tbl.entry.GetDB().ID, tbl.entry.ID, meta.ID(), isTombstone)
 	if isNewNode {
 		tbl.txnEntries.Append(meta)
 	}
@@ -852,15 +854,15 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	}
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
 	it := tbl.entry.MakeTombstoneObjectIt(false)
-	for ; it.Valid(); it.Next() {
-		obj := it.Get().GetPayload()
+	for it.Next() {
+		obj := it.Item()
 		ObjectHint := obj.SortHint
 		if ObjectHint > maxObjectHint {
 			maxObjectHint = ObjectHint
 		}
 		objData := obj.GetObjectData()
 		if objData == nil {
-			continue
+			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))
 		}
 		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
 			continue

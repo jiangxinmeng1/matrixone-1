@@ -169,11 +169,11 @@ func TestTxn1(t *testing.T) {
 		objIt := rel.MakeObjectIt(false, true)
 		objCnt := uint32(0)
 		blkCnt := uint32(0)
-		for objIt.Valid() {
+		for objIt.Next() {
 			objCnt++
 			blkCnt += uint32(objIt.GetObject().BlkCnt())
-			objIt.Next()
 		}
+		objIt.Close()
 		assert.Equal(t, expectObjCnt, objCnt)
 		assert.Equal(t, expectBlkCnt, blkCnt)
 	}
@@ -412,7 +412,7 @@ func TestTxn6(t *testing.T) {
 			assert.Error(t, err)
 
 			it := rel.MakeObjectIt(false, true)
-			for it.Valid() {
+			for it.Next() {
 				obj := it.GetObject()
 				for j := 0; j < obj.BlkCnt(); j++ {
 					var view *containers.Batch
@@ -424,8 +424,8 @@ func TestTxn6(t *testing.T) {
 					view.Compact()
 					assert.Equal(t, bats[0].Length()-1, view.Length())
 				}
-				it.Next()
 			}
+			it.Close()
 		}
 	}
 }
@@ -476,25 +476,24 @@ func TestFlushAblkMerge(t *testing.T) {
 		blks := make([]*catalog.ObjectEntry, 0)
 		tombstones := make([]*catalog.ObjectEntry, 0)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			blks = append(blks, meta)
-			it.Next()
 		}
-		it = rel.MakeObjectIt(true, true)
-		for it.Valid() {
+		it.Close()
+			it = rel.MakeObjectIt(true, true)
+		for it.Next() {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			tombstones = append(tombstones, meta)
-			it.Next()
 		}
+		it.Close()
 		{
 			txn, _ := db.StartTxn(nil)
 			database, _ := txn.GetDatabase("db")
 			rel, _ := database.GetRelationByName(schema.Name)
-			it := rel.MakeObjectIt(false, true)
-			blk := it.GetObject()
+			blk := testutil.GetOneObject(rel)
 			err := rel.RangeDelete(blk.Fingerprint(), 4, 4, handle.DT_Normal)
 			assert.Nil(t, err)
 			assert.Nil(t, txn.Commit(context.Background()))
@@ -515,7 +514,7 @@ func TestFlushAblkMerge(t *testing.T) {
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -532,8 +531,8 @@ func TestFlushAblkMerge(t *testing.T) {
 				}
 
 			}
-			it.Next()
 		}
+		it.Close()
 	}
 	// testutils.WaitExpect(1000, func() bool {
 	// 	return db.Wal.GetPenddingCnt() == 0
@@ -621,7 +620,7 @@ func TestCompaction1(t *testing.T) {
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -630,8 +629,8 @@ func TestCompaction1(t *testing.T) {
 				view.Close()
 				assert.True(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
 			}
-			it.Next()
 		}
+		it.Close()
 	}
 	{
 		txn, _ := db.StartTxn(nil)
@@ -646,7 +645,7 @@ func TestCompaction1(t *testing.T) {
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -655,8 +654,8 @@ func TestCompaction1(t *testing.T) {
 				view.Close()
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
 			}
-			it.Next()
 		}
+		it.Close()
 	}
 }
 
@@ -695,7 +694,7 @@ func TestCompaction2(t *testing.T) {
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -705,15 +704,15 @@ func TestCompaction2(t *testing.T) {
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).IsAppendable())
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
 			}
-			it.Next()
 		}
+		it.Close()
 	}
 	{
 		txn, _ := db.TxnMgr.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
 		it := rel.MakeObjectIt(false, true)
-		for it.Valid() {
+		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
 				var view *containers.Batch
@@ -723,8 +722,8 @@ func TestCompaction2(t *testing.T) {
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).IsAppendable())
 				assert.False(t, blk.GetMeta().(*catalog.ObjectEntry).GetObjectData().IsAppendable())
 			}
-			it.Next()
 		}
+		it.Close()
 	}
 }
 

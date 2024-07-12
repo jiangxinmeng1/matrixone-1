@@ -51,15 +51,15 @@ func (obj *object) Init() (err error) {
 }
 
 func (obj *object) PrepareCompact() bool {
-	prepareCompact := obj.meta.PrepareCompact()
-	if !prepareCompact && obj.meta.CheckPrintPrepareCompact() {
-		obj.meta.PrintPrepareCompactDebugLog()
+	prepareCompact := obj.meta.Load().PrepareCompact()
+	if !prepareCompact && obj.meta.Load().CheckPrintPrepareCompact() {
+		obj.meta.Load().PrintPrepareCompactDebugLog()
 	}
 	return prepareCompact
 }
 
 func (obj *object) PrepareCompactInfo() (result bool, reason string) {
-	return obj.meta.PrepareCompact(), ""
+	return obj.meta.Load().PrepareCompact(), ""
 }
 
 func (obj *object) FreezeAppend() {}
@@ -72,9 +72,7 @@ func (obj *object) Pin() *common.PinnedItem[*object] {
 }
 
 func (obj *object) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
-	obj.meta.RLock()
-	defer obj.meta.RUnlock()
-	creatTS := obj.meta.GetCreatedAtLocked()
+	creatTS := obj.meta.Load().GetCreatedAt()
 	return creatTS.Less(&ts)
 }
 
@@ -91,9 +89,9 @@ func (obj *object) GetDuplicatedRows(
 	defer func() {
 		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 			logutil.Infof("BatchDedup %s (%v)obj-%s: %v",
-				obj.meta.GetTable().GetLastestSchemaLocked(false).Name,
+				obj.meta.Load().GetTable().GetLastestSchemaLocked(false).Name,
 				obj.IsAppendable(),
-				obj.meta.ID.String(),
+				obj.meta.Load().ID().String(),
 				err)
 		}
 	}()
@@ -153,7 +151,7 @@ func (obj *object) EstimateMemSize() (int, int) {
 }
 
 func (obj *object) GetRowsOnReplay() uint64 {
-	fileRows := uint64(obj.meta.GetLatestCommittedNodeLocked().
-		BaseNode.ObjectStats.Rows())
+	stats := obj.meta.Load().GetObjectStats()
+	fileRows := uint64(stats.Rows())
 	return fileRows
 }

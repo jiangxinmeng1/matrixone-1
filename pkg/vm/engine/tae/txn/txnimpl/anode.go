@@ -142,7 +142,7 @@ func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
 		return
 	}
 	col := n.table.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
-	blkID := objectio.NewBlockidWithObjectID(&n.meta.ID, 0)
+	blkID := objectio.NewBlockidWithObjectID(n.meta.ID(), 0)
 	if err = objectio.ConstructRowidColumnTo(
 		col.GetDownstreamVector(),
 		blkID, startRow, length,

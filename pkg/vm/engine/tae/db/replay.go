@@ -78,8 +78,11 @@ func (replayer *Replayer) PreReplayWal() {
 		if entry.GetTable().IsVirtual() {
 			return moerr.GetOkStopCurrRecur()
 		}
-		dropCommit := entry.TreeMaxDropCommitEntryLocked()
+		dropCommit, obj := entry.TreeMaxDropCommitEntry()
 		if dropCommit != nil && dropCommit.DeleteBeforeLocked(replayer.ckpedTS) {
+			return moerr.GetOkStopCurrRecur()
+		}
+		if obj != nil && obj.DeleteBefore(replayer.ckpedTS) {
 			return moerr.GetOkStopCurrRecur()
 		}
 		entry.InitData(replayer.DataFactory)

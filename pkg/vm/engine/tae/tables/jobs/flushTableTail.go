@@ -173,7 +173,7 @@ func NewFlushTableTailTask(
 	for _, obj := range objs {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
-		hdl, err = rel.GetObject(&obj.ID, false)
+		hdl, err = rel.GetObject(obj.ID(), false)
 		if err != nil {
 			return
 		}
@@ -270,7 +270,7 @@ func (task *flushTableTailTask) MarshalLogObject(enc zapcore.ObjectEncoder) (err
 	enc.AddString("endTs", task.dirtyEndTs.ToString())
 	objs := ""
 	for _, obj := range task.aObjMetas {
-		objs = fmt.Sprintf("%s%s,", objs, obj.ID.ShortStringEx())
+		objs = fmt.Sprintf("%s%s,", objs, obj.ID().ShortStringEx())
 	}
 	enc.AddString("a-objs", objs)
 	tombstones := ""
@@ -690,7 +690,7 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 	toObjectEntry := createdObjectHandle.GetMeta().(*catalog.ObjectEntry)
 	toObjectEntry.SetSorted()
-	name := objectio.BuildObjectNameWithObjectID(&toObjectEntry.ID)
+	name := objectio.BuildObjectNameWithObjectID(toObjectEntry.ID())
 	writer, err := blockio.NewBlockWriterNew(task.rt.Fs.Service, name, schema.Version, seqnums)
 	if err != nil {
 		return err

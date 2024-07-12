@@ -16,7 +16,6 @@ package data
 
 import (
 	"context"
-	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -147,4 +146,5 @@ type Object interface {
 		start, end types.TS,
 		mp *mpool.MPool,
 	) (err error)
+	UpdateMeta(any)
 }

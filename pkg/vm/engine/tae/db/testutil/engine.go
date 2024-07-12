@@ -229,7 +229,7 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 	schema := rel.GetMeta().(*catalog.TableEntry).GetLastestSchemaLocked(false)
 	pkIdx := schema.GetPrimaryKey().Idx
 	rowIDIdx := schema.GetColIdx(catalog.PhyAddrColumnName)
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
 	for it.Next() {
 		blk := it.GetObject()
 		defer blk.Close()

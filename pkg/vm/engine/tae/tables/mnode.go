@@ -108,7 +108,7 @@ func (node *memoryNode) Contains(
 ) (err error) {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	blkID := objectio.NewBlockidWithObjectID(node.object.meta.Load().ID(), 0)
 	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting), mp)
 }
 func (node *memoryNode) getDuplicatedRowsLocked(
@@ -120,7 +120,7 @@ func (node *memoryNode) getDuplicatedRowsLocked(
 	skipFn func(uint32) error,
 	mp *mpool.MPool,
 ) (err error) {
-	blkID := objectio.NewBlockidWithObjectID(&node.object.meta.ID, 0)
+	blkID := objectio.NewBlockidWithObjectID(node.object.meta.Load().ID(), 0)
 	return node.pkIndex.GetDuplicatedRows(ctx, keys.GetDownstreamVector(), keysZM, blkID, rowIDs.GetDownstreamVector(), maxRow, skipFn, mp)
 }
 

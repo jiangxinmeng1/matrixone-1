@@ -161,7 +161,7 @@ func (blk *baseObject) buildMetalocation(bid uint16) (objectio.Location, error) 
 	if err != nil {
 		return nil, err
 	}
-	blkMaxRows := blk.meta.GetSchema().BlockMaxRows
+	blkMaxRows := blk.meta.Load().GetSchema().BlockMaxRows
 	return catalog.BuildLocation(stats, bid, blkMaxRows), nil
 }
 
@@ -279,7 +279,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 		return
 	}
 	defer view.Close()
-	blkID := objectio.NewBlockidWithObjectID(&blk.meta.ID, blkOffset)
+	blkID := objectio.NewBlockidWithObjectID(blk.meta.Load().ID(), blkOffset)
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
@@ -304,7 +304,7 @@ func (blk *baseObject) containsWithLoad(
 	isCommitting bool,
 	mp *mpool.MPool,
 ) (err error) {
-	schema := blk.meta.GetSchema()
+	schema := blk.meta.Load().GetSchema()
 	def := schema.GetSingleSortKey()
 	view, err := blk.ResolvePersistedColumnData(
 		ctx,
@@ -357,7 +357,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 			keys,
 			keysZM,
 			blk.rt,
-			blk.meta.IsTombstone,
+			blk.meta.Load().IsTombstone,
 			uint32(i),
 		)
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
@@ -382,14 +382,14 @@ func (blk *baseObject) persistedContains(
 ) (err error) {
 	pkIndex, err := MakeImmuIndex(
 		ctx,
-		blk.meta,
+		blk.meta.Load(),
 		nil,
 		blk.rt,
 	)
 	if err != nil {
 		return
 	}
-	for i := 0; i < blk.meta.BlockCnt(); i++ {
+	for i := 0; i < blk.meta.Load().BlockCnt(); i++ {
 		sels, err := pkIndex.BatchDedup(
 			ctx,
 			keys,
@@ -422,7 +422,7 @@ func (blk *baseObject) MakeAppender() (appender data.ObjectAppender, err error) 
 }
 
 func (blk *baseObject) GetTotalChanges() int {
-	return int(blk.meta.GetDeleteCount())
+	return int(blk.meta.Load().GetDeleteCount())
 }
 
 func (blk *baseObject) IsAppendable() bool { return false }
@@ -432,7 +432,7 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 	if err != nil {
 		logutil.Warnf("get object rows failed, obj: %v, err: %v", blk.meta.Load().ID().String(), err)
 	}
-	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.PPString(level, depth, prefix), rows)
+	s := fmt.Sprintf("%s | [Rows=%d]", blk.meta.Load().PPString(level, depth, prefix), rows)
 	if level >= common.PPL1 {
 		blk.RLock()
 		var appendstr, deletestr string
@@ -447,13 +447,8 @@ func (blk *baseObject) PPString(level common.PPLevel, depth int, prefix string, 
 			s = fmt.Sprintf("%s\n Deletes: %s", s, deletestr)
 		}
 	}
-	s := fmt.Sprintf("Block %s Mutation Info: Changes=%d/%d",
-		blk.meta.Load().AsCommonID().BlockString(),
-		deleteCnt,
-		rows)
 	return s
 }
-
 func (blk *baseObject) Scan(
 	ctx context.Context,
 	bat **containers.Batch,
@@ -476,7 +471,7 @@ func (blk *baseObject) FillBlockTombstones(
 	mp *mpool.MPool) error {
 	node := blk.PinNode()
 	defer node.Unref()
-	if !blk.meta.IsTombstone {
+	if !blk.meta.Load().IsTombstone {
 		panic("logic err")
 	}
 	return node.FillBlockTombstones(ctx, txn, blkID, deletes, mp)
@@ -505,7 +500,7 @@ func (blk *baseObject) CollectObjectTombstoneInRange(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (err error) {
-	if !blk.meta.IsTombstone {
+	if !blk.meta.Load().IsTombstone {
 		panic("logic err")
 	}
 	node := blk.PinNode()
@@ -523,14 +518,14 @@ func (obj *baseObject) GetValue(
 	skipCheckDelete bool,
 	mp *mpool.MPool,
 ) (v any, isNull bool, err error) {
-	if !obj.meta.IsTombstone && !skipCheckDelete {
+	if !obj.meta.Load().IsTombstone && !skipCheckDelete {
 		var bat *containers.Batch
-		blkID := objectio.NewBlockidWithObjectID(&obj.meta.ID, blkOffset)
-		err = HybridScanByBlock(ctx, obj.meta.GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
+		blkID := objectio.NewBlockidWithObjectID(obj.meta.Load().ID(), blkOffset)
+		err = HybridScanByBlock(ctx, obj.meta.Load().GetTable(), txn, &bat, readSchema.(*catalog.Schema), []int{col}, blkID, mp)
 		if err != nil {
 			return
 		}
-		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.AsCommonID(), &bat.Deletes)
+		err = txn.GetStore().FillInWorkspaceDeletes(obj.meta.Load().AsCommonID(), &bat.Deletes)
 		if err != nil {
 			return
 		}

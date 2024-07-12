@@ -36,7 +36,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 )
@@ -970,10 +969,6 @@ func (data *CheckpointData) prepareMeta() {
 		}
 	}
 }
-<<<<<<< HEAD
-=======
-
->>>>>>> main
 func (data *CheckpointData) updateTableMeta(tid uint64, metaIdx int, start, end int32) {
 	meta, ok := data.meta[tid]
 	if !ok {
@@ -2048,10 +2043,11 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 		if node.IsAborted() {
 			continue
 		}
+		create := node.End.Equal(&entry.CreatedAt)
 		if entry.IsTombstone {
-			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry,create, node, false, types.TS{})
+			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, create, false, types.TS{})
 		} else {
-			visitObject(collector.data.bats[ObjectInfoIDX], entry, node,create false, types.TS{})
+			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{})
 		}
 		objNode := node
 
@@ -2093,7 +2089,7 @@ func (collector *BaseCollector) VisitObj(entry *catalog.ObjectEntry) (err error)
 }
 
 func (collector *GlobalCollector) VisitObj(entry *catalog.ObjectEntry) error {
-	if entry.DeleteBefore(collector.versionThershold)  {
+	if entry.DeleteBefore(collector.versionThershold) {
 		return nil
 	}
 	if collector.isEntryDeletedBeforeThreshold(entry.GetTable().BaseEntryImpl) {

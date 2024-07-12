@@ -72,20 +72,20 @@ type composedObjectIt struct {
 	uncommitted *catalog.ObjectEntry
 }
 
-func newObjectItOnSnap(table *txnTable, reverse, isTombstone bool) handle.ObjectIt {
+func newObjectItOnSnap(table *txnTable, isTombstone bool) handle.ObjectIt {
 	it := &ObjectIt{
-		linkIt: table.entry.MakeObjectIt(reverse, isTombstone),
+		linkIt: table.entry.MakeObjectIt(isTombstone),
 		table:  table,
 	}
 	return it
 }
 
-func newObjectIt(table *txnTable, reverse bool, isTombstone bool) handle.ObjectIt {
-	it := newObjectItOnSnap(table, reverse, isTombstone)
-	if table.tableSpace != nil {
+func newObjectIt(table *txnTable, isTombstone bool) handle.ObjectIt {
+	it := newObjectItOnSnap(table, isTombstone)
+	if table.getBaseTable(isTombstone) != nil && table.getBaseTable(isTombstone).tableSpace != nil {
 		cit := &composedObjectIt{
 			ObjectIt:    it.(*ObjectIt),
-			uncommitted: table.tableSpace.entry,
+			uncommitted: table.getBaseTable(isTombstone).tableSpace.entry,
 		}
 		return cit
 	}

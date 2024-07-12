@@ -619,7 +619,7 @@ func TestObject1(t *testing.T) {
 	assert.Nil(t, err)
 	rel, err = db.GetRelationByName(schema.Name)
 	assert.Nil(t, err)
-	objIt := rel.MakeObjectIt(false, true)
+	objIt := rel.MakeObjectIt(false)
 	cnt := 0
 	for objIt.Next() {
 		iobj := objIt.GetObject()
@@ -631,7 +631,7 @@ func TestObject1(t *testing.T) {
 	_, err = rel.CreateObject(false)
 	assert.Nil(t, err)
 
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
 	for objIt.Next() {
 		iobj := objIt.GetObject()
@@ -643,7 +643,7 @@ func TestObject1(t *testing.T) {
 	txn3, _ := mgr.StartTxn(nil)
 	db, _ = txn3.GetDatabase(name)
 	rel, _ = db.GetRelationByName(schema.Name)
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
 	for objIt.Next() {
 		iobj := objIt.GetObject()
@@ -655,7 +655,7 @@ func TestObject1(t *testing.T) {
 	err = txn2.Commit(context.Background())
 	assert.Nil(t, err)
 
-	objIt = rel.MakeObjectIt(false, true)
+	objIt = rel.MakeObjectIt(false)
 	cnt = 0
 	for objIt.Next() {
 		iobj := objIt.GetObject()
@@ -685,7 +685,7 @@ func TestObject2(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	it := rel.MakeObjectIt(false, true)
+	it := rel.MakeObjectIt(false)
 	cnt := 0
 	for it.Next() {
 		cnt++

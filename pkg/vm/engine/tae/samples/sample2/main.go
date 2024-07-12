@@ -116,7 +116,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		objIt := rel.MakeObjectIt(false, true)
+		objIt := rel.MakeObjectIt(false)
 		for objIt.Next() {
 			obj := objIt.GetObject()
 			logutil.Info(obj.String())

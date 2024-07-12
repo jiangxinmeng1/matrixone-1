@@ -443,9 +443,10 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		obj = NewReplayObjectEntry()
 		obj.table = rel
 		obj.ObjectNode = ObjectNode{
-			state:    state,
-			sorted:   state == ES_NotAppendable,
-			SortHint: catalog.NextObject(),
+			state:       state,
+			sorted:      state == ES_NotAppendable,
+			SortHint:    catalog.NextObject(),
+			IsTombstone: isTombstone,
 		}
 		obj.EntryMVCCNode = *entryNode
 		obj.ObjectMVCCNode = *objNode
@@ -457,7 +458,7 @@ func (catalog *Catalog) onReplayCheckpointObject(
 	if entryNode.DeletedAt.Equal(&txnNode.End) {
 		obj, err = rel.GetObjectByID(objid, isTombstone)
 		if err != nil {
-			panic(fmt.Sprintf("obj %v not existed, table:\n%v", objid.String(), rel.StringWithLevel(3)))
+			panic(fmt.Sprintf("obj %v(%v) not existed, table:\n%v", objid.String(), isTombstone, rel.PPString(3, 0, "")))
 		}
 		obj.EntryMVCCNode = *entryNode
 		obj.ObjectMVCCNode = *objNode
@@ -470,118 +471,10 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		deleteAt := obj.GetDeleteAt()
 		if !obj.IsAppendable() || (obj.IsAppendable() && !deleteAt.IsEmpty()) {
 			obj.objData.TryUpgrade()
-			obj.objData.UpgradeAllDeleteChain()
 		}
 	}
 }
 
-func (catalog *Catalog) onReplayUpdateBlock(
-	cmd *EntryCommand[*MetadataMVCCNode, *BlockNode],
-	dataFactory DataFactory,
-	observer wal.ReplayObserver) {
-	// catalog.OnReplayBlockID(cmd.ID.BlockID)
-	db, err := catalog.GetDatabaseByID(cmd.ID.DbID)
-	if err != nil {
-		panic(err)
-	}
-	tbl, err := db.GetTableEntryByID(cmd.ID.TableID)
-	if err != nil {
-		panic(err)
-	}
-	if !cmd.mvccNode.BaseNode.DeltaLoc.IsEmpty() {
-		obj, err := tbl.GetObjectByID(cmd.ID.ObjectID())
-		if obj == nil {
-			logutil.Fatalf("obj %v not found, mvcc node: %v", cmd.ID.String(), cmd.mvccNode.String())
-			return
-		}
-		if err != nil {
-			panic(err)
-		}
-		tombstone := tbl.GetOrCreateTombstone(obj, dataFactory.MakeTombstoneFactory())
-		_, blkOffset := cmd.ID.BlockID.Offsets()
-		tombstone.ReplayDeltaLoc(cmd.mvccNode, blkOffset)
-	}
-}
-
-func (catalog *Catalog) OnReplayBlockBatch(ins, insTxn, del, delTxn *containers.Batch, dataFactory DataFactory) {
-	for i := 0; i < ins.Length(); i++ {
-		dbid := insTxn.GetVectorByName(SnapshotAttr_DBID).Get(i).(uint64)
-		tid := insTxn.GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
-		appendable := ins.GetVectorByName(pkgcatalog.BlockMeta_EntryState).Get(i).(bool)
-		state := ES_NotAppendable
-		if appendable {
-			state = ES_Appendable
-		}
-		blkID := ins.GetVectorByName(pkgcatalog.BlockMeta_ID).Get(i).(types.Blockid)
-		sid := blkID.Object()
-		metaLoc := ins.GetVectorByName(pkgcatalog.BlockMeta_MetaLoc).Get(i).([]byte)
-		deltaLoc := ins.GetVectorByName(pkgcatalog.BlockMeta_DeltaLoc).Get(i).([]byte)
-		txnNode := txnbase.ReadTuple(insTxn, i)
-		catalog.onReplayCreateBlock(dbid, tid, sid, &blkID, state, metaLoc, deltaLoc, txnNode, dataFactory)
-	}
-	for i := range del.Length() {
-		dbid := delTxn.GetVectorByName(SnapshotAttr_DBID).Get(i).(uint64)
-		tid := delTxn.GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
-		rid := del.GetVectorByName(AttrRowID).Get(i).(types.Rowid)
-		blkID := rid.BorrowBlockID()
-		sid := rid.BorrowObjectID()
-		un := txnbase.ReadTuple(delTxn, i)
-		metaLoc := delTxn.GetVectorByName(pkgcatalog.BlockMeta_MetaLoc).Get(i).([]byte)
-		deltaLoc := delTxn.GetVectorByName(pkgcatalog.BlockMeta_DeltaLoc).Get(i).([]byte)
-		catalog.onReplayDeleteBlock(dbid, tid, sid, blkID, metaLoc, deltaLoc, un)
-	}
-}
-func (catalog *Catalog) onReplayCreateBlock(
-	dbid, tid uint64,
-	objid *types.Objectid,
-	blkid *types.Blockid,
-	state EntryState,
-	metaloc, deltaloc objectio.Location,
-	txnNode *txnbase.TxnMVCCNode,
-	dataFactory DataFactory) {
-	// catalog.OnReplayBlockID(blkid)
-	db, err := catalog.GetDatabaseByID(dbid)
-	if err != nil {
-		logutil.Info(catalog.SimplePPString(common.PPL3))
-		panic(err)
-	}
-	rel, err := db.GetTableEntryByID(tid)
-	if err != nil {
-		logutil.Info(catalog.SimplePPString(common.PPL3))
-		panic(err)
-	}
-	if !deltaloc.IsEmpty() {
-		obj, err := rel.GetObjectByID(objid)
-		if obj == nil {
-			logutil.Fatalf("obj %v not found, txnNode: %v", objid.String(), txnNode.String())
-			return
-		}
-		if err != nil {
-			panic(err)
-		}
-		tombstone := rel.GetOrCreateTombstone(obj, dataFactory.MakeTombstoneFactory())
-		_, blkOffset := blkid.Offsets()
-		mvccNode := &MVCCNode[*MetadataMVCCNode]{
-			EntryMVCCNode: &EntryMVCCNode{},
-			TxnMVCCNode:   txnNode,
-			BaseNode: &MetadataMVCCNode{
-				DeltaLoc: deltaloc,
-			},
-		}
-		tombstone.ReplayDeltaLoc(mvccNode, blkOffset)
-	}
-}
-
-func (catalog *Catalog) onReplayDeleteBlock(
-	dbid, tid uint64,
-	objid *types.Objectid,
-	blkid *types.Blockid,
-	metaloc,
-	deltaloc objectio.Location,
-	txnNode *txnbase.TxnMVCCNode,
-) {
-	panic("logic error")
-}
 func (catalog *Catalog) ReplayTableRows() {
 	rows := uint64(0)
 	tableProcessor := new(LoopProcessor)
@@ -592,11 +485,11 @@ func (catalog *Catalog) ReplayTableRows() {
 		rows += be.GetObjectData().GetRowsOnReplay()
 		return nil
 	}
-	tableProcessor.TombstoneFn = func(t *ObjectEntry) error {
-		if !t.IsActive() {
+	tableProcessor.TombstoneFn = func(be *ObjectEntry) error {
+		if !be.IsActive() {
 			return nil
 		}
-		rows -= t.GetObjectData().GetRowsOnReplay()
+		rows -= be.GetObjectData().GetRowsOnReplay()
 		return nil
 	}
 	processor := new(LoopProcessor)

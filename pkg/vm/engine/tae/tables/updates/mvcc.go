@@ -169,8 +169,8 @@ func (n *AppendMVCCHandle) FillInCommitTSVecLocked(commitTSVec containers.Vector
 }
 
 func (n *AppendMVCCHandle) GetCommitTSVecInRange(start, end types.TS, mp *mpool.MPool) containers.Vector {
-	n.meta.RLock()
-	defer n.meta.RUnlock()
+	n.RLock()
+	defer n.RUnlock()
 	commitTSVec := containers.MakeVector(types.T_TS.ToType(), mp)
 	n.appends.ForEach(
 		func(node *AppendNode) bool {

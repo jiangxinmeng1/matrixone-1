@@ -394,7 +394,7 @@ func (c *objectPruneArg) Run() error {
 	TaskCache.Unlock()
 	entry := c.tbl
 
-	it := entry.MakeDataObjectIt(true)
+	it := entry.MakeDataObjectIt()
 	now := c.ctx.db.TxnMgr.Now()
 	var total, stale, selected int
 	var minR, maxR, totalR, minS, maxS, totalS int

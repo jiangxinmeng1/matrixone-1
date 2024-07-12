@@ -354,7 +354,7 @@ func traverseCatalogForNewAccounts(c *catalog.Catalog, memo *logtail.TNUsageMemo
 				continue
 			}
 
-			objIt := tblEntry.MakeTombstoneObjectIt(false)
+			objIt := tblEntry.MakeTombstoneObjectIt()
 			for objIt.Next() {
 				objEntry := objIt.Item()
 				// PXU TODO

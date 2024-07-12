@@ -181,7 +181,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 	bat, err := tables.TombstoneRangeScanByObject(
 		ctx,
 		dropped.GetTable(),
-		dropped.ID,
+		*dropped.ID(),
 		from.Next(),
 		to,
 		common.MergeAllocator,

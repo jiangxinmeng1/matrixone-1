@@ -104,7 +104,7 @@ func NewFlushTableTailEntry(
 
 	if entry.transMappings != nil {
 		if entry.createdObjHandle != nil {
-			entry.delTbls = make([]*model.TransDels, entry.createdObjHandle.GetMeta().(*catalog.ObjectEntry).GetLatestNode().BlockCnt())
+			entry.delTbls = make([]*types.Blockid, entry.createdObjHandle.GetMeta().(*catalog.ObjectEntry).GetLatestNode().BlockCnt())
 			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
@@ -164,7 +164,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 		if bat, err = tables.TombstoneRangeScanByObject(
 			ctx,
 			entry.tableEntry,
-			obj.ID,
+			*obj.ID(),
 			from.Next(), // NOTE HERE
 			to,
 			common.MergeAllocator,
@@ -185,15 +185,15 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 			row := rowid[i].GetRowOffset()
 			destpos, ok := mapping[int32(row)]
 			if !ok {
-				panic(fmt.Sprintf("%s find no transfer mapping for row %d", blk.ID().String(), row))
+				panic(fmt.Sprintf("%s find no transfer mapping for row %d", obj.ID().String(), row))
 			}
-			blkID := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(destpos.BlkIdx))
+			blkID := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(destpos.BlkIdx))
 			entry.delTbls[destpos.BlkIdx] = blkID
 			entry.rt.TransferDelsMap.SetDelsForBlk(*blkID, int(destpos.RowIdx), entry.txn.GetPrepareTS(), ts[i])
 			id := entry.createdObjHandle.Fingerprint()
 			id.SetBlockOffset(uint16(destpos.BlkIdx))
-			if err = entry.createdObjHandle.GetRelataion().RangeDelete(
-				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact, common.MergeAllocator,
+			if err = entry.createdObjHandle.GetRelation().RangeDelete(
+				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 			); err != nil {
 				bat.Close()
 				return
@@ -267,20 +267,20 @@ func (entry *flushTableTailEntry) PrepareRollback() (err error) {
 			logutil.Info(
 				"[FLUSH-PREPARE-ROLLBACK]",
 				zap.String("task", entry.taskName),
-				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", blk.ID().String())),
+				zap.String("extra-info", fmt.Sprintf("skip empty ablk %s when rollback", obj.ID().String())),
 			)
 			continue
 		}
-		seg := blk.ID().Segment()
+		seg := obj.ID().Segment()
 		name := objectio.BuildObjectName(seg, 0).String()
 		aobjNames = append(aobjNames, name)
 	}
 	for _, obj := range entry.atombstonesMetas {
 		if !obj.HasPersistedData() {
-			logutil.Infof("[FlushTabletail] skip empty atombstone %s when rollback", obj.ID.String())
+			logutil.Infof("[FlushTabletail] skip empty atombstone %s when rollback", obj.ID().String())
 			continue
 		}
-		seg := obj.ID.Segment()
+		seg := obj.ID().Segment()
 		name := objectio.BuildObjectName(seg, 0).String()
 		aobjNames = append(aobjNames, name)
 	}

@@ -889,14 +889,14 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 	scopes := make([]common.ID, 0, len(metas))
 	for _, meta := range metas {
 		if !meta.GetObjectData().PrepareCompact() {
-			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID.String())
+			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID().String())
 			return moerr.GetOkExpectedEOB()
 		}
 		scopes = append(scopes, *meta.AsCommonID())
 	}
 	for _, meta := range tombstoneMetas {
 		if !meta.GetObjectData().PrepareCompact() {
-			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID.String())
+			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID().String())
 			return moerr.GetOkExpectedEOB()
 		}
 		scopes = append(scopes, *meta.AsCommonID())

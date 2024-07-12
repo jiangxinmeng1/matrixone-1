@@ -178,7 +178,7 @@ func NewFlushTableTailTask(
 			return
 		}
 		if obj.IsTombstone {
-			panic(fmt.Sprintf("logic err, obj %v is tombstone", obj.ID.String()))
+			panic(fmt.Sprintf("logic err, obj %v is tombstone", obj.ID().String()))
 		}
 		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
@@ -190,7 +190,7 @@ func NewFlushTableTailTask(
 			logutil.Info(
 				"[FLUSH-NEED-RETRY]",
 				zap.String("task", task.Name()),
-				common.AnyField("obj", obj.ID.String()),
+				common.AnyField("obj", obj.ID().String()),
 			)
 			return nil, txnif.ErrTxnNeedRetry
 		}
@@ -200,7 +200,7 @@ func NewFlushTableTailTask(
 			logutil.Info(
 				"[FLUSH-NEED-RETRY]",
 				zap.String("task", task.Name()),
-				common.AnyField("obj", obj.ID.String()),
+				common.AnyField("obj", obj.ID().String()),
 			)
 			return nil, txnif.ErrTxnNeedRetry
 		}
@@ -211,12 +211,12 @@ func NewFlushTableTailTask(
 	for _, obj := range tombStones {
 		task.scopes = append(task.scopes, *obj.AsCommonID())
 		var hdl handle.Object
-		hdl, err = rel.GetObject(&obj.ID, true)
+		hdl, err = rel.GetObject(obj.ID(), true)
 		if err != nil {
 			return
 		}
 		if !obj.IsTombstone {
-			panic(fmt.Sprintf("logic err, obj %v is not tombstone", obj.ID.String()))
+			panic(fmt.Sprintf("logic err, obj %v is not tombstone", obj.ID().String()))
 		}
 		if !hdl.IsAppendable() {
 			panic(fmt.Sprintf("logic err %v is nonappendable", hdl.GetID().String()))
@@ -225,13 +225,13 @@ func NewFlushTableTailTask(
 			continue
 		}
 		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
-			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID.String())
+			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID().String())
 			return nil, txnif.ErrTxnNeedRetry
 		}
 		task.aTombstoneMetas = append(task.aTombstoneMetas, obj)
 		task.aTombstoneHandles = append(task.aTombstoneHandles, hdl)
 		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
-			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID.String())
+			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID().String())
 			return nil, txnif.ErrTxnNeedRetry
 		}
 	}
@@ -275,7 +275,7 @@ func (task *flushTableTailTask) MarshalLogObject(enc zapcore.ObjectEncoder) (err
 	enc.AddString("a-objs", objs)
 	tombstones := ""
 	for _, obj := range task.aTombstoneMetas {
-		tombstones = fmt.Sprintf("%s%s,", tombstones, obj.ID.ShortStringEx())
+		tombstones = fmt.Sprintf("%s%s,", tombstones, obj.ID().ShortStringEx())
 	}
 	enc.AddString("a-tombstones", tombstones)
 

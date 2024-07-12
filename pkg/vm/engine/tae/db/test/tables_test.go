@@ -166,7 +166,7 @@ func TestTxn1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		objIt := rel.MakeObjectIt(false, true)
+		objIt := rel.MakeObjectIt(false)
 		objCnt := uint32(0)
 		blkCnt := uint32(0)
 		for objIt.Next() {
@@ -411,7 +411,7 @@ func TestTxn6(t *testing.T) {
 			_, _, err = rel.GetValueByFilter(context.Background(), filter, 3)
 			assert.Error(t, err)
 
-			it := rel.MakeObjectIt(false, true)
+			it := rel.MakeObjectIt(false)
 			for it.Next() {
 				obj := it.GetObject()
 				for j := 0; j < obj.BlkCnt(); j++ {
@@ -475,14 +475,14 @@ func TestFlushAblkMerge(t *testing.T) {
 		rel, _ := database.GetRelationByName(schema.Name)
 		blks := make([]*catalog.ObjectEntry, 0)
 		tombstones := make([]*catalog.ObjectEntry, 0)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
 			blks = append(blks, meta)
 		}
 		it.Close()
-			it = rel.MakeObjectIt(true, true)
+		it = rel.MakeObjectIt(true)
 		for it.Next() {
 			blk := it.GetObject()
 			meta := blk.GetMeta().(*catalog.ObjectEntry)
@@ -513,7 +513,7 @@ func TestFlushAblkMerge(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -619,7 +619,7 @@ func TestCompaction1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -644,7 +644,7 @@ func TestCompaction1(t *testing.T) {
 		txn, _ := db.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -693,7 +693,7 @@ func TestCompaction2(t *testing.T) {
 		txn, _ := db.TxnMgr.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {
@@ -711,7 +711,7 @@ func TestCompaction2(t *testing.T) {
 		txn, _ := db.TxnMgr.StartTxn(nil)
 		database, _ := txn.GetDatabase("db")
 		rel, _ := database.GetRelationByName(schema.Name)
-		it := rel.MakeObjectIt(false, true)
+		it := rel.MakeObjectIt(false)
 		for it.Next() {
 			blk := it.GetObject()
 			for j := 0; j < blk.BlkCnt(); j++ {

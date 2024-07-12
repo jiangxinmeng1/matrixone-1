@@ -154,15 +154,6 @@ func (c *checker) Check() error {
 				stats := objectEntry.GetObjectStats()
 				delete(allObjects, stats.ObjectName().String())
 			}
-			itObject.Release()
-			it2 := table.GetDeleteList().Items()
-			for _, itt := range it2 {
-				_, _, _, err = itt.VisitDeletes(c.cleaner.ctx, maxTs, end, bat, nil, true, false)
-				if err != nil {
-					logutil.Errorf("visit deletes failed: %v", err)
-					continue
-				}
-			}
 		}
 	}
 

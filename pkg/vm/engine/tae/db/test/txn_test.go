@@ -241,7 +241,7 @@ func (c *APP1Client) CheckBound() {
 // TODO: rewrite
 func (c *APP1Client) GetGoodRepetory(goodId uint64) (id *common.ID, offset uint32, count uint64, err error) {
 	rel, _ := c.DB.GetRelationByName(repertory.Name)
-	blockIt := rel.MakeObjectIt(false, true)
+	blockIt := rel.MakeObjectIt(false)
 	found := false
 	for blockIt.Next() {
 		blk := blockIt.GetObject()

@@ -336,7 +336,7 @@ func (tbl *txnTable) recurTransferDelete(
 				blockID.String(),
 				offset,
 				tbl.store.txn.GetID(),
-				pk.Get(0))
+				pk)
 		})
 		return nil
 	}
@@ -711,7 +711,7 @@ func (tbl *txnTable) GetByFilter(ctx context.Context, filter *handle.Filter) (id
 }
 
 func (tbl *txnTable) GetValue(ctx context.Context, id *common.ID, row uint32, col uint16, skipCheckDelete bool) (v any, isNull bool, err error) {
-	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(tbl.dataTable.tableSpace.entry.ID) {
+	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(*tbl.dataTable.tableSpace.entry.ID()) {
 		return tbl.dataTable.tableSpace.GetValue(row, col)
 	}
 	meta, err := tbl.store.warChecker.CacheGet(
@@ -853,7 +853,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		return
 	}
 	tbl.contains(ctx, rowIDs, keysZM, common.WorkspaceAllocator)
-	it := tbl.entry.MakeTombstoneObjectIt(false)
+	it := tbl.entry.MakeTombstoneObjectIt()
 	for it.Next() {
 		obj := it.Item()
 		ObjectHint := obj.SortHint
@@ -867,9 +867,7 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
 			continue
 		}
-		obj.RLock()
-		skip := obj.IsCreatingOrAbortedLocked()
-		obj.RUnlock()
+		skip := obj.IsCreatingOrAborted()
 		if skip {
 			continue
 		}
@@ -1275,7 +1273,7 @@ func (tbl *txnTable) RangeDelete(
 		}
 	}()
 
-	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(tbl.dataTable.tableSpace.entry.ID) {
+	if tbl.dataTable.tableSpace != nil && id.ObjectID().Eq(*tbl.dataTable.tableSpace.entry.ID()) {
 		err = tbl.RangeDeleteLocalRows(start, end)
 		return
 	}

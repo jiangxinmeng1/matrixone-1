@@ -120,9 +120,9 @@ func (obj *object) Contains(
 	defer func() {
 		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
 			logutil.Infof("BatchDedup %s (%v)obj-%s: %v",
-				obj.meta.GetTable().GetLastestSchemaLocked(false).Name,
+				obj.meta.Load().GetTable().GetLastestSchemaLocked(false).Name,
 				obj.IsAppendable(),
-				obj.meta.ID.String(),
+				obj.meta.Load().ID().String(),
 				err)
 		}
 	}()
@@ -143,7 +143,7 @@ func (obj *object) RunCalibration() (score int, err error) {
 }
 
 func (obj *object) estimateRawScore() (score int, dropped bool) {
-	return 0, obj.meta.HasDropCommitted()
+	return 0, obj.meta.Load().HasDropCommitted()
 }
 
 func (obj *object) EstimateMemSize() (int, int) {

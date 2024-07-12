@@ -116,7 +116,7 @@ func (obj *aobject) PrepareCompact() bool {
 	obj.FreezeAppend()
 	obj.freezelock.Unlock()
 
-	droppedCommitted := obj.GetObjMeta().HasDropCommitted()
+	droppedCommitted := obj.meta.Load().HasDropCommitted()
 
 	if droppedCommitted {
 		if !obj.meta.Load().PrepareCompactLocked() {
@@ -193,7 +193,7 @@ func (obj *aobject) GetDuplicatedRows(
 ) (err error) {
 	defer func() {
 		if moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry) {
-			logutil.Debugf("BatchDedup obj-%s: %v", obj.meta.ID.String(), err)
+			logutil.Debugf("BatchDedup obj-%s: %v", obj.meta.Load().ID().String(), err)
 		}
 	}()
 	node := obj.PinNode()
@@ -288,8 +288,8 @@ func (obj *aobject) Contains(
 }
 
 func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {
-	meta := obj.GetObjMeta()
-	if meta.HasDropCommitted()  {
+	meta := obj.meta.Load()
+	if meta.HasDropCommitted() {
 		dropped = true
 		return
 	}
@@ -363,9 +363,9 @@ func (obj *aobject) EstimateMemSize() (int, int) {
 }
 
 func (obj *aobject) GetRowsOnReplay() uint64 {
-	if obj.meta.HasDropCommitted() {
-		return uint64(obj.meta.GetLatestCommittedNodeLocked().
-			BaseNode.ObjectStats.Rows())
+	if obj.meta.Load().HasDropCommitted() {
+		return uint64(obj.meta.Load().
+			ObjectStats.Rows())
 	}
 	return uint64(obj.appendMVCC.GetTotalRow())
 }

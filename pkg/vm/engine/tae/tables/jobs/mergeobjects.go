@@ -96,7 +96,7 @@ func NewMergeObjectsTask(
 	}
 	for i, obj := range mergedObjs {
 		if obj.IsTombstone != isTombstone {
-			panic(fmt.Sprintf("task.IsTombstone %v, object %v %v", isTombstone, obj.ID.String(), obj.IsTombstone))
+			panic(fmt.Sprintf("task.IsTombstone %v, object %v %v", isTombstone, obj.ID().String(), obj.IsTombstone))
 		}
 		task.mergedBlkCnt[i] = task.totalMergedBlkCnt
 		task.blkCnt[i] = obj.BlockCnt()
@@ -114,7 +114,7 @@ func NewMergeObjectsTask(
 		return
 	}
 	for _, meta := range mergedObjs {
-		obj, err := task.rel.GetObject(&meta.ID, isTombstone)
+		obj, err := task.rel.GetObject(meta.ID(), isTombstone)
 		if err != nil {
 			return nil, err
 		}

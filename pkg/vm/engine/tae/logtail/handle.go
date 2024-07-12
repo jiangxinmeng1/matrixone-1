@@ -94,7 +94,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
 	"go.uber.org/zap"
@@ -508,9 +507,9 @@ func (b *TableLogtailRespBuilder) visitObjMeta(e *catalog.ObjectEntry) (bool, er
 	var objectMVCCNode *catalog.ObjectMVCCNode
 	for _, node := range mvccNodes {
 		if e.IsTombstone {
-			visitObject(b.tombstoneMetaBatch, e, node,node.End.Equal(&e.CreatedAt),  false, types.TS{})
+			visitObject(b.tombstoneMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		} else {
-			visitObject(b.dataMetaBatch, e, node,node.End.Equal(&e.CreatedAt),  false, types.TS{})
+			visitObject(b.dataMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		}
 	}
 	return b.skipObjectData(e, objectMVCCNode), nil

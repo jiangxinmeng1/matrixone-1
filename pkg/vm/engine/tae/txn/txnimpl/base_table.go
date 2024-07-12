@@ -161,7 +161,7 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 		return
 	}
 	maxObjectHint := uint64(0)
-	for ; it.Valid(); it.Next() {
+	for it.Next() {
 		obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
 		objectHint := obj.SortHint
 		if objectHint > maxObjectHint {
@@ -206,7 +206,7 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 }
 
 func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.Vector) (rowIDs containers.Vector, err error) {
-	objIt := tbl.txnTable.entry.MakeObjectIt(false, tbl.isTombstone)
+	objIt := tbl.txnTable.entry.MakeObjectIt(tbl.isTombstone)
 	rowIDs = tbl.txnTable.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	vector.AppendMultiFixed[types.Rowid](
 		rowIDs.GetDownstreamVector(),
@@ -215,18 +215,14 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 		pks.Length(),
 		common.WorkspaceAllocator,
 	)
-	if err != nil {
-		return
-	}
 	dedupedHint := tbl.dedupedObjectHint
-	for ; objIt.Valid(); objIt.Next() {
-		obj := objIt.Get().GetPayload()
+	defer objIt.Release()
+	for ok := objIt.Last(); ok; ok = objIt.Prev() {
+		obj := objIt.Item()
 		if obj.SortHint < dedupedHint {
 			break
 		}
-		obj.RLock()
-		shouldSkip := obj.HasDropCommittedLocked() || obj.IsCreatingOrAbortedLocked()
-		obj.RUnlock()
+		shouldSkip := obj.HasDropCommitted() || obj.IsCreatingOrAborted()
 		if shouldSkip {
 			continue
 		}

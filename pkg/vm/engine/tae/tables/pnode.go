@@ -95,7 +95,7 @@ func (node *persistedNode) Scan(
 	colIdxes []int,
 	mp *mpool.MPool,
 ) (err error) {
-	id := node.object.meta.AsCommonID()
+	id := node.object.meta.Load().AsCommonID()
 	id.SetBlockOffset(uint16(blkID))
 	location, err := node.object.buildMetalocation(uint16(blkID))
 	if err != nil {
@@ -117,9 +117,7 @@ func (node *persistedNode) Scan(
 				if vecs[i].GetType().Oid != types.T_TS {
 					vecs[i].Close()
 					vecs[i] = node.object.rt.VectorPool.Transient.GetVector(&catalog.CommitTSType)
-					node.object.RLock()
-					createTS := node.object.meta.GetCreatedAtLocked()
-					node.object.RUnlock()
+					createTS := node.object.meta.Load().GetCreatedAt()
 					vector.AppendMultiFixed(vecs[i].GetDownstreamVector(), createTS, false, vecs[0].Length(), mp)
 				}
 			} else {
@@ -135,9 +133,7 @@ func (node *persistedNode) Scan(
 				if vecs[i].GetType().Oid != types.T_TS {
 					vecs[i].Close()
 					vecs[i] = node.object.rt.VectorPool.Transient.GetVector(&catalog.CommitTSType)
-					node.object.RLock()
-					createTS := node.object.meta.GetCreatedAtLocked()
-					node.object.RUnlock()
+					createTS := node.object.meta.Load().GetCreatedAt()
 					vector.AppendMultiFixed(vecs[i].GetDownstreamVector(), createTS, false, vecs[0].Length(), mp)
 				}
 			} else {
@@ -157,48 +153,44 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 	mp *mpool.MPool,
 	vpool *containers.VectorPool,
 ) (err error) {
-	if !node.object.meta.IsTombstone {
+	if !node.object.meta.Load().IsTombstone {
 		panic("not support")
 	}
 	colIdxes := catalog.TombstoneBatchIdxes
 	colIdxes = append(colIdxes, catalog.COLIDX_COMMITS)
-	readSchema := node.object.meta.GetTable().GetLastestSchema(true)
+	readSchema := node.object.meta.Load().GetTable().GetLastestSchema(true)
 	var startTS types.TS
-	if !node.object.meta.IsAppendable() {
-		node.object.meta.RLock()
-		startTS = node.object.meta.GetCreatedAtLocked()
-		node.object.meta.RUnlock()
+	if !node.object.meta.Load().IsAppendable() {
+		startTS = node.object.meta.Load().GetCreatedAt()
 		if startTS.Less(&start) || startTS.Greater(&end) {
 			return
 		}
 	} else {
-		node.object.meta.RLock()
-		createAt := node.object.meta.GetCreatedAtLocked()
-		deleteAt := node.object.meta.GetDeleteAtLocked()
-		node.object.meta.RUnlock()
+		createAt := node.object.meta.Load().GetCreatedAt()
+		deleteAt := node.object.meta.Load().GetDeleteAt()
 		if deleteAt.Less(&start) || createAt.Greater(&end) {
 			return
 		}
 	}
-	id := node.object.meta.AsCommonID()
+	id := node.object.meta.Load().AsCommonID()
 
 	var bf objectio.BloomFilter
 	if bf, err = objectio.FastLoadBF(
 		ctx,
-		node.object.meta.GetLocation(),
+		node.object.meta.Load().GetLocation(),
 		false,
 		node.object.rt.Fs.Service,
 	); err != nil {
 		return
 	}
-	objLocation := node.object.meta.GetLocation()
+	objLocation := node.object.meta.Load().GetLocation()
 	objDataMeta, err := objectio.FastLoadObjectMeta(ctx, &objLocation, false, node.object.GetFs().Service)
 	if err != nil {
 		return err
 	}
 	colCount := objDataMeta.MustGetMeta(objectio.SchemaData).GetBlockMeta(0).GetColumnCount()
 	persistedByCN := colCount == 2
-	for blkID := 0; blkID < node.object.meta.BlockCnt(); blkID++ {
+	for blkID := 0; blkID < node.object.meta.Load().BlockCnt(); blkID++ {
 		buf := bf.GetBloomFilter(uint32(blkID))
 		bfIndex := index.NewEmptyBloomFilterWithType(index.HBF)
 		if err = index.DecodeBloomFilter(bfIndex, buf); err != nil {
@@ -266,27 +258,27 @@ func (node *persistedNode) FillBlockTombstones(
 	deletes **nulls.Nulls,
 	mp *mpool.MPool) error {
 	startTS := txn.GetStartTS()
-	if !node.object.meta.IsAppendable() {
+	if !node.object.meta.Load().IsAppendable() {
 		node.object.RLock()
-		createAt := node.object.meta.GetCreatedAtLocked()
+		createAt := node.object.meta.Load().GetCreatedAt()
 		node.object.RUnlock()
 		if createAt.Greater(&startTS) {
 			return nil
 		}
 	}
-	id := node.object.meta.AsCommonID()
-	readSchema := node.object.meta.GetTable().GetLastestSchema(true)
+	id := node.object.meta.Load().AsCommonID()
+	readSchema := node.object.meta.Load().GetTable().GetLastestSchema(true)
 	var bf objectio.BloomFilter
 	var err error
 	if bf, err = objectio.FastLoadBF(
 		ctx,
-		node.object.meta.GetLocation(),
+		node.object.meta.Load().GetLocation(),
 		false,
 		node.object.rt.Fs.Service,
 	); err != nil {
 		return err
 	}
-	for tombstoneBlkID := 0; tombstoneBlkID < node.object.meta.BlockCnt(); tombstoneBlkID++ {
+	for tombstoneBlkID := 0; tombstoneBlkID < node.object.meta.Load().BlockCnt(); tombstoneBlkID++ {
 		buf := bf.GetBloomFilter(uint32(tombstoneBlkID))
 		bfIndex := index.NewEmptyBloomFilterWithType(index.HBF)
 		if err := index.DecodeBloomFilter(bfIndex, buf); err != nil {
@@ -311,7 +303,7 @@ func (node *persistedNode) FillBlockTombstones(
 			return err
 		}
 		var commitTSs []types.TS
-		if node.object.meta.IsAppendable() {
+		if node.object.meta.Load().IsAppendable() {
 			commitTSVec, err := node.object.LoadPersistedCommitTS(uint16(tombstoneBlkID))
 			if err != nil {
 				return err
@@ -321,7 +313,7 @@ func (node *persistedNode) FillBlockTombstones(
 		rowIDs := vector.MustFixedCol[types.Rowid](vecs[0].GetDownstreamVector())
 		// TODO: biselect, check visibility
 		for i := 0; i < len(rowIDs); i++ {
-			if node.object.meta.IsAppendable() {
+			if node.object.meta.Load().IsAppendable() {
 				if commitTSs[i].Greater(&startTS) {
 					continue
 				}

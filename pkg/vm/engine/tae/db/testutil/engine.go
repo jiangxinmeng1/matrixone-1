@@ -17,7 +17,6 @@ package testutil
 import (
 	"context"
 	"fmt"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,6 +34,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
@@ -52,7 +52,7 @@ type CtxOldVersion struct{}
 
 type TestEngine struct {
 	*db.DB
-	t        *testing.T
+	T        *testing.T
 	schema   *catalog.Schema
 	tenantID uint32 // for almost tests, userID and roleID is not important
 }
@@ -67,7 +67,7 @@ func NewTestEngineWithDir(
 	db := InitTestDBWithDir(ctx, dir, t, opts)
 	return &TestEngine{
 		DB: db,
-		t:  t,
+		T:  t,
 	}
 }
 
@@ -81,7 +81,7 @@ func NewTestEngine(
 	db := InitTestDB(ctx, moduleName, t, opts)
 	return &TestEngine{
 		DB: db,
-		t:  t,
+		T:  t,
 	}
 }
 
@@ -102,7 +102,7 @@ func (e *TestEngine) Restart(ctx context.Context) {
 			end := ckp.GetEnd()
 			return !end.GreaterEq(&min)
 		}, gc.CheckerKeyMinTS)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 }
 func (e *TestEngine) RestartDisableGC(ctx context.Context) {
 	_ = e.DB.Close()
@@ -118,7 +118,7 @@ func (e *TestEngine) RestartDisableGC(ctx context.Context) {
 			end := ckp.GetEnd()
 			return !end.GreaterEq(&min)
 		}, gc.CheckerKeyMinTS)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) Close() error {
@@ -130,26 +130,26 @@ func (e *TestEngine) Close() error {
 
 func (e *TestEngine) CreateRelAndAppend(bat *containers.Batch, createDB bool) (handle.Database, handle.Relation) {
 	clonedSchema := e.schema.Clone()
-	return CreateRelationAndAppend(e.t, e.tenantID, e.DB, DefaultTestDB, clonedSchema, bat, createDB)
+	return CreateRelationAndAppend(e.T, e.tenantID, e.DB, DefaultTestDB, clonedSchema, bat, createDB)
 }
 
 func (e *TestEngine) CheckRowsByScan(exp int, applyDelete bool) {
 	txn, rel := e.GetRelation()
-	CheckAllColRowsByScan(e.t, rel, exp, applyDelete)
-	assert.NoError(e.t, txn.Commit(context.Background()))
+	CheckAllColRowsByScan(e.T, rel, exp, applyDelete)
+	assert.NoError(e.T, txn.Commit(context.Background()))
 }
 func (e *TestEngine) ForceCheckpoint() {
 	err := e.BGCheckpointRunner.ForceFlushWithInterval(e.TxnMgr.Now(), context.Background(), time.Second*2, time.Millisecond*10)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	err = e.BGCheckpointRunner.ForceIncrementalCheckpoint(e.TxnMgr.Now(), false)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) ForceLongCheckpoint() {
 	err := e.BGCheckpointRunner.ForceFlush(e.TxnMgr.Now(), context.Background(), 20*time.Second)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	err = e.BGCheckpointRunner.ForceIncrementalCheckpoint(e.TxnMgr.Now(), false)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) DropRelation(t *testing.T) {
@@ -162,26 +162,26 @@ func (e *TestEngine) DropRelation(t *testing.T) {
 	assert.NoError(t, txn.Commit(context.Background()))
 }
 func (e *TestEngine) GetRelation() (txn txnif.AsyncTxn, rel handle.Relation) {
-	return GetRelation(e.t, e.tenantID, e.DB, DefaultTestDB, e.schema.Name)
+	return GetRelation(e.T, e.tenantID, e.DB, DefaultTestDB, e.schema.Name)
 }
 func (e *TestEngine) GetRelationWithTxn(txn txnif.AsyncTxn) (rel handle.Relation) {
-	return GetRelationWithTxn(e.t, txn, DefaultTestDB, e.schema.Name)
+	return GetRelationWithTxn(e.T, txn, DefaultTestDB, e.schema.Name)
 }
 
 func (e *TestEngine) CompactBlocks(skipConflict bool) {
-	CompactBlocks(e.t, e.tenantID, e.DB, DefaultTestDB, e.schema, skipConflict)
+	CompactBlocks(e.T, e.tenantID, e.DB, DefaultTestDB, e.schema, skipConflict)
 }
 
 func (e *TestEngine) MergeBlocks(skipConflict bool) {
-	MergeBlocks(e.t, e.tenantID, e.DB, DefaultTestDB, e.schema, skipConflict)
+	MergeBlocks(e.T, e.tenantID, e.DB, DefaultTestDB, e.schema, skipConflict)
 }
 
 func (e *TestEngine) GetDB(name string) (txn txnif.AsyncTxn, db handle.Database) {
 	txn, err := e.DB.StartTxn(nil)
 	txn.BindAccessInfo(e.tenantID, 0, 0)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	db, err = txn.GetDatabase(name)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	return
 }
 
@@ -192,15 +192,15 @@ func (e *TestEngine) GetTestDB() (txn txnif.AsyncTxn, db handle.Database) {
 func (e *TestEngine) DoAppend(bat *containers.Batch) {
 	txn, rel := e.GetRelation()
 	err := rel.Append(context.Background(), bat)
-	assert.NoError(e.t, err)
-	assert.NoError(e.t, txn.Commit(context.Background()))
+	assert.NoError(e.T, err)
+	assert.NoError(e.T, txn.Commit(context.Background()))
 }
 
 func (e *TestEngine) DoAppendWithTxn(bat *containers.Batch, txn txnif.AsyncTxn, skipConflict bool) (err error) {
 	rel := e.GetRelationWithTxn(txn)
 	err = rel.Append(context.Background(), bat)
 	if !skipConflict {
-		assert.NoError(e.t, err)
+		assert.NoError(e.T, err)
 	}
 	return
 }
@@ -208,9 +208,9 @@ func (e *TestEngine) DoAppendWithTxn(bat *containers.Batch, txn txnif.AsyncTxn, 
 func (e *TestEngine) TryAppend(bat *containers.Batch) {
 	txn, err := e.DB.StartTxn(nil)
 	txn.BindAccessInfo(e.tenantID, 0, 0)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	db, err := txn.GetDatabase(DefaultTestDB)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	rel, err := db.GetRelationByName(e.schema.Name)
 	if err != nil {
 		_ = txn.Rollback(context.Background())
@@ -237,18 +237,18 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 		for i := uint16(0); i < blkCnt; i++ {
 			var view *containers.Batch
 			err := blk.HybridScan(context.Background(), &view, i, []int{rowIDIdx, pkIdx}, common.DefaultAllocator)
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 			defer view.Close()
 			view.Compact()
 			err = rel.DeleteByPhyAddrKeys(view.Vecs[0], view.Vecs[1])
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 		}
 	}
 	// CheckAllColRowsByScan(e.t, rel, 0, true)
 	err := txn.Commit(context.Background())
 	if !skipConflict {
-		CheckAllColRowsByScan(e.t, rel, 0, true)
-		assert.NoError(e.t, err)
+		CheckAllColRowsByScan(e.T, rel, 0, true)
+		assert.NoError(e.T, err)
 	}
 	return err
 }
@@ -256,8 +256,8 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 func (e *TestEngine) Truncate() {
 	txn, db := e.GetTestDB()
 	_, err := db.TruncateByName(e.schema.Name)
-	assert.NoError(e.t, err)
-	assert.NoError(e.t, txn.Commit(context.Background()))
+	assert.NoError(e.T, err)
+	assert.NoError(e.T, txn.Commit(context.Background()))
 }
 func (e *TestEngine) GlobalCheckpoint(
 	endTs types.TS,
@@ -275,10 +275,10 @@ func (e *TestEngine) GlobalCheckpoint(
 			return flushed
 		})
 		flushed := e.DB.BGCheckpointRunner.IsAllChangesFlushed(types.TS{}, endTs, true)
-		assert.True(e.t, flushed)
+		assert.True(e.T, flushed)
 	}
 	err := e.DB.BGCheckpointRunner.ForceGlobalCheckpoint(endTs, versionInterval)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	return nil
 }
 
@@ -299,15 +299,15 @@ func (e *TestEngine) IncrementalCheckpoint(
 			return flushed
 		})
 		flushed := e.DB.BGCheckpointRunner.IsAllChangesFlushed(types.TS{}, end, true)
-		assert.True(e.t, flushed)
+		assert.True(e.T, flushed)
 	}
 	err := e.DB.BGCheckpointRunner.ForceIncrementalCheckpoint(end, false)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	if truncate {
 		lsn := e.DB.BGCheckpointRunner.MaxLSNInRange(end)
 		entry, err := e.DB.Wal.RangeCheckpoint(1, lsn)
-		assert.NoError(e.t, err)
-		assert.NoError(e.t, entry.WaitDone())
+		assert.NoError(e.T, err)
+		assert.NoError(e.T, entry.WaitDone())
 		testutils.WaitExpect(1000, func() bool {
 			return e.Runtime.Scheduler.GetPenddingLSNCnt() == 0
 		})
@@ -317,12 +317,12 @@ func (e *TestEngine) IncrementalCheckpoint(
 
 func (e *TestEngine) TryDeleteByDeltaloc(vals []any) (ok bool, err error) {
 	txn, err := e.StartTxn(nil)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	ok, err = e.TryDeleteByDeltalocWithTxn(vals, txn)
 	if ok {
-		assert.NoError(e.t, txn.Commit(context.Background()))
+		assert.NoError(e.T, txn.Commit(context.Background()))
 	} else {
-		assert.NoError(e.t, txn.Rollback(context.Background()))
+		assert.NoError(e.T, txn.Rollback(context.Background()))
 	}
 	return
 }
@@ -334,7 +334,7 @@ func (e *TestEngine) TryDeleteByDeltalocWithTxn(vals []any, txn txnif.AsyncTxn) 
 	for _, val := range vals {
 		filter := handle.NewEQFilter(val)
 		id, offset, err := rel.GetByFilter(context.Background(), filter)
-		assert.NoError(e.t, err)
+		assert.NoError(e.T, err)
 		offsets, ok := idOffsetsMap[*id]
 		if !ok {
 			offsets = make([]uint32, 0)
@@ -345,12 +345,12 @@ func (e *TestEngine) TryDeleteByDeltalocWithTxn(vals []any, txn txnif.AsyncTxn) 
 
 	for id, offsets := range idOffsetsMap {
 		obj, err := rel.GetMeta().(*catalog.TableEntry).GetObjectByID(id.ObjectID(), false)
-		assert.NoError(e.t, err)
+		assert.NoError(e.T, err)
 		_, blkOffset := id.BlockID.Offsets()
 		deltaLoc, err := MockCNDeleteInS3(e.Runtime.Fs, obj.GetObjectData(), blkOffset, e.schema, txn, offsets)
-		assert.NoError(e.t, err)
+		assert.NoError(e.T, err)
 		ok, err = rel.TryDeleteByDeltaloc(&id, deltaLoc)
-		assert.NoError(e.t, err)
+		assert.NoError(e.T, err)
 		if !ok {
 			return ok, err
 		}
@@ -702,14 +702,14 @@ func (e *TestEngine) CheckReadCNCheckpoint() {
 		return nil
 	}
 	err := e.Catalog.RecurLoop(p)
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 	ckps := e.BGCheckpointRunner.GetAllIncrementalCheckpoints()
 	for _, ckp := range ckps {
 		for _, tid := range tids {
-			ins, del, cnIns, seg, cbs := cnReadCheckpointWithVersion(e.t, tid, ckp.GetLocation(), e.Opts.Fs, ckp.GetVersion())
+			ins, del, cnIns, seg, cbs := cnReadCheckpointWithVersion(e.T, tid, ckp.GetLocation(), e.Opts.Fs, ckp.GetVersion())
 			ctx := context.Background()
 			ctx = context.WithValue(ctx, CtxOldVersion{}, int(ckp.GetVersion()))
-			checkCNCheckpointData(ctx, e.t, tid, ins, del, cnIns, seg, ckp.GetStart(), ckp.GetEnd(), e.Catalog)
+			checkCNCheckpointData(ctx, e.T, tid, ins, del, cnIns, seg, ckp.GetStart(), ckp.GetEnd(), e.Catalog)
 			for _, cb := range cbs {
 				if cb != nil {
 					cb()
@@ -729,7 +729,7 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 			err := meta.GetObjectData().Scan(
 				context.Background(), &deleteBatch, txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
 			)
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 			pkDef := e.schema.GetPrimaryKey()
 			deleteRowIDs := deleteBatch.Vecs[0]
 			deletePKs := deleteBatch.Vecs[1]
@@ -739,13 +739,13 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 				id := obj.Fingerprint()
 				id.BlockID = *rowID.BorrowBlockID()
 				val, _, err := rel.GetValue(id, offset, uint16(pkDef.Idx), true)
-				assert.NoError(e.t, err)
-				e.t.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), rowID.String(), val)
-				assert.Equal(e.t, val, deletePKs.Get(i))
+				assert.NoError(e.T, err)
+				e.T.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), rowID.String(), val)
+				assert.Equal(e.T, val, deletePKs.Get(i))
 			}
 		}
 		return nil
 	})
 	err := txn.Commit(context.Background())
-	assert.NoError(e.t, err)
+	assert.NoError(e.T, err)
 }

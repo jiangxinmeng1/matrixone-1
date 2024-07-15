@@ -2081,9 +2081,6 @@ func (collector *BaseCollector) VisitObjForBackup(entry *catalog.ObjectEntry) (e
 }
 
 func (collector *BaseCollector) VisitObj(entry *catalog.ObjectEntry) (err error) {
-	if !entry.IsCommitted() {
-		return
-	}
 	collector.visitObjectEntry(entry)
 	return nil
 }

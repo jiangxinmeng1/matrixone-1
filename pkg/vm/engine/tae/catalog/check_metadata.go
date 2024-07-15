@@ -30,7 +30,6 @@ func (catalog *Catalog) CheckMetadata() {
 	catalog.RecurLoop(p)
 	logutil.Infof("[MetadataCheck] End")
 }
-
 func (catalog *Catalog) checkObject(o *ObjectEntry) error {
 	switch o.ObjectState {
 	case ObjectState_Create_Active:

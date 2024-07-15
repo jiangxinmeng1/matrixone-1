@@ -503,8 +503,9 @@ func TestCreateObject(t *testing.T) {
 	txn, _ = tae.StartTxn(nil)
 	db, _ = txn.GetDatabase("db")
 	rel, _ := db.GetRelationByName(schema.Name)
-	_, err = rel.CreateNonAppendableObject(false, nil)
+	obj, err := rel.CreateNonAppendableObject(false, nil)
 	assert.Nil(t, err)
+	testutil.MockObjectStats(t, obj)
 	assert.Nil(t, txn.Commit(context.Background()))
 
 	objCnt := 0
@@ -985,7 +986,7 @@ func TestFlushTableErrorHandle(t *testing.T) {
 		worker.SendOp(task)
 		err = task.WaitDone(ctx)
 		require.Error(t, err)
-		require.NoError(t, txn.Commit(context.Background()))
+		require.NoError(t, txn.Rollback(context.Background()))
 	}
 	for i := 0; i < 20; i++ {
 		createAndInsert()
@@ -7573,14 +7574,20 @@ func TestGCCatalog1(t *testing.T) {
 	assert.NoError(t, err)
 	tb3, err = db2.GetRelationByName("tb3")
 	assert.NoError(t, err)
+	obj4, err = tb3.GetObject(obj4.GetID(), false)
+	assert.NoError(t, err)
 	err = tb3.SoftDeleteObject(obj4.GetID(), false)
+	testutil.MockObjectStats(t, obj4)
 	assert.NoError(t, err)
 
 	db2, err = txn3.GetDatabase("db1")
 	assert.NoError(t, err)
 	tb3, err = db2.GetRelationByName("tb2")
 	assert.NoError(t, err)
+	obj3, err = tb3.GetObject(obj3.GetID(), false)
+	assert.NoError(t, err)
 	err = tb3.SoftDeleteObject(obj3.GetID(), false)
+	testutil.MockObjectStats(t, obj3)
 	assert.NoError(t, err)
 
 	err = txn3.Commit(context.Background())
@@ -9228,4 +9235,56 @@ func TestTransferDeletes(t *testing.T) {
 	})
 	assert.NoError(t, txn.Commit(ctx))
 	wg.Wait()
+}
+
+func TestGCKP(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	testutils.EnsureNoLeak(t)
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+
+	schema := catalog.MockSchema(2, 0)
+	schema.BlockMaxRows = 10
+	schema.ObjectMaxBlocks = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 1)
+
+	tae.CreateRelAndAppend(bat, true)
+
+	tae.DeleteAll(true)
+
+	tae.CompactBlocks(true)
+	time.Sleep(time.Millisecond * 200)
+
+	tae.ForceGlobalCheckpoint(ctx, tae.TxnMgr.Now(), time.Minute, time.Millisecond*100)
+	tae.Restart(ctx)
+	t.Log(tae.Catalog.SimplePPString(3))
+}
+
+func TestGCCatalog4(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	testutils.EnsureNoLeak(t)
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+
+	schema := catalog.MockSchema(2, 0)
+	schema.BlockMaxRows = 10
+	schema.ObjectMaxBlocks = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 1)
+
+	tae.CreateRelAndAppend(bat, true)
+
+	tae.DeleteAll(true)
+
+	tae.CompactBlocks(true)
+
+	tae.Catalog.GCByTS(ctx, tae.TxnMgr.Now())
+
 }

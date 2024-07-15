@@ -105,7 +105,7 @@ func (b *TxnLogtailRespBuilder) CollectLogtail(txn txnif.AsyncTxn) (*[]logtail.T
 }
 
 func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
-	obj := iobj.(*catalog.ObjectEntry)
+	obj := iobj.(*catalog.ObjectEntry).GetLatestNode()
 	node := obj.GetLastMVCCNode()
 	var batchIdx int8
 	if obj.IsTombstone {

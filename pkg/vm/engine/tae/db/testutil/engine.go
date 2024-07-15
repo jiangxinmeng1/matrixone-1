@@ -35,7 +35,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
@@ -238,11 +237,11 @@ func (e *TestEngine) DeleteAll(skipConflict bool) error {
 		for i := uint16(0); i < blkCnt; i++ {
 			var view *containers.Batch
 			err := blk.HybridScan(context.Background(), &view, i, []int{rowIDIdx, pkIdx}, common.DefaultAllocator)
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 			defer view.Close()
 			view.Compact()
 			err = rel.DeleteByPhyAddrKeys(view.Vecs[0], view.Vecs[1])
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 		}
 	}
 	// CheckAllColRowsByScan(e.t, rel, 0, true)
@@ -730,7 +729,7 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 			err := meta.GetObjectData().Scan(
 				context.Background(), &deleteBatch, txn, e.schema, uint16(i), []int{0, 1}, common.DefaultAllocator,
 			)
-			assert.NoError(e.t, err)
+			assert.NoError(e.T, err)
 			pkDef := e.schema.GetPrimaryKey()
 			deleteRowIDs := deleteBatch.Vecs[0]
 			deletePKs := deleteBatch.Vecs[1]
@@ -740,9 +739,9 @@ func (e *TestEngine) CheckCollectTombstoneInRange() {
 				id := obj.Fingerprint()
 				id.BlockID = *rowID.BorrowBlockID()
 				val, _, err := rel.GetValue(id, offset, uint16(pkDef.Idx), true)
-				assert.NoError(e.t, err)
-				e.t.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), rowID.String(), val)
-				assert.Equal(e.t, val, deletePKs.Get(i))
+				assert.NoError(e.T, err)
+				e.T.Logf("delete rowID %v pk %v, append rowID %v pk %v", rowID.String(), deletePKs.Get(i), rowID.String(), val)
+				assert.Equal(e.T, val, deletePKs.Get(i))
 			}
 		}
 		return nil

@@ -507,9 +507,9 @@ func (b *TableLogtailRespBuilder) visitObjMeta(e *catalog.ObjectEntry) (bool, er
 	var objectMVCCNode *catalog.ObjectMVCCNode
 	for _, node := range mvccNodes {
 		if e.IsTombstone {
-			visitObject(b.tombstoneMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{}, true)
+			visitObject(b.tombstoneMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		} else {
-			visitObject(b.dataMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{}, true)
+			visitObject(b.dataMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		}
 	}
 	return b.skipObjectData(e, objectMVCCNode), nil
@@ -534,7 +534,7 @@ func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	}
 	return nil
 }
-func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNode *txnbase.TxnMVCCNode, create bool, push bool, committs types.TS, checkObjectstats bool) {
+func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNode *txnbase.TxnMVCCNode, create bool, push bool, committs types.TS) {
 	batch.GetVectorByName(catalog.AttrRowID).Append(objectio.HackObjid2Rowid(entry.ID()), false)
 	if push {
 		batch.GetVectorByName(catalog.AttrCommitTs).Append(committs, false)
@@ -542,9 +542,6 @@ func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNod
 		batch.GetVectorByName(catalog.AttrCommitTs).Append(txnMVCCNode.End, false)
 	}
 	empty := entry.IsAppendable() && create
-	if checkObjectstats && empty {
-		panic("logic error")
-	}
 	entry.ObjectMVCCNode.AppendTuple(entry.ID(), batch, empty)
 	if push {
 		txnMVCCNode.AppendTupleWithCommitTS(batch, committs)

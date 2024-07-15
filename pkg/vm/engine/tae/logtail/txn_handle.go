@@ -117,14 +117,14 @@ func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 		if b.batches[batchIdx] == nil {
 			b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 		}
-		visitObject(b.batches[batchIdx], obj, node, true, true, b.txn.GetPrepareTS(), true)
+		visitObject(b.batches[batchIdx], obj, node, true, true, b.txn.GetPrepareTS())
 		return
 	}
 
 	if b.batches[batchIdx] == nil {
 		b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	}
-	visitObject(b.batches[batchIdx], obj, node, false, true, b.txn.GetPrepareTS(), true)
+	visitObject(b.batches[batchIdx], obj, node, false, true, b.txn.GetPrepareTS())
 }
 
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {

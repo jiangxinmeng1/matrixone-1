@@ -172,7 +172,7 @@ func (l *ObjectList) Update(new, old *ObjectEntry) {
 	defer l.Unlock()
 	oldTree := l.tree.Load()
 	newTree := oldTree.Copy()
-	if new.IsTombstone!=l.isTombstone{
+	if new.IsTombstone != l.isTombstone {
 		panic("logic error")
 	}
 	newTree.Set(new)

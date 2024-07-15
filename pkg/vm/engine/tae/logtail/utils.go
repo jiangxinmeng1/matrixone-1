@@ -2044,20 +2044,10 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 			continue
 		}
 		create := node.End.Equal(&entry.CreatedAt)
-<<<<<<< HEAD
 		if entry.IsTombstone {
 			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, create, false, types.TS{})
 		} else {
 			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{})
-=======
-		if entry.IsAppendable() && create {
-			visitObject(collector.data.bats[TNObjectInfoIDX], entry, node, create, false, types.TS{}, false)
-		} else {
-			if entry.IsAppendable() && entry.DeletedAt.IsEmpty() {
-				panic(fmt.Sprintf("logic error, object %v", entry.ID().String()))
-			}
-			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{}, true)
->>>>>>> main
 		}
 		objNode := node
 

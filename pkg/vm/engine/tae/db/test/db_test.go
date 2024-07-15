@@ -7574,7 +7574,7 @@ func TestGCCatalog1(t *testing.T) {
 	assert.NoError(t, err)
 	tb3, err = db2.GetRelationByName("tb3")
 	assert.NoError(t, err)
-	obj4, err = tb3.GetObject(obj4.GetID())
+	obj4, err = tb3.GetObject(obj4.GetID(), false)
 	assert.NoError(t, err)
 	err = tb3.SoftDeleteObject(obj4.GetID(), false)
 	testutil.MockObjectStats(t, obj4)
@@ -7584,7 +7584,7 @@ func TestGCCatalog1(t *testing.T) {
 	assert.NoError(t, err)
 	tb3, err = db2.GetRelationByName("tb2")
 	assert.NoError(t, err)
-	obj3, err = tb3.GetObject(obj3.GetID())
+	obj3, err = tb3.GetObject(obj3.GetID(), false)
 	assert.NoError(t, err)
 	err = tb3.SoftDeleteObject(obj3.GetID(), false)
 	testutil.MockObjectStats(t, obj3)
@@ -9262,37 +9262,6 @@ func TestGCKP(t *testing.T) {
 	tae.ForceGlobalCheckpoint(ctx, tae.TxnMgr.Now(), time.Minute, time.Millisecond*100)
 	tae.Restart(ctx)
 	t.Log(tae.Catalog.SimplePPString(3))
-}
-
-func TestCKPCollectObject(t *testing.T) {
-	defer testutils.AfterTest(t)()
-	testutils.EnsureNoLeak(t)
-	ctx := context.Background()
-
-	opts := config.WithLongScanAndCKPOpts(nil)
-	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
-	defer tae.Close()
-
-	schema := catalog.MockSchema(2, 0)
-	schema.BlockMaxRows = 10
-	schema.ObjectMaxBlocks = 10
-	tae.BindSchema(schema)
-	bat := catalog.MockBatch(schema, 1)
-
-	tae.CreateRelAndAppend(bat, true)
-
-	txn, rel := tae.GetRelation()
-	blkMeta1 := testutil.GetOneBlockMeta(rel)
-	task1, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{blkMeta1}, tae.Runtime, txn.GetStartTS())
-	assert.NoError(t, err)
-	assert.NoError(t, task1.Execute(ctx))
-
-	collector := logtail.NewIncrementalCollector(types.TS{}, tae.TxnMgr.Now(), true)
-	assert.NoError(t, tae.Catalog.RecurLoop(collector))
-	ckpData := collector.OrphanData()
-	objBatch := ckpData.GetTNObjectBatchs()
-	assert.Equal(t, 4, objBatch.Length())
-	assert.NoError(t, txn.Commit(ctx))
 }
 
 func TestGCCatalog4(t *testing.T) {

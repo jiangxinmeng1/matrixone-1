@@ -758,6 +758,14 @@ func (sm *SnapshotMeta) GetSnapshotList(SnapshotList map[uint32][]types.TS, tid 
 	return SnapshotList[accID]
 }
 
+func (sm *SnapshotMeta) GetSnapshotListLocked(SnapshotList map[uint32][]types.TS, tid uint64) []types.TS {
+	if sm.acctIndexes[tid] == nil {
+		return nil
+	}
+	accID := sm.acctIndexes[tid].accID
+	return SnapshotList[accID]
+}
+
 func (sm *SnapshotMeta) MergeTableInfo(SnapshotList map[uint32][]types.TS) error {
 	sm.Lock()
 	defer sm.Unlock()

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcv2
+package v2
 
 import (
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	PrefixGCMeta   = "gcv2"
+	PrefixGCMeta   = "v2"
 	PrefixSnapMeta = "snap"
 	PrefixAcctMeta = "acct"
-	GCMetaDir      = "gcv2/"
+	GCMetaDir      = "v2/"
 	CKPMetaDir     = "ckp/"
 )
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package gcv2
+package v2
 
 import (
 	"context"
@@ -726,7 +726,7 @@ func (c *checkpointCleaner) softGC(
 	var softCost, mergeCost time.Duration
 	defer func() {
 		logutil.Info("[DiskCleaner] softGC cost",
-			zap.String("soft-gcv2 cost", softCost.String()),
+			zap.String("soft-v2 cost", softCost.String()),
 			zap.String("merge-table cost", mergeCost.String()))
 	}()
 	if len(c.inputs.tables) == 0 {
@@ -744,7 +744,7 @@ func (c *checkpointCleaner) softGC(
 	c.updateMaxCompared(gckp)
 	c.snapshotMeta.MergeTableInfo(snapList)
 	mergeCost = time.Since(now)
-	//logutil.Infof("SoftGC is %v, merge table: %v", gcv2, mergeTable.String())
+	//logutil.Infof("SoftGC is %v, merge table: %v", v2, mergeTable.String())
 	return gc, snapList
 }
 

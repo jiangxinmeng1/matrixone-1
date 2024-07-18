@@ -96,14 +96,10 @@ func NewMergeObjectsEntry(
 	return entry, nil
 }
 
-<<<<<<< HEAD
-func (entry *mergeObjectsEntry) prepareTransferPage() {
+func (entry *mergeObjectsEntry) prepareTransferPage(ctx context.Context) {
 	if entry.isTombstone {
 		return
 	}
-=======
-func (entry *mergeObjectsEntry) prepareTransferPage(ctx context.Context) {
->>>>>>> main
 	k := 0
 	for _, obj := range entry.droppedObjs {
 		ioVector := model.InitTransferPageIO()

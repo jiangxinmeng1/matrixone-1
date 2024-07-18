@@ -239,17 +239,8 @@ func (blk *baseObject) ResolvePersistedColumnData(
 	blkOffset uint16,
 	col int,
 	mp *mpool.MPool,
-) (view *containers.ColumnView, err error) {
-	var bat *containers.Batch
+) (bat *containers.Batch, err error) {
 	err = blk.Scan(ctx, &bat, txn, readSchema, blkOffset, []int{col}, mp)
-	if err != nil {
-		return
-	}
-	if bat == nil {
-		return
-	}
-	view = containers.NewColumnView(col)
-	view.SetData(bat.Vecs[0])
 	return
 }
 
@@ -283,11 +274,11 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getRowIDAlkFunctions, view.GetData(), rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, getRowIDAlkFunctions, view.Vecs[0], rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getDuplicatedRowIDNABlkFunctions, view.GetData(), rowIDs, blkID,
+			keys.GetType().Oid, getDuplicatedRowIDNABlkFunctions, view.Vecs[0], rowIDs, blkID,
 		)
 	}
 	err = containers.ForeachVector(keys, dedupFn, sels)
@@ -320,11 +311,11 @@ func (blk *baseObject) containsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, containsAlkFunctions, view.GetData(), keys, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, containsAlkFunctions, view.Vecs[0], keys, blk.LoadPersistedCommitTS, txn,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, containsNABlkFunctions, view.GetData(), keys,
+			keys.GetType().Oid, containsNABlkFunctions, view.Vecs[0], keys,
 		)
 	}
 	err = containers.ForeachVector(keys, dedupFn, sels)

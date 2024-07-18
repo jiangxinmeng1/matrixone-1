@@ -138,23 +138,23 @@ func BuildLocation(stats objectio.ObjectStats, blkOffset uint16, blkMaxRows uint
 	return metaloc
 }
 
-func CNTombstoneView2DNTombstoneView(cnView *containers.BlockView, commitTS types.TS) (dnView *containers.BlockView) {
+func CNTombstoneView2DNTombstoneView(cnView *containers.Batch, commitTS types.TS) (dnView *containers.Batch) {
 	if cnView == nil {
 		return nil
 	}
-	if len(cnView.Columns) != 2 {
-		panic(fmt.Sprintf("logic err, cnView length %d", len(cnView.Columns)))
+	if len(cnView.Vecs) != 2 {
+		panic(fmt.Sprintf("logic err, cnView length %d", len(cnView.Vecs)))
 	}
-	dnView = containers.NewBlockView()
-	length := cnView.Columns[0].Length()
+	dnView = containers.NewBatch()
+	length := cnView.Length()
 
-	rowIDVector := cnView.Columns[0].Orphan()
+	rowIDVector := cnView.Vecs[0]
 	commitTSVector := containers.NewConstFixed(types.T_TS.ToType(), commitTS, length, containers.Options{Allocator: common.MergeAllocator})
-	pkVector := cnView.Columns[1].Orphan()
+	pkVector := cnView.Vecs[1]
 	abortVector := containers.NewConstFixed(types.T_bool.ToType(), false, length, containers.Options{Allocator: common.MergeAllocator})
-	dnView.SetData(0, rowIDVector)
-	dnView.SetData(1, commitTSVector)
-	dnView.SetData(2, pkVector)
-	dnView.SetData(3, abortVector)
+	dnView.AddVector(AttrRowID, rowIDVector)
+	dnView.AddVector(AttrCommitTs, commitTSVector)
+	dnView.AddVector(AttrPKVal, pkVector)
+	dnView.AddVector(AttrAborted, abortVector)
 	return
 }

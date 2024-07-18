@@ -71,47 +71,6 @@ func (obj *object) Pin() *common.PinnedItem[*object] {
 	}
 }
 
-<<<<<<< HEAD
-=======
-func (obj *object) GetColumnDataByIds(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	blkID uint16,
-	colIdxes []int,
-	mp *mpool.MPool,
-) (view *containers.Batch, err error) {
-	node := obj.PinNode()
-	defer node.Unref()
-	schema := readSchema.(*catalog.Schema)
-	return obj.ResolvePersistedColumnDatas(
-		ctx, txn, schema, blkID, colIdxes, false, mp,
-	)
-}
-
-// GetColumnDataById Get the snapshot at txn's start timestamp of column data.
-// Notice that for non-appendable object, if it is visible to txn,
-// then all the object data pointed by meta location also be visible to txn;
-func (obj *object) GetColumnDataById(
-	ctx context.Context,
-	txn txnif.AsyncTxn,
-	readSchema any,
-	blkID uint16,
-	col int,
-	mp *mpool.MPool,
-) (view *containers.Batch, err error) {
-	schema := readSchema.(*catalog.Schema)
-	return obj.ResolvePersistedColumnData(
-		ctx,
-		txn,
-		schema,
-		blkID,
-		col,
-		false,
-		mp,
-	)
-}
->>>>>>> main
 func (obj *object) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	creatTS := obj.meta.Load().GetCreatedAt()
 	return creatTS.Less(&ts)

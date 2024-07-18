@@ -324,7 +324,7 @@ func (obj *txnSysObject) Scan(
 		if *bat == nil {
 			*bat = containers.NewBatch()
 			for _, idx := range colIdx {
-				vec, err := obj.getDBTableVec(idx, mp)
+				vec, _, err := obj.getDBTableVec(idx, mp)
 				if err != nil {
 					return err
 				}
@@ -332,7 +332,7 @@ func (obj *txnSysObject) Scan(
 			}
 		} else {
 			for _, idx := range colIdx {
-				vec, err := obj.getDBTableVec(idx, mp)
+				vec, _, err := obj.getDBTableVec(idx, mp)
 				if err != nil {
 					return err
 				}
@@ -345,7 +345,7 @@ func (obj *txnSysObject) Scan(
 		if *bat == nil {
 			*bat = containers.NewBatch()
 			for _, idx := range colIdx {
-				vec, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
+				vec, _, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
 				if err != nil {
 					return err
 				}
@@ -353,7 +353,7 @@ func (obj *txnSysObject) Scan(
 			}
 		} else {
 			for _, idx := range colIdx {
-				vec, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
+				vec, _, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
 				if err != nil {
 					return err
 				}
@@ -366,7 +366,7 @@ func (obj *txnSysObject) Scan(
 		if *bat == nil {
 			*bat = containers.NewBatch()
 			for _, idx := range colIdx {
-				vec, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
+				vec, _, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
 				if err != nil {
 					return err
 				}
@@ -374,7 +374,7 @@ func (obj *txnSysObject) Scan(
 			}
 		} else {
 			for _, idx := range colIdx {
-				vec, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
+				vec, _, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
 				if err != nil {
 					return err
 				}

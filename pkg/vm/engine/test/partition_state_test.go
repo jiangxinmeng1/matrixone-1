@@ -114,14 +114,14 @@ func Test_Append(t *testing.T) {
 		txn, _ := taeEngine.GetDB().StartTxn(nil)
 		database, _ = txn.GetDatabase(databaseName)
 		rel, _ = database.GetRelationByName(schema.Name)
-		_, err = rel.CreateObject()
+		_, err = rel.CreateObject(false)
 		assert.Nil(t, err)
 	}
 	{
 		txn, _ := taeEngine.GetDB().StartTxn(nil)
 		database, _ = txn.GetDatabase(databaseName)
 		rel, _ = database.GetRelationByName(schema.Name)
-		objIt := rel.MakeObjectIt()
+		objIt := rel.MakeObjectIt(false)
 		objCnt := uint32(0)
 		blkCnt := uint32(0)
 		for objIt.Next() {
@@ -356,7 +356,7 @@ func Test_Bug_MissCleanDirtyBlockFlag(t *testing.T) {
 		database, _ = txn.GetDatabase(databaseName)
 		rel, _ = database.GetRelationByName(schema.Name)
 
-		iter := rel.MakeObjectIt()
+		iter := rel.MakeObjectIt(false)
 		iter.Next()
 		blkId := iter.GetObject().GetMeta().(*catalog.ObjectEntry).AsCommonID()
 		// delete one row on the 1st blk
@@ -458,7 +458,7 @@ func Test_EmptyObjectStats(t *testing.T) {
 		database, _ = txn.GetDatabase(databaseName)
 		rel, _ = database.GetRelationByName(schema.Name)
 
-		iter := rel.MakeObjectIt()
+		iter := rel.MakeObjectIt(false)
 		iter.Next()
 		blkId := iter.GetObject().GetMeta().(*catalog.ObjectEntry).AsCommonID()
 		// delete one row on the 1st blk

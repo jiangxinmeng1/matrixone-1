@@ -122,17 +122,12 @@ func NewFlushTableTailEntry(
 }
 
 // add transfer pages for dropped aobjects
-<<<<<<< HEAD
-func (entry *flushTableTailEntry) addTransferPages() {
-	isTransient := !entry.tableEntry.GetLastestSchemaLocked(false).HasPK()
-=======
 func (entry *flushTableTailEntry) addTransferPages(ctx context.Context) {
-	isTransient := !entry.tableEntry.GetLastestSchemaLocked().HasPK()
+	isTransient := !entry.tableEntry.GetLastestSchemaLocked(false).HasPK()
 	ioVector := model.InitTransferPageIO()
 	pages := make([]*model.TransferHashPage, 0, len(entry.transMappings.Mappings))
 	var duration time.Duration
 	var start time.Time
->>>>>>> main
 	for i, mcontainer := range entry.transMappings.Mappings {
 		m := mcontainer.M
 		if len(m) == 0 {
@@ -143,14 +138,9 @@ func (entry *flushTableTailEntry) addTransferPages(ctx context.Context) {
 		page := model.NewTransferHashPage(id, time.Now(), isTransient, entry.rt.LocalFs.Service, model.GetTTL(), model.GetDiskTTL())
 		mapping := make(map[uint32][]byte, len(m))
 		for srcRow, dst := range m {
-<<<<<<< HEAD
 			blkid := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), uint16(dst.BlkIdx))
-			page.Train(uint32(srcRow), *objectio.NewRowid(blkid, uint32(dst.RowIdx)))
-=======
-			blkid := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(dst.BlkIdx))
 			rowID := objectio.NewRowid(blkid, uint32(dst.RowIdx))
 			mapping[uint32(srcRow)] = rowID[:]
->>>>>>> main
 		}
 		page.Train(mapping)
 

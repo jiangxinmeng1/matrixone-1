@@ -173,7 +173,7 @@ func FillColumnRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Ta
 
 func (obj *txnSysObject) getColumnTableVec(
 	ts types.TS, colIdx int, mp *mpool.MPool,
-) (colData containers.Vector, err error) {
+) (colData containers.Vector, colName string, err error) {
 	col := catalog.SystemColumnSchema.ColDefs[colIdx]
 	colData = containers.MakeVector(col.Type, mp)
 	tableFn := func(table *catalog.TableEntry) error {
@@ -244,8 +244,9 @@ func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Tab
 	}
 }
 
-func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool) (colData containers.Vector, err error) {
+func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
 	colDef := catalog.SystemTableSchema.ColDefs[colIdx]
+	colName = colDef.Name
 	colData = containers.MakeVector(colDef.Type, mp)
 	tableFn := func(table *catalog.TableEntry) error {
 		table.RLock()
@@ -293,8 +294,9 @@ func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode],
 		panic("unexpected colname. if add new catalog def, fill it in this switch")
 	}
 }
-func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData containers.Vector, err error) {
+func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
 	colDef := catalog.SystemDBSchema.ColDefs[colIdx]
+	colName = colDef.Name
 	colData = containers.MakeVector(colDef.Type, mp)
 	fn := func(db *catalog.DBEntry) error {
 		FillDBRow(db, nil, colDef.Name, colData)

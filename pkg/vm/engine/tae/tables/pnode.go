@@ -125,6 +125,7 @@ func (node *persistedNode) Scan(
 			}
 			(*bat).AddVector(attr, vecs[i])
 		}
+<<<<<<< HEAD
 	} else {
 		for i, idx := range colIdxes {
 			var attr string
@@ -138,6 +139,33 @@ func (node *persistedNode) Scan(
 				}
 			} else {
 				attr = readSchema.ColDefs[idx].Name
+=======
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Load persisted commit ts
+		var commitTSVec containers.Vector
+		commitTSVec, err = node.object.LoadPersistedCommitTS(blkID)
+		if err != nil {
+			return
+		}
+		defer commitTSVec.Close()
+
+		// Load persisted deletes
+		view := containers.NewBatch()
+		if err = node.object.FillPersistedDeletes(ctx, blkID, txn, &view.Deletes, mp); err != nil {
+			return
+		}
+
+		exist := false
+		var deleted bool
+		for _, offset := range rows {
+			commitTS := commitTSVec.Get(int(offset)).(types.TS)
+			startTS := txn.GetStartTS()
+			if commitTS.Greater(&startTS) {
+				break
+>>>>>>> main
 			}
 			(*bat).GetVectorByName(attr).Extend(vecs[i])
 		}

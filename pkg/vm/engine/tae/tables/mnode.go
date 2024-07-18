@@ -280,6 +280,198 @@ func (node *memoryNode) checkConflictLocked(
 	}
 }
 
+<<<<<<< HEAD
+=======
+func (node *memoryNode) checkConflictAandVisibility(
+	n txnif.BaseMVCCNode,
+	isCommitting bool,
+	txn txnif.TxnReader,
+) (visible bool, err error) {
+	// if isCommitting check all nodes commit before txn.CommitTS(PrepareTS)
+	// if not isCommitting check nodes commit before txn.StartTS
+	if isCommitting {
+		needWait := n.IsCommitting()
+		if needWait {
+			txn := n.GetTxn()
+			node.object.RUnlock()
+			txn.GetTxnState(true)
+			node.object.RLock()
+		}
+	} else {
+		needWait, txn := n.NeedWaitCommitting(txn.GetStartTS())
+		if needWait {
+			node.object.RUnlock()
+			txn.GetTxnState(true)
+			node.object.RLock()
+		}
+	}
+	if err = n.CheckConflict(txn); err != nil {
+		return
+	}
+	if isCommitting {
+		visible = n.IsCommitted()
+	} else {
+		visible = n.IsVisible(txn)
+	}
+	return
+}
+
+func (node *memoryNode) CollectAppendInRange(
+	start, end types.TS, withAborted bool, mp *mpool.MPool,
+) (batWithVer *containers.BatchWithVersion, err error) {
+	node.object.RLock()
+	minRow, maxRow, commitTSVec, abortVec, abortedMap :=
+		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
+	if commitTSVec == nil || abortVec == nil {
+		node.object.RUnlock()
+		return nil, nil
+	}
+	batWithVer, err = node.GetDataWindowOnWriteSchema(minRow, maxRow, mp)
+	if err != nil {
+		node.object.RUnlock()
+		return nil, err
+	}
+	node.object.RUnlock()
+
+	batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_COMMITTS)
+	batWithVer.AddVector(catalog.AttrCommitTs, commitTSVec)
+	if withAborted {
+		batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_ABORT)
+		batWithVer.AddVector(catalog.AttrAborted, abortVec)
+	} else {
+		abortVec.Close()
+		batWithVer.Deletes = abortedMap
+		batWithVer.Compact()
+	}
+
+	return
+}
+
+// Note: With PinNode Context
+func (node *memoryNode) resolveInMemoryColumnDatas(
+	ctx context.Context,
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	colIdxes []int,
+	skipDeletes bool,
+	mp *mpool.MPool,
+) (view *containers.Batch, err error) {
+	node.object.RLock()
+	defer node.object.RUnlock()
+	maxRow, visible, deSels, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
+	if !visible || err != nil {
+		// blk.RUnlock()
+		return
+	}
+	data, err := node.GetDataWindow(readSchema, colIdxes, 0, maxRow, mp)
+	if err != nil {
+		return
+	}
+	view = containers.NewBatch()
+	for i, colIdx := range colIdxes {
+		view.AddVector(readSchema.ColDefs[colIdx].Name, data.Vecs[i])
+	}
+	if skipDeletes {
+		return
+	}
+
+	err = node.object.fillInMemoryDeletesLocked(txn, 0, &view.Deletes, node.object.RWMutex)
+	if err != nil {
+		return
+	}
+	if !deSels.IsEmpty() {
+		if view.Deletes != nil {
+			view.Deletes.Or(deSels)
+		} else {
+			view.Deletes = deSels
+		}
+	}
+	return
+}
+
+// Note: With PinNode Context
+func (node *memoryNode) resolveInMemoryColumnData(
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	col int,
+	skipDeletes bool,
+	mp *mpool.MPool,
+) (view *containers.Batch, err error) {
+	node.object.RLock()
+	defer node.object.RUnlock()
+	maxRow, visible, deSels, err := node.object.appendMVCC.GetVisibleRowLocked(context.TODO(), txn)
+	if !visible || err != nil {
+		return
+	}
+
+	view = containers.NewBatch()
+	var data containers.Vector
+	if data, err = node.GetColumnDataWindow(
+		readSchema,
+		0,
+		maxRow,
+		col,
+		mp,
+	); err != nil {
+		return
+	}
+	view.AddVector(readSchema.ColDefs[col].Name, data)
+	if skipDeletes {
+		return
+	}
+
+	err = node.object.fillInMemoryDeletesLocked(txn, 0, &view.Deletes, node.object.RWMutex)
+	if err != nil {
+		return
+	}
+	if deSels != nil && !deSels.IsEmpty() {
+		if view.Deletes != nil {
+			view.Deletes.Or(deSels)
+		} else {
+			view.Deletes = deSels
+		}
+	}
+
+	return
+}
+
+// With PinNode Context
+func (node *memoryNode) getInMemoryValue(
+	txn txnif.TxnReader,
+	readSchema *catalog.Schema,
+	row, col int,
+	mp *mpool.MPool,
+) (v any, isNull bool, err error) {
+	node.object.RLock()
+	deleted := false
+	objMVCC := node.object.tryGetMVCC()
+	if objMVCC != nil {
+		mvcc := objMVCC.TryGetDeleteChain(0)
+		if mvcc != nil {
+			deleted, err = mvcc.IsDeletedLocked(uint32(row), txn)
+		}
+	}
+	node.object.RUnlock()
+	if err != nil {
+		return
+	}
+	if deleted {
+		err = moerr.NewNotFoundNoCtx()
+		return
+	}
+	view, err := node.resolveInMemoryColumnData(txn, readSchema, col, true, mp)
+	if err != nil {
+		return
+	}
+	defer view.Close()
+	isNull = view.Vecs[0].IsNull(row)
+	if !isNull {
+		v = view.Vecs[0].Get(row)
+	}
+	return
+}
+
+>>>>>>> main
 func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {
 	node.object.RLock()
 	defer node.object.RUnlock()

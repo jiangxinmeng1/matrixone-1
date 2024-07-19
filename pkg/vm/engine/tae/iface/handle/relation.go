@@ -18,6 +18,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	apipb "github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -58,7 +59,7 @@ type Relation interface {
 	CreateNonAppendableObject(isTombstone bool, opt *objectio.CreateObjOpt) (Object, error)
 	GetObject(id *types.Objectid, isTombstone bool) (Object, error)
 	SoftDeleteObject(id *types.Objectid, isTombstone bool) (err error)
-	FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error
+	FillInWorkspaceDeletes(blkID types.Blockid, view **nulls.Nulls) error
 
 	GetDB() (Database, error)
 }

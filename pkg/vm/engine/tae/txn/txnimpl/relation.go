@@ -23,6 +23,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	apipb "github.com/matrixorigin/matrixone/pkg/pb/api"
 
+	"github.com/matrixorigin/matrixone/pkg/container/nulls"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -354,6 +355,6 @@ func (h *txnRelation) AlterTable(ctx context.Context, req *apipb.AlterTableReq) 
 	return h.table.AlterTable(ctx, req)
 }
 
-func (h *txnRelation) FillInWorkspaceDeletes(blkID types.Blockid, view *containers.BaseView) error {
-	return h.table.FillInWorkspaceDeletes(blkID, &view.DeleteMask)
+func (h *txnRelation) FillInWorkspaceDeletes(blkID types.Blockid, view **nulls.Nulls) error {
+	return h.table.FillInWorkspaceDeletes(blkID, view)
 }

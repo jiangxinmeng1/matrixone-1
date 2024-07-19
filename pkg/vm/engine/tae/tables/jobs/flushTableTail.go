@@ -505,9 +505,13 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 	if err != nil {
 		return
 	}
-	if bat == nil {
-		empty = true
-		return
+	for i := range idxs {
+		if vec := bat.Vecs[i]; vec == nil || vec.Length() == 0 {
+			empty = true
+			bat.Close()
+			bat = nil
+			return
+		}
 	}
 	totalRowCnt := bat.Length()
 	task.aObjDeletesCnt += bat.Deletes.GetCardinality()
@@ -592,6 +596,11 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 			return
 		}
 	}
+	for _, block := range objHandles {
+		if err = block.Prefetch(readColIdxs); err != nil {
+			return
+		}
+	}
 	for i := range objHandles {
 		bat, empty, err := task.prepareAObjSortedData(ctx, i, readColIdxs, sortKeyPos, isTombstone)
 		if err != nil {
@@ -602,11 +611,6 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		}
 		readedBats = append(readedBats, bat)
 	}
-	defer func() {
-		for _, bat := range readedBats {
-			bat.Close()
-		}
-	}()
 
 	// prepare merge
 	// toLayout describes the layout of the output batch, i.e. [8192, 8192, 8192, 4242]

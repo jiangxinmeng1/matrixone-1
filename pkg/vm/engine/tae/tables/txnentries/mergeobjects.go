@@ -91,17 +91,21 @@ func NewMergeObjectsEntry(
 		if err != nil {
 			return nil, err
 		}
-		entry.prepareTransferPage()
+		entry.prepareTransferPage(ctx)
 	}
 	return entry, nil
 }
 
-func (entry *mergeObjectsEntry) prepareTransferPage() {
+func (entry *mergeObjectsEntry) prepareTransferPage(ctx context.Context) {
 	if entry.isTombstone {
 		return
 	}
 	k := 0
 	for _, obj := range entry.droppedObjs {
+		ioVector := model.InitTransferPageIO()
+		pages := make([]*model.TransferHashPage, 0, obj.BlockCnt())
+		var duration time.Duration
+		var start time.Time
 		for j := 0; j < obj.BlockCnt(); j++ {
 			m := entry.transMappings.Mappings[k].M
 			k++
@@ -112,24 +116,41 @@ func (entry *mergeObjectsEntry) prepareTransferPage() {
 			isTransient := !tblEntry.GetLastestSchema(false).HasPK()
 			id := obj.AsCommonID()
 			id.SetBlockOffset(uint16(j))
-			page := model.NewTransferHashPage(id, time.Now(), len(m), isTransient)
+			page := model.NewTransferHashPage(id, time.Now(), isTransient, entry.rt.LocalFs.Service, model.GetTTL(), model.GetDiskTTL())
+			mapping := make(map[uint32][]byte, len(m))
 			for srcRow, dst := range m {
 				objID := entry.createdObjs[dst.ObjIdx].ID()
 				blkID := objectio.NewBlockidWithObjectID(objID, uint16(dst.BlkIdx))
-				page.Train(uint32(srcRow), *objectio.NewRowid(blkID, uint32(dst.RowIdx)))
+				rowID := objectio.NewRowid(blkID, uint32(dst.RowIdx))
+				mapping[uint32(srcRow)] = rowID[:]
 			}
+			page.Train(mapping)
+
+			start = time.Now()
+			err := model.AddTransferPage(page, ioVector)
+			if err != nil {
+				return
+			}
+			duration += time.Since(start)
+
 			entry.pageIds = append(entry.pageIds, id)
 			_ = entry.rt.TransferTable.AddPage(page)
+			pages = append(pages, page)
 		}
+
+		start = time.Now()
+		model.WriteTransferPage(ctx, entry.rt.LocalFs.Service, pages, *ioVector)
+		duration += time.Since(start)
+		v2.TransferPageMergeLatencyHistogram.Observe(duration.Seconds())
 	}
 	if k != len(entry.transMappings.Mappings) {
-		panic(fmt.Sprintf("k %v, mapping %v", k, len(entry.transMappings.Mappings)))
+		logutil.Fatal(fmt.Sprintf("k %v, mapping %v", k, len(entry.transMappings.Mappings)))
 	}
 }
 
 func (entry *mergeObjectsEntry) PrepareRollback() (err error) {
 	for _, id := range entry.pageIds {
-		entry.rt.TransferTable.DeletePage(id)
+		_ = entry.rt.TransferTable.DeletePage(id)
 	}
 	for objectID, blkMap := range entry.delTbls {
 		for blkOffset := range blkMap {

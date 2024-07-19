@@ -157,21 +157,22 @@ func (n *anode) FillPhyAddrColumn(startRow, length uint32) (err error) {
 }
 
 func (n *anode) FillBlockView(
-	view *containers.BlockView, colIdxes []int, mp *mpool.MPool,
+	view *containers.Batch, colIdxes []int, mp *mpool.MPool,
 ) (err error) {
 	for _, colIdx := range colIdxes {
 		orig := n.data.Vecs[colIdx]
-		view.SetData(colIdx, orig.CloneWindow(0, orig.Length(), mp))
+		view.AddVector(n.data.Attrs[colIdx], orig.CloneWindow(0, orig.Length(), mp))
 	}
-	view.DeleteMask = n.data.Deletes
+	view.Deletes = n.data.Deletes
 	return
 }
-func (n *anode) FillColumnView(view *containers.ColumnView, mp *mpool.MPool) (err error) {
-	orig := n.data.Vecs[view.ColIdx]
-	view.SetData(orig.CloneWindow(0, orig.Length(), mp))
-	view.DeleteMask = n.data.Deletes
-	return
-}
+
+// func (n *anode) FillColumnView(view *containers.Batch, idx int, mp *mpool.MPool) (err error) {
+// 	orig := n.data.GetVectorByName(n.table.schema.ColDefs[idx].Name)
+// 	view.AddVector(n.table.schema.ColDefs[idx].Name, orig.CloneWindow(0, orig.Length(), mp))
+// 	view.Deletes = n.data.Deletes
+// 	return
+// }
 
 func (n *anode) Compact() {
 	if n.data == nil {

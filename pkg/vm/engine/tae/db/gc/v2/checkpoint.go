@@ -519,23 +519,22 @@ func (c *checkpointCleaner) getDeleteFile(
 	idx int,
 	ts, stage types.TS,
 	ckpSnapList []types.TS,
-) ([]string, error) {
+) ([]string, []*checkpoint.CheckpointEntry, error) {
 	ckps, err := checkpoint.ListSnapshotCheckpointWithMeta(ctx, fs, files, idx, ts, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(ckps) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	deleteFiles := make([]string, 0)
-
+	var mergeFiles []*checkpoint.CheckpointEntry
 	for i := len(ckps) - 1; i >= 0; i-- {
 		// TODO: remove this log
 		logutil.Info("[MergeCheckpoint]",
 			common.OperationField("List Checkpoint"),
 			common.OperandField(ckps[i].String()))
 	}
-
 	for i := len(ckps) - 1; i >= 0; i-- {
 		ckp := ckps[i]
 		end := ckp.GetEnd()
@@ -546,6 +545,7 @@ func (c *checkpointCleaner) getDeleteFile(
 				logutil.Info("[MergeCheckpoint]",
 					common.OperationField("isSnapshotCKPRefers"),
 					common.OperandField(ckp.String()))
+				mergeFiles = ckps[:i]
 				break
 			}
 			logutil.Info("[MergeCheckpoint]",
@@ -561,7 +561,7 @@ func (c *checkpointCleaner) getDeleteFile(
 					deleteFiles = append(deleteFiles, nameMeta)
 					continue
 				}
-				return nil, err
+				return nil, nil, err
 			}
 			deleteFiles = append(deleteFiles, nameMeta)
 			if i == len(ckps)-1 {
@@ -582,7 +582,7 @@ func (c *checkpointCleaner) getDeleteFile(
 			}
 		}
 	}
-	return deleteFiles, nil
+	return deleteFiles, mergeFiles, nil
 }
 
 func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList map[uint32][]types.TS) error {
@@ -617,10 +617,11 @@ func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList ma
 			common.OperationField("MergeCheckpointFiles"),
 			common.OperandField(stage.ToString()),
 			common.OperandField(idx))
-		delFiles, err := c.getDeleteFile(c.ctx, c.fs.Service, files, idx, *ckpGC, stage, ckpSnapList)
+		delFiles, mergeFile, err := c.getDeleteFile(c.ctx, c.fs.Service, files, idx, *ckpGC, stage, ckpSnapList)
 		if err != nil {
 			return err
 		}
+		MergeCheckpoint(c.ctx, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
 		ckpGC = new(types.TS)
 		deleteFiles = append(deleteFiles, delFiles...)
 	}

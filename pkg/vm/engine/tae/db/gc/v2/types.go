@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	PrefixGCMeta   = "v2"
+	PrefixGCMeta   = "gc"
 	PrefixSnapMeta = "snap"
 	PrefixAcctMeta = "acct"
-	GCMetaDir      = "v2/"
+	GCMetaDir      = "gc/"
 	CKPMetaDir     = "ckp/"
 )
 

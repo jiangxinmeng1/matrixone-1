@@ -549,7 +549,7 @@ func (c *checkpointCleaner) getDeleteFile(
 				logutil.Info("[MergeCheckpoint]",
 					common.OperationField("isSnapshotCKPRefers"),
 					common.OperandField(ckp.String()))
-				mergeFiles = ckps[:i]
+				mergeFiles = ckps[:i+1]
 				break
 			}
 			logutil.Info("[MergeCheckpoint]",
@@ -625,8 +625,12 @@ func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList ma
 		if err != nil {
 			return err
 		}
-		MergeCheckpoint(c.ctx, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
 		ckpGC = new(types.TS)
+		deleteFiles = append(deleteFiles, delFiles...)
+		delFiles, err = MergeCheckpoint(c.ctx, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
+		if err != nil {
+			return err
+		}
 		deleteFiles = append(deleteFiles, delFiles...)
 	}
 
@@ -732,7 +736,7 @@ func (c *checkpointCleaner) softGC(
 	var softCost, mergeCost time.Duration
 	defer func() {
 		logutil.Info("[DiskCleaner] softGC cost",
-			zap.String("soft-v2 cost", softCost.String()),
+			zap.String("soft-gc cost", softCost.String()),
 			zap.String("merge-table cost", mergeCost.String()))
 	}()
 	if len(c.inputs.tables) == 0 {

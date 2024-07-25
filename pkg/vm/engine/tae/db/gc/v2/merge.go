@@ -107,7 +107,7 @@ func MergeCheckpoint(
 	bat.GetVectorByName(checkpoint.CheckpointAttr_Type).Append(int8(checkpoint.ET_Global), false)
 	defer bat.Close()
 	end := ckpEntries[len(ckpEntries)-1].GetEnd()
-	name := blockio.EncodeSnapshotMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), end.Next())
+	name := blockio.EncodeCheckpointMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), end.Next())
 	writer, err := objectio.NewObjectWriterSpecial(objectio.WriterCheckpoint, name, fs)
 	if err != nil {
 		return nil, err

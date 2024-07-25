@@ -330,7 +330,7 @@ func (t *GCTable) SaveFullTable(start, end types.TS, fs *objectio.ObjectFS, file
 		logutil.Info("[DiskCleaner]", zap.String("op", "SaveFullTable-End"),
 			zap.String("collect cost :", collectCost.String()),
 			zap.String("write cost :", writeCost.String()),
-			zap.Uint32("v2 table size :", size),
+			zap.Uint32("gc table size :", size),
 			zap.Int("object count :", objectCount),
 			zap.Int("tombstone count :", tombstoneCount))
 	}()

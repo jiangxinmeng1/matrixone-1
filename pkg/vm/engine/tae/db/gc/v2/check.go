@@ -50,7 +50,7 @@ func (c *checker) getObjects() (map[string]struct{}, error) {
 
 func (c *checker) Check() error {
 	if c.cleaner.fs.Service.Cost().List != fileservice.CostLow {
-		logutil.Info("[Check GC]skip v2 check, cost is high")
+		logutil.Info("[Check GC]skip gc check, cost is high")
 		return nil
 	}
 	now := time.Now()

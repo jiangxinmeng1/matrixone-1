@@ -84,7 +84,7 @@ func MergeCheckpoint(
 		}
 		for i := logtail.DBInsertIDX; i <= logtail.TBLColDeleteIDX; i++ {
 			if data.GetOneBatch(i).Vecs[3].Length() > 0 {
-				err := ckpData.GetOneBatch(logtail.DBInsertIDX).Append(data.GetOneBatch(logtail.DBInsertIDX))
+				err := ckpData.GetOneBatch(i).Append(data.GetOneBatch(i))
 				if err != nil {
 					return nil, err
 				}

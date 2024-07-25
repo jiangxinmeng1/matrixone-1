@@ -32,7 +32,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	gc2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc"
+	gc2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/merge"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/gc"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
@@ -242,7 +242,7 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 			"checkpoint-gc",
 			opts.CheckpointCfg.GCCheckpointInterval,
 			func(ctx context.Context) error {
-				if opts.CheckpointCfg.DisableGCCheckpoint {
+				if opts.CheckpointCfg.DisableGCCheckpoint && !db.DiskCleaner.GetCleaner().IsEnableGC() {
 					return nil
 				}
 				consumed := db.DiskCleaner.GetCleaner().GetMaxConsumed()

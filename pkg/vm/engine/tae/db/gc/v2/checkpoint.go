@@ -153,6 +153,10 @@ func (c *checkpointCleaner) isEnableGC() bool {
 	return c.option.enableGC
 }
 
+func (c *checkpointCleaner) IsEnableGC() bool {
+	return c.isEnableGC()
+}
+
 func (c *checkpointCleaner) SetCheckGC(enable bool) {
 	c.checkGC = enable
 }
@@ -704,6 +708,7 @@ func (c *checkpointCleaner) tryGC(data *logtail.CheckpointData, gckp *checkpoint
 	// TODO:Requires Physical Removal Policy
 	err = c.delWorker.ExecDelete(c.ctx, gc, c.disableGC)
 	if err != nil {
+		logutil.Infof("[DiskCleaner] ExecDelete failed: %v", err.Error())
 		return err
 	}
 	err = c.mergeCheckpointFiles(c.ckpClient.GetStage(), snapshotList)
@@ -860,6 +865,7 @@ func (c *checkpointCleaner) Process() {
 	checkpoints := c.ckpClient.ICKPSeekLT(ts, 10)
 
 	if len(checkpoints) == 0 {
+		logutil.Infof("[DiskCleaner] no checkpoint to clean ,%v", ts.ToString())
 		return
 	}
 	candidates := make([]*checkpoint.CheckpointEntry, 0)

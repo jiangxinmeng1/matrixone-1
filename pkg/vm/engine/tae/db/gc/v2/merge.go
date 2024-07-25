@@ -58,6 +58,7 @@ func MergeCheckpoint(
 		}
 	}
 	if len(datas) == 0 {
+		logutil.Infof("no checkpoint data to merge")
 		return nil, nil
 	}
 	for _, data := range datas {
@@ -83,7 +84,7 @@ func MergeCheckpoint(
 			appendValToBatch(tombstone, ckpData.GetTombstoneObjectBatchs(), i)
 		}
 		for i := logtail.DBInsertIDX; i <= logtail.TBLColDeleteIDX; i++ {
-			if data.GetOneBatch(i).Vecs[3].Length() > 0 {
+			if data.GetOneBatch(i).Vecs[2].Length() > 0 {
 				err := ckpData.GetOneBatch(i).Append(data.GetOneBatch(i))
 				if err != nil {
 					return nil, err
@@ -105,7 +106,8 @@ func MergeCheckpoint(
 	bat.GetVectorByName(checkpoint.CheckpointAttr_TruncateLSN).Append(uint64(0), false)
 	bat.GetVectorByName(checkpoint.CheckpointAttr_Type).Append(int8(checkpoint.ET_Global), false)
 	defer bat.Close()
-	name := blockio.EncodeSnapshotMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), ckpEntries[len(ckpEntries)-1].GetEnd())
+	end := ckpEntries[len(ckpEntries)-1].GetEnd()
+	name := blockio.EncodeSnapshotMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), end.Next())
 	writer, err := objectio.NewObjectWriterSpecial(objectio.WriterCheckpoint, name, fs)
 	if err != nil {
 		return nil, err

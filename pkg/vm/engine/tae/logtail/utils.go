@@ -20,15 +20,13 @@ import (
 	"sort"
 	"time"
 
-	"github.com/matrixorigin/matrixone/pkg/fileservice"
-	"go.uber.org/zap"
-
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
+	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -38,6 +36,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnimpl"
+	"go.uber.org/zap"
 )
 
 const DefaultCheckpointBlockRows = 10000
@@ -182,9 +181,13 @@ func registerCheckpointDataReferVersion(version uint32, schemas []*catalog.Schem
 	checkpointDataReferVersions[version] = checkpointDataRefer
 }
 
-func IncrementalCheckpointDataFactory(start, end types.TS, collectUsage bool) func(c *catalog.Catalog) (*CheckpointData, error) {
+func IncrementalCheckpointDataFactory(
+	sid string,
+	start, end types.TS,
+	collectUsage bool,
+) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewIncrementalCollector(start, end)
+		collector := NewIncrementalCollector(sid, start, end)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -205,9 +208,12 @@ func IncrementalCheckpointDataFactory(start, end types.TS, collectUsage bool) fu
 	}
 }
 
-func BackupCheckpointDataFactory(start, end types.TS) func(c *catalog.Catalog) (*CheckpointData, error) {
+func BackupCheckpointDataFactory(
+	sid string,
+	start, end types.TS,
+) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewBackupCollector(start, end)
+		collector := NewBackupCollector(sid, start, end)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -219,11 +225,12 @@ func BackupCheckpointDataFactory(start, end types.TS) func(c *catalog.Catalog) (
 }
 
 func GlobalCheckpointDataFactory(
+	sid string,
 	end types.TS,
 	versionInterval time.Duration,
 ) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewGlobalCollector(end, versionInterval)
+		collector := NewGlobalCollector(sid, end, versionInterval)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -409,14 +416,19 @@ func (m *CheckpointMeta) String() string {
 }
 
 type CheckpointData struct {
+	sid       string
 	meta      map[uint64]*CheckpointMeta
 	locations map[string]objectio.Location
 	bats      [MaxIDX]*containers.Batch
 	allocator *mpool.MPool
 }
 
-func NewCheckpointData(mp *mpool.MPool) *CheckpointData {
+func NewCheckpointData(
+	sid string,
+	mp *mpool.MPool,
+) *CheckpointData {
 	data := &CheckpointData{
+		sid:       sid,
 		meta:      make(map[uint64]*CheckpointMeta),
 		allocator: mp,
 	}
@@ -468,13 +480,16 @@ type IncrementalCollector struct {
 	*BaseCollector
 }
 
-func NewIncrementalCollector(start, end types.TS) *IncrementalCollector {
+func NewIncrementalCollector(
+	sid string,
+	start, end types.TS,
+) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
-			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(common.CheckpointAllocator),
-			start:         start,
-			end:           end,
+			LoopProcessor:       new(catalog.LoopProcessor),
+			data:                NewCheckpointData(sid, common.CheckpointAllocator),
+			start:               start,
+			end:                 end,
 		},
 	}
 	collector.DatabaseFn = collector.VisitDB
@@ -484,11 +499,13 @@ func NewIncrementalCollector(start, end types.TS) *IncrementalCollector {
 	return collector
 }
 
-func NewBackupCollector(start, end types.TS) *IncrementalCollector {
+func NewBackupCollector(
+	sid string,
+	start, end types.TS) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
 			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(common.CheckpointAllocator),
+			data:          NewCheckpointData(sid, common.CheckpointAllocator),
 			start:         start,
 			end:           end,
 		},
@@ -504,12 +521,16 @@ type GlobalCollector struct {
 	versionThershold types.TS
 }
 
-func NewGlobalCollector(end types.TS, versionInterval time.Duration) *GlobalCollector {
+func NewGlobalCollector(
+	sid string,
+	end types.TS,
+	versionInterval time.Duration,
+) *GlobalCollector {
 	versionThresholdTS := types.BuildTS(end.Physical()-versionInterval.Nanoseconds(), end.Logical())
 	collector := &GlobalCollector{
 		BaseCollector: &BaseCollector{
 			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(common.CheckpointAllocator),
+			data:          NewCheckpointData(sid, common.CheckpointAllocator),
 			end:           end,
 		},
 		versionThershold: versionThresholdTS,
@@ -540,12 +561,14 @@ func (data *CheckpointData) ApplyReplayTo(
 }
 
 type CNCheckpointData struct {
+	sid  string
 	meta map[uint64]*CheckpointMeta
 	bats [MaxIDX]*batch.Batch
 }
 
-func NewCNCheckpointData() *CNCheckpointData {
+func NewCNCheckpointData(sid string) *CNCheckpointData {
 	return &CNCheckpointData{
+		sid:  sid,
 		meta: make(map[uint64]*CheckpointMeta),
 	}
 }
@@ -615,7 +638,7 @@ func (data *CNCheckpointData) PrefetchMetaIdx(
 	}
 	pref.AddBlockWithType(idxes, []uint16{0}, uint16(objectio.ConvertToSchemaType(MetaIDX)))
 
-	return blockio.PrefetchWithMerged(pref)
+	return blockio.PrefetchWithMerged(data.sid, pref)
 }
 
 func (data *CNCheckpointData) PrefetchMetaFrom(
@@ -623,7 +646,8 @@ func (data *CNCheckpointData) PrefetchMetaFrom(
 	version uint32,
 	location objectio.Location,
 	service fileservice.FileService,
-	tableID uint64) (err error) {
+	tableID uint64,
+) (err error) {
 	meta := data.GetTableMeta(tableID, version, location)
 	if meta == nil {
 		return
@@ -643,7 +667,7 @@ func (data *CNCheckpointData) PrefetchMetaFrom(
 		}
 	}
 	for _, location := range locations {
-		err = blockio.PrefetchMeta(service, location)
+		err = blockio.PrefetchMeta(data.sid, service, location)
 	}
 	return err
 }
@@ -653,7 +677,8 @@ func (data *CNCheckpointData) PrefetchFrom(
 	version uint32,
 	service fileservice.FileService,
 	key objectio.Location,
-	tableID uint64) (err error) {
+	tableID uint64,
+) (err error) {
 	// if version < CheckpointVersion4 {
 	// 	return prefetchCheckpointData(ctx, version, service, key)
 	// }
@@ -702,7 +727,7 @@ func (data *CNCheckpointData) PrefetchFrom(
 		return
 	}
 	for _, pref := range files {
-		err = blockio.PrefetchWithMerged(*pref)
+		err = blockio.PrefetchWithMerged(data.sid, *pref)
 		if err != nil {
 			return
 		}
@@ -813,7 +838,7 @@ func (data *CNCheckpointData) ReadFromData(
 			block := it.Next()
 			var bat *batch.Batch
 			schema := checkpointDataReferVersions[version][uint32(idx)]
-			reader, err = blockio.NewObjectReader(reader.GetObjectReader().GetObject().GetFs(), block.GetLocation())
+			reader, err = blockio.NewObjectReader(data.sid, reader.GetObjectReader().GetObject().GetFs(), block.GetLocation())
 			if err != nil {
 				return
 			}
@@ -1468,7 +1493,7 @@ func (data *CheckpointData) PrefetchMeta(
 	}
 	pref.AddBlockWithType(idxes, []uint16{0}, uint16(objectio.ConvertToSchemaType(MetaIDX)))
 	pref.AddBlockWithType(tnIdxes, []uint16{1}, uint16(objectio.ConvertToSchemaType(TNMetaIDX)))
-	return blockio.PrefetchWithMerged(pref)
+	return blockio.PrefetchWithMerged(data.sid, pref)
 }
 
 type blockIdx struct {
@@ -1515,7 +1540,7 @@ func (data *CheckpointData) PrefetchFrom(
 			}
 			pref.AddBlockWithType(idxes, []uint16{idx.location.ID()}, uint16(objectio.ConvertToSchemaType(idx.dataType)))
 		}
-		err = blockio.PrefetchWithMerged(pref)
+		err = blockio.PrefetchWithMerged(data.sid, pref)
 		if err != nil {
 			logutil.Warnf("PrefetchFrom PrefetchWithMerged error %v", err)
 		}
@@ -1528,6 +1553,7 @@ func (data *CheckpointData) PrefetchFrom(
 
 func prefetchCheckpointData(
 	ctx context.Context,
+	sid string,
 	version uint32,
 	service fileservice.FileService,
 	key objectio.Location,
@@ -1544,7 +1570,7 @@ func prefetchCheckpointData(
 		}
 		pref.AddBlock(idxes, []uint16{uint16(idx)})
 	}
-	return blockio.PrefetchWithMerged(pref)
+	return blockio.PrefetchWithMerged(sid, pref)
 }
 
 // TODO:
@@ -1570,16 +1596,17 @@ func (data *CheckpointData) ReadFrom(
 
 func LoadCheckpointLocations(
 	ctx context.Context,
+	sid string,
 	location objectio.Location,
 	version uint32,
 	fs fileservice.FileService,
 ) (map[string]objectio.Location, error) {
 	var err error
-	data := NewCheckpointData(common.CheckpointAllocator)
+	data := NewCheckpointData(sid, common.CheckpointAllocator)
 	defer data.Close()
 
 	var reader *blockio.BlockReader
-	if reader, err = blockio.NewObjectReader(fs, location); err != nil {
+	if reader, err = blockio.NewObjectReader(sid, fs, location); err != nil {
 		return nil, err
 	}
 
@@ -1594,12 +1621,13 @@ func LoadCheckpointLocations(
 // LoadSpecifiedCkpBatch loads a specified checkpoint data batch
 func LoadSpecifiedCkpBatch(
 	ctx context.Context,
+	sid string,
 	location objectio.Location,
 	version uint32,
 	batchIdx uint16,
 	fs fileservice.FileService,
 ) (data *CheckpointData, err error) {
-	data = NewCheckpointData(common.CheckpointAllocator)
+	data = NewCheckpointData(sid, common.CheckpointAllocator)
 	defer func() {
 		if err != nil {
 			data.Close()
@@ -1612,7 +1640,7 @@ func LoadSpecifiedCkpBatch(
 		return
 	}
 	var reader *blockio.BlockReader
-	if reader, err = blockio.NewObjectReader(fs, location); err != nil {
+	if reader, err = blockio.NewObjectReader(sid, fs, location); err != nil {
 		return
 	}
 
@@ -1622,7 +1650,7 @@ func LoadSpecifiedCkpBatch(
 
 	data.replayMetaBatch(version)
 	for _, val := range data.locations {
-		if reader, err = blockio.NewObjectReader(fs, val); err != nil {
+		if reader, err = blockio.NewObjectReader(sid, fs, val); err != nil {
 			return
 		}
 		var bats []*containers.Batch
@@ -1731,7 +1759,7 @@ func (data *CheckpointData) readAll(
 	readDuration := time.Now()
 	for _, val := range data.locations {
 		var reader *blockio.BlockReader
-		reader, err = blockio.NewObjectReader(service, val)
+		reader, err = blockio.NewObjectReader(data.sid, service, val)
 		if err != nil {
 			return
 		}

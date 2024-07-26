@@ -53,6 +53,7 @@ type mergeObjectsTask struct {
 	totalMergedBlkCnt int
 	createdBObjs      []*catalog.ObjectEntry
 	commitEntry       *api.MergeCommitEntry
+	transferMaps      api.TransferMaps
 	rel               handle.Relation
 	did, tid          uint64
 	isTombstone       bool
@@ -270,6 +271,17 @@ func (task *mergeObjectsTask) GetCommitEntry() *api.MergeCommitEntry {
 	return task.commitEntry
 }
 
+func (task *mergeObjectsTask) InitTransferMaps(blkCnt int) {
+	task.transferMaps = make(api.TransferMaps, blkCnt)
+	for i := range task.transferMaps {
+		task.transferMaps[i] = make(api.TransferMap)
+	}
+}
+
+func (task *mergeObjectsTask) GetTransferMaps() *api.TransferMaps {
+	return &task.transferMaps
+}
+
 func (task *mergeObjectsTask) prepareCommitEntry() *api.MergeCommitEntry {
 	schema := task.rel.Schema(false).(*catalog.Schema)
 	commitEntry := &api.MergeCommitEntry{}
@@ -350,7 +362,7 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	}
 
 	phaseDesc = "2-HandleMergeEntryInTxn"
-	if task.createdBObjs, err = HandleMergeEntryInTxn(ctx, task.txn, task.Name(), task.commitEntry, task.rt, task.isTombstone); err != nil {
+	if task.createdBObjs, err = HandleMergeEntryInTxn(ctx, task.txn, task.Name(), task.commitEntry, task.transferMaps, task.rt, task.isTombstone); err != nil {
 		return err
 	}
 
@@ -360,7 +372,15 @@ func (task *mergeObjectsTask) Execute(ctx context.Context) (err error) {
 	return nil
 }
 
-func HandleMergeEntryInTxn(ctx context.Context, txn txnif.AsyncTxn, taskName string, entry *api.MergeCommitEntry, rt *dbutils.Runtime, isTombstone bool) ([]*catalog.ObjectEntry, error) {
+func HandleMergeEntryInTxn(
+	ctx context.Context,
+	txn txnif.AsyncTxn,
+	taskName string,
+	entry *api.MergeCommitEntry,
+	booking api.TransferMaps,
+	rt *dbutils.Runtime,
+	isTombstone bool,
+) ([]*catalog.ObjectEntry, error) {
 	database, err := txn.GetDatabaseByID(entry.DbId)
 	if err != nil {
 		return nil, err
@@ -412,7 +432,7 @@ func HandleMergeEntryInTxn(ctx context.Context, txn txnif.AsyncTxn, taskName str
 		rel,
 		mergedObjs,
 		createdObjs,
-		entry.Booking,
+		booking,
 		isTombstone,
 		rt,
 	)

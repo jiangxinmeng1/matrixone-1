@@ -44,7 +44,7 @@ type mergeObjectsEntry struct {
 	relation      handle.Relation
 	droppedObjs   []*catalog.ObjectEntry
 	createdObjs   []*catalog.ObjectEntry
-	transMappings *api.BlkTransferBooking
+	transMappings api.TransferMaps
 	skipTransfer  bool
 
 	rt                   *dbutils.Runtime
@@ -61,7 +61,7 @@ func NewMergeObjectsEntry(
 	taskName string,
 	relation handle.Relation,
 	droppedObjs, createdObjs []*catalog.ObjectEntry,
-	transMappings *api.BlkTransferBooking,
+	transMappings api.TransferMaps,
 	isTombstone bool,
 	rt *dbutils.Runtime,
 ) (*mergeObjectsEntry, error) {
@@ -107,7 +107,7 @@ func (entry *mergeObjectsEntry) prepareTransferPage(ctx context.Context) {
 		var duration time.Duration
 		var start time.Time
 		for j := 0; j < obj.BlockCnt(); j++ {
-			m := entry.transMappings.Mappings[k].M
+			m := entry.transMappings[k]
 			k++
 			if len(m) == 0 {
 				continue
@@ -143,8 +143,8 @@ func (entry *mergeObjectsEntry) prepareTransferPage(ctx context.Context) {
 		duration += time.Since(start)
 		v2.TransferPageMergeLatencyHistogram.Observe(duration.Seconds())
 	}
-	if k != len(entry.transMappings.Mappings) {
-		logutil.Fatal(fmt.Sprintf("k %v, mapping %v", k, len(entry.transMappings.Mappings)))
+	if k != len(entry.transMappings) {
+		logutil.Fatal(fmt.Sprintf("k %v, mapping %v", k, len(entry.transMappings)))
 	}
 }
 
@@ -227,7 +227,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 		row := rowid[i].GetRowOffset()
 		blkOffsetInObj := int(rowid[i].GetBlockOffset())
 		blkOffset := blkOffsetBase + blkOffsetInObj
-		mapping := entry.transMappings.Mappings[blkOffset].M
+		mapping := entry.transMappings[blkOffset]
 		if len(mapping) == 0 {
 			// this block had been all deleted, skip
 			// Note: it is possible that the block is empty, but not the object
@@ -297,7 +297,7 @@ func (entry *mergeObjectsEntry) collectDelsAndTransfer(
 		hasMappingInThisObj := false
 		blkCnt := dropped.BlockCnt()
 		for iblk := 0; iblk < blkCnt; iblk++ {
-			if len(entry.transMappings.Mappings[blksOffsetBase+iblk].M) != 0 {
+			if len(entry.transMappings[blksOffsetBase+iblk]) != 0 {
 				hasMappingInThisObj = true
 				break
 			}

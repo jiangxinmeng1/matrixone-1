@@ -1142,13 +1142,17 @@ func FillUsageBatOfIncremental(collector *IncrementalCollector) {
 // 2. load the specified storage usage ins/del batch using locations storing in meta batch.
 func GetStorageUsageHistory(
 	ctx context.Context,
-	locations []objectio.Location, versions []uint32,
-	fs fileservice.FileService, mp *mpool.MPool) ([][]UsageData, [][]UsageData, error) {
+	sid string,
+	locations []objectio.Location,
+	versions []uint32,
+	fs fileservice.FileService,
+	mp *mpool.MPool,
+) ([][]UsageData, [][]UsageData, error) {
 
 	var err error
 
 	// 1. load each ckp meta batch
-	datas, selectedVers, selectedLocs, err := loadMetaBat(ctx, versions, locations, fs, mp)
+	datas, selectedVers, selectedLocs, err := loadMetaBat(ctx, sid, versions, locations, fs, mp)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1169,14 +1173,14 @@ func GetStorageUsageHistory(
 
 		// 2.1. load storage usage ins bat
 		if usageInsBat, err = loadStorageUsageBatch(
-			ctx, usageMeta.tables[StorageUsageIns].locations,
+			ctx, sid, usageMeta.tables[StorageUsageIns].locations,
 			selectedVers[idx], StorageUsageInsIDX, fs, mp); err != nil {
 			return nil, nil, err
 		}
 
 		// 2.2. load storage usage del bat
 		if usageDelBat, err = loadStorageUsageBatch(
-			ctx, usageMeta.tables[StorageUsageDel].locations,
+			ctx, sid, usageMeta.tables[StorageUsageDel].locations,
 			selectedVers[idx], StorageUsageDelIDX, fs, mp); err != nil {
 			return nil, nil, err
 		}
@@ -1233,6 +1237,7 @@ func cnBatchToUsageDatas(bat *batch.Batch) []UsageData {
 
 func loadMetaBat(
 	ctx context.Context,
+	sid string,
 	versions []uint32, locations []objectio.Location,
 	fs fileservice.FileService, mp *mpool.MPool) (
 	datas []*CNCheckpointData,
@@ -1248,7 +1253,7 @@ func loadMetaBat(
 			continue
 		}
 
-		data := NewCNCheckpointData()
+		data := NewCNCheckpointData(sid)
 
 		// 1.1. prefetch meta bat
 		meteIdxSchema := checkpointDataReferVersions[versions[idx]][MetaIDX]
@@ -1259,7 +1264,7 @@ func loadMetaBat(
 		data.PrefetchMetaIdx(ctx, versions[idx], idxes, locations[idx], fs)
 
 		// 1.2. read meta bat
-		reader, err := blockio.NewObjectReader(fs, locations[idx])
+		reader, err := blockio.NewObjectReader(sid, fs, locations[idx])
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -1276,8 +1281,14 @@ func loadMetaBat(
 }
 
 func loadStorageUsageBatch(
-	ctx context.Context, locations BlockLocations, version uint32,
-	batIdx uint16, fs fileservice.FileService, mp *mpool.MPool) ([]*batch.Batch, error) {
+	ctx context.Context,
+	sid string,
+	locations BlockLocations,
+	version uint32,
+	batIdx uint16,
+	fs fileservice.FileService,
+	mp *mpool.MPool,
+) ([]*batch.Batch, error) {
 
 	var bats []*batch.Batch
 
@@ -1285,7 +1296,7 @@ func loadStorageUsageBatch(
 	for it.HasNext() {
 		block := it.Next()
 		schema := checkpointDataReferVersions[version][uint32(batIdx)]
-		reader, err := blockio.NewObjectReader(fs, block.GetLocation())
+		reader, err := blockio.NewObjectReader(sid, fs, block.GetLocation())
 		if err != nil {
 			return nil, err
 		}

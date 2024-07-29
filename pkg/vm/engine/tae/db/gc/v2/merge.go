@@ -31,6 +31,7 @@ import (
 
 func MergeCheckpoint(
 	ctx context.Context,
+	sid string,
 	fs fileservice.FileService,
 	ckpEntries []*checkpoint.CheckpointEntry,
 	gcTable *GCTable,
@@ -38,12 +39,12 @@ func MergeCheckpoint(
 ) ([]string, error) {
 	objects := gcTable.getObjects()
 	tombstones := gcTable.getTombstones()
-	ckpData := logtail.NewCheckpointData(pool)
+	ckpData := logtail.NewCheckpointData(sid, pool)
 	datas := make([]*logtail.CheckpointData, 0)
 	deleteFiles := make([]string, 0)
 	for _, ckpEntry := range ckpEntries {
 		logutil.Infof("merge checkpoint %v", ckpEntry.String())
-		objectNames, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), fs,
+		objectNames, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
 			ckpEntry.GetLocation(), ckpEntry.GetVersion(), nil, &types.TS{})
 		if err != nil {
 			return nil, err

@@ -72,7 +72,7 @@ func (c *checker) Check() error {
 	checkpoints := c.cleaner.ckpClient.ICKPSeekLT(entry.GetEnd(), 40)
 	unconsumedTable := NewGCTable()
 	for _, ckp := range checkpoints {
-		_, data, err := logtail.LoadCheckpointEntriesFromKey(c.cleaner.ctx, c.cleaner.fs.Service,
+		_, data, err := logtail.LoadCheckpointEntriesFromKey(c.cleaner.ctx, c.cleaner.sid, c.cleaner.fs.Service,
 			ckp.GetLocation(), ckp.GetVersion(), nil, &types.TS{})
 		if err != nil {
 			logutil.Errorf("load checkpoint failed: %v", err)

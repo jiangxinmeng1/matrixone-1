@@ -17,6 +17,7 @@ package txnimpl
 import (
 	"bytes"
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"runtime/trace"
 	"time"
@@ -1242,6 +1243,9 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 //  3. we should make this function run quickly as soon as possible.
 //     TODO::it would be used to do deduplication with the logtail.
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM) (err error) {
+	objCount := 0
+	totalBlkCount := 0
+	t0 := time.Now()
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		objIt := tbl.entry.MakeObjectIt(true)
 		defer objIt.Release()
@@ -1267,6 +1271,10 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 					continue
 				}
 			}
+			blkCount := obj.BlockCnt()
+			totalBlkCount += blkCount
+			totalBlkCount -= int(startBlkOffset)
+			objCount++
 			objData := obj.GetObjectData()
 			var rowmask *roaring.Bitmap
 			if len(tbl.deleteNodes) > 0 {
@@ -1279,6 +1287,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 					rowmask = deleteNode.GetRowMaskRefLocked()
 				}
 			}
+			t1 := time.Now()
 			if err = objData.BatchDedup(
 				context.Background(),
 				tbl.store.txn,
@@ -1292,8 +1301,26 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			); err != nil {
 				return
 			}
+			duration := time.Since(t1)
+			if duration > time.Millisecond*500 {
+				logutil.Warn(
+					"SLOW-LOG",
+					zap.String("object name", obj.ID().String()),
+					zap.Int("block count", blkCount-int(startBlkOffset)),
+					zap.Duration("dedup", duration),
+				)
+			}
 		}
 	})
+	duration := time.Since(t0)
+	if duration > time.Second {
+		logutil.Warn(
+			"SLOW-LOG",
+			zap.Int("object count", objCount),
+			zap.Int("block count", totalBlkCount),
+			zap.Duration("dedup", duration),
+		)
+	}
 	return
 }
 

@@ -736,8 +736,10 @@ func (task *flushTableTailTask) waitFlushAObjForSnapshot(ctx context.Context, su
 			uint32(subtask.delta.Length()),
 			subtask.blocks[len(subtask.data)].GetID())
 
-		if err = task.aObjHandles[i].UpdateDeltaLoc(0, deltaLoc); err != nil {
-			return err
+		for i := 0; i < int(subtask.stat.BlkCnt()); i++ {
+			if err = task.aObjHandles[i].UpdateDeltaLoc(uint16(i), deltaLoc); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

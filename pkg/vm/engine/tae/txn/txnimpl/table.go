@@ -17,7 +17,6 @@ package txnimpl
 import (
 	"bytes"
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"runtime/trace"
 	"time"

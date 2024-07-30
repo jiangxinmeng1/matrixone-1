@@ -51,6 +51,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
 	gc "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc/v1"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/testutil"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/data"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
@@ -5636,6 +5637,42 @@ func TestInsertPerf(t *testing.T) {
 	}
 	wg.Wait()
 	t.Log(time.Since(now))
+}
+
+func TestFlushAObj(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(10, 2)
+	schema.BlockMaxRows = 2
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 4)
+	tae.CreateRelAndAppend(bat, true)
+	tae.DeleteAll(true)
+	tae.CompactBlocks(true)
+
+	deltalocCount := 0
+	p := &catalog.LoopProcessor{}
+	p.TombstoneFn = func(tombstone data.Tombstone) error {
+		obj := tombstone.GetObject().(*catalog.ObjectEntry)
+		blkCount := obj.BlockCnt()
+		for i := 0; i < blkCount; i++ {
+			deltaloc := tombstone.GetLatestDeltaloc(uint16(i))
+			if !deltaloc.IsEmpty() {
+				deltalocCount++
+			} else {
+				t.Logf("blk %v-%d, deltaloc %v", obj.ID().String(), i, deltaloc.String())
+			}
+		}
+		return nil
+	}
+	tae.Catalog.RecurLoop(p)
+	assert.Equal(t, 2, deltalocCount)
+
+	t.Log(tae.Catalog.SimplePPString(3))
 }
 
 func TestAppendBat(t *testing.T) {

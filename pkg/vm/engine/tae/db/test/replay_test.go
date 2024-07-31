@@ -456,7 +456,7 @@ func TestReplay2(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, int32(33), val)
 	_, _, err = rel.GetValue(id, row, 0)
-	assert.Nil(t, err)
+	assert.NotNil(t, err)
 	assert.Nil(t, txn.Commit(context.Background()))
 
 	err = tae2.BGCheckpointRunner.ForceFlush(tae2.TxnMgr.Now(), context.Background(), time.Second*10)

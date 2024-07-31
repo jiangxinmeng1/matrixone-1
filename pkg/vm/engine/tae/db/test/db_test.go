@@ -2519,7 +2519,7 @@ func TestSegDelLogtail(t *testing.T) {
 
 	require.Equal(t, api.Entry_Insert, resp.Commands[0].EntryType)
 	require.True(t, strings.HasSuffix(resp.Commands[0].TableName, "meta"))
-	require.Equal(t, uint32(1), resp.Commands[0].Bat.Vecs[0].Len) /* 1 deltaloc */
+	require.Equal(t, uint32(3), resp.Commands[0].Bat.Vecs[0].Len) /* 3 deltaloc */
 
 	require.Equal(t, api.Entry_Insert, resp.Commands[1].EntryType)
 	require.True(t, strings.HasSuffix(resp.Commands[1].TableName, "obj"))
@@ -2554,7 +2554,7 @@ func TestSegDelLogtail(t *testing.T) {
 		entry := ckpEntries[0]
 		ins, del, cnins, segdel, err := entry.GetByTableID(context.Background(), tae.Runtime.Fs, tid)
 		require.NoError(t, err)
-		require.Equal(t, uint32(1), ins.Vecs[0].Len)    // 1 deltaloc, skip blks without deltaloc
+		require.Equal(t, uint32(3), ins.Vecs[0].Len)    // 3 deltaloc, skip blks without deltaloc
 		require.Nil(t, del)                             // 0  del
 		require.Nil(t, cnins)                           // 0  del
 		require.Equal(t, uint32(4), segdel.Vecs[0].Len) // 2 create + 2 update

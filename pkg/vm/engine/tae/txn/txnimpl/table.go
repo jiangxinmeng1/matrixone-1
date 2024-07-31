@@ -1244,6 +1244,8 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 //     TODO::it would be used to do deduplication with the logtail.
 func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM) (err error) {
 	objCount := 0
+	aobjCount := 0
+	naobjCount := 0
 	totalBlkCount := 0
 	t0 := time.Now()
 	maxSortHint := uint64(0)
@@ -1279,6 +1281,11 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			totalBlkCount += blkCount
 			totalBlkCount -= int(startBlkOffset)
 			objCount++
+			if obj.IsAppendable() {
+				aobjCount++
+			} else {
+				naobjCount++
+			}
 			objData := obj.GetObjectData()
 			var rowmask *roaring.Bitmap
 			if len(tbl.deleteNodes) > 0 {
@@ -1324,6 +1331,8 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			"SLOW-LOG",
 			zap.String("txn", fmt.Sprintf("%x", tbl.store.txn.GetID())),
 			zap.Int("object count", objCount),
+			zap.Int("aobject count", aobjCount),
+			zap.Int("naobject count", naobjCount),
 			zap.Uint64("max sort hint %d", maxSortHint),
 			zap.Uint64("deduped sort hint %d", tbl.dedupedObjectHint),
 			zap.Int("block count", totalBlkCount),

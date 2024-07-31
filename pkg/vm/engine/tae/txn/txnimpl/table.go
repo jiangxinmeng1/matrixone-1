@@ -1093,11 +1093,13 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		name objectio.ObjectNameShort
 		bf   objectio.BloomFilter
 	)
+	objCount := 0
 	maxBlockID := uint16(0)
 	for it.Next() {
 		objH := it.GetObject()
 		obj := objH.GetMeta().(*catalog.ObjectEntry)
 		objH.Close()
+		objCount++
 		ObjectHint := obj.SortHint
 		// the last appendable obj is appending and shouldn't be skipped
 		// the max object hint should equal id of last aobj
@@ -1165,6 +1167,15 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
 			return
 		}
+	}
+	if maxNAObjectHint == 0 {
+		it2 := tbl.entry.MakeObjectIt(false)
+		totalObjCount := 0
+		for it2.Next() {
+			totalObjCount++
+		}
+		it2.Release()
+		logutil.Infof("txn %x, obj %v, naobj %v, obj count %d/%d", tbl.store.txn.GetID(), maxObjectHint, maxNAObjectHint, objCount, totalObjCount)
 	}
 	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)
 	return

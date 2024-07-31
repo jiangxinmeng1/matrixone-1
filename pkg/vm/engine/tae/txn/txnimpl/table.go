@@ -1019,8 +1019,9 @@ func (tbl *txnTable) updateDedupedObjectHintAndBlockID(hint uint64, id uint16) {
 		return
 	}
 	if tbl.dedupedObjectHint > hint {
+		logutil.Infof("logic error txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedObjectHint, hint)
 		tbl.dedupedObjectHint = hint
-		tbl.dedupedObjectHint = hint
+		tbl.dedupedBlockID = id
 		return
 	}
 	if tbl.dedupedObjectHint == hint && id > tbl.dedupedBlockID {
@@ -1245,11 +1246,15 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	objCount := 0
 	totalBlkCount := 0
 	t0 := time.Now()
+	maxSortHint := uint64(0)
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		objIt := tbl.entry.MakeObjectIt(true)
 		defer objIt.Release()
 		for ok := objIt.Last(); ok; ok = objIt.Prev() {
 			obj := objIt.Item()
+			if obj.SortHint > maxSortHint {
+				maxSortHint = obj.SortHint
+			}
 			if obj.SortHint < tbl.dedupedObjectHint {
 				break
 			}
@@ -1304,7 +1309,9 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			if duration > time.Millisecond*500 {
 				logutil.Warn(
 					"SLOW-LOG",
+					zap.String("txn", fmt.Sprintf("%x", tbl.store.txn.GetID())),
 					zap.String("object name", obj.ID().String()),
+					zap.Bool("object state", obj.IsAppendable()),
 					zap.Int("block count", blkCount-int(startBlkOffset)),
 					zap.Duration("dedup", duration),
 				)
@@ -1315,7 +1322,10 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	if duration > time.Second {
 		logutil.Warn(
 			"SLOW-LOG",
+			zap.String("txn", fmt.Sprintf("%x", tbl.store.txn.GetID())),
 			zap.Int("object count", objCount),
+			zap.Uint64("max sort hint %d", maxSortHint),
+			zap.Uint64("deduped sort hint %d", tbl.dedupedObjectHint),
 			zap.Int("block count", totalBlkCount),
 			zap.Duration("dedup", duration),
 		)

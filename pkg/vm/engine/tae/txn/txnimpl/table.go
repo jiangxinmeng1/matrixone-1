@@ -1080,8 +1080,8 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, dedupAfterSnapshotTS bool) (err error) {
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
-	it := newObjectItOnSnap(tbl)
-	defer it.Close()
+	it := tbl.entry.MakeObjectIt(false)
+	defer it.Release()
 	maxObjectHint := uint64(0)
 	maxNAObjectHint := uint64(0)
 	pkType := keys.GetType()
@@ -1096,27 +1096,34 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	objCount := 0
 	maxBlockID := uint16(0)
 	for it.Next() {
-		objH := it.GetObject()
-		obj := objH.GetMeta().(*catalog.ObjectEntry)
-		objH.Close()
+		obj := it.Item()
 		objCount++
-		ObjectHint := obj.SortHint
-		// the last appendable obj is appending and shouldn't be skipped
-		// the max object hint should equal id of last aobj
-		// naobj shouldn't count
-		if obj.IsAppendable() {
-			if ObjectHint > maxObjectHint {
-				maxObjectHint = ObjectHint
-				blkCount := obj.BlockCnt()
-				if blkCount > 0 {
-					maxBlockID = uint16(blkCount - 1)
+		updateObjectHintFn := func() {
+			ObjectHint := obj.SortHint
+			// the last appendable obj is appending and shouldn't be skipped
+			// the max object hint should equal id of last aobj
+			// naobj shouldn't count
+			if obj.IsAppendable() {
+				if ObjectHint > maxObjectHint {
+					maxObjectHint = ObjectHint
+					blkCount := obj.BlockCnt()
+					if blkCount > 0 {
+						maxBlockID = uint16(blkCount - 1)
+					}
+				}
+			} else {
+				if ObjectHint > maxNAObjectHint {
+					maxNAObjectHint = ObjectHint
 				}
 			}
-		} else {
-			if ObjectHint > maxNAObjectHint {
-				maxNAObjectHint = ObjectHint
-			}
 		}
+		if !obj.IsVisible(tbl.store.txn) {
+			if obj.HasDropCommitted() {
+				updateObjectHintFn()
+			}
+			continue
+		}
+		updateObjectHintFn()
 		objData := obj.GetObjectData()
 		if objData == nil {
 			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))
@@ -1306,6 +1313,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	totalBlkCount := 0
 	t0 := time.Now()
 	maxSortHint := uint64(0)
+	debugStr := ""
 	var allAobjectsDeduped, allNAObjectDeduped bool
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		objIt := tbl.entry.MakeObjectIt(true)
@@ -1349,6 +1357,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 					continue
 				}
 			}
+			debugStr = fmt.Sprintf("%s %v,%v,%v", debugStr, obj.ID().String(), obj.IsAppendable(), obj.CreatedAt.ToString())
 			blkCount := obj.BlockCnt()
 			totalBlkCount += blkCount
 			totalBlkCount -= int(startBlkOffset)
@@ -1401,7 +1410,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	if duration > time.Second {
 		logutil.Warn(
 			"SLOW-LOG",
-			zap.String("txn", fmt.Sprintf("%x", tbl.store.txn.GetID())),
+			zap.String("txn", tbl.store.txn.Repr()),
 			zap.Int("object count", objCount),
 			zap.Int("aobject count", aobjCount),
 			zap.Int("naobject count", naobjCount),
@@ -1410,6 +1419,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			zap.Uint64("deduped naobject sort hint", tbl.dedupedNAObjectHint),
 			zap.Int("block count", totalBlkCount),
 			zap.Duration("dedup", duration),
+			zap.String("obj details", debugStr),
 		)
 	}
 	return

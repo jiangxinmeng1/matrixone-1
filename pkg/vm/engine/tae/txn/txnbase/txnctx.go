@@ -94,7 +94,7 @@ func (ctx *TxnCtx) Repr() string {
 	defer ctx.RUnlock()
 	if ctx.HasSnapshotLag() {
 		return fmt.Sprintf(
-			"ctx[%X][%s->%s->%s][%s]",
+			"ctx[%x][%s->%s->%s][%s]",
 			ctx.ID,
 			ctx.SnapshotTS.ToString(),
 			ctx.StartTS.ToString(),

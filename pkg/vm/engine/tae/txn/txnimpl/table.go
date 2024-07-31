@@ -1168,14 +1168,36 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			return
 		}
 	}
-	if maxNAObjectHint == 0 {
+	if maxObjectHint == 0 && maxNAObjectHint == 0 {
 		it2 := tbl.entry.MakeObjectIt(false)
 		totalObjCount := 0
+		maxObjectHint := uint64(0)
+		maxDroppedAobj := uint64(0)
+		maxDroppedObj := uint64(0)
 		for it2.Next() {
 			totalObjCount++
+			obj := it2.Item()
+			if obj.SortHint > maxObjectHint {
+				maxObjectHint = obj.SortHint
+			}
+			if obj.IsVisible(tbl.store.txn) {
+				logutil.Infof("txn %x, obj %v %v is visible", tbl.store.txn.GetID(), obj.ID().String(), obj.SortHint)
+			}
+			if obj.HasDropCommitted() {
+				if obj.IsAppendable() {
+					if obj.SortHint > maxDroppedAobj {
+						maxDroppedAobj = obj.SortHint
+					}
+				} else {
+					if obj.SortHint > maxDroppedObj {
+						maxDroppedObj = obj.SortHint
+					}
+				}
+			}
 		}
 		it2.Release()
-		logutil.Infof("txn %x, obj %v, naobj %v, obj count %d/%d", tbl.store.txn.GetID(), maxObjectHint, maxNAObjectHint, objCount, totalObjCount)
+		logutil.Infof("txn %x, obj %v, naobj %v, obj count %d/%d, maxObjectHint %d, max dropped aobj %v, max dropped naobj %d",
+			tbl.store.txn.GetID(), maxObjectHint, maxNAObjectHint, objCount, totalObjCount, maxObjectHint, maxDroppedAobj, maxDroppedObj)
 	}
 	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)
 	return

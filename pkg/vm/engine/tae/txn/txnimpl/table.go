@@ -110,8 +110,9 @@ type txnTable struct {
 	schema      *catalog.Schema
 	logs        []wal.LogEntry
 
-	dedupedObjectHint uint64
-	dedupedBlockID    uint16
+	dedupedAObjectHint  uint64
+	dedupedNAObjectHint uint64
+	dedupedBlockID      uint16
 
 	txnEntries *txnEntries
 	csnStart   uint32
@@ -1012,19 +1013,28 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context) (err error) {
 	return
 }
 
-func (tbl *txnTable) updateDedupedObjectHintAndBlockID(hint uint64, id uint16) {
-	if tbl.dedupedObjectHint == 0 {
-		tbl.dedupedObjectHint = hint
+func (tbl *txnTable) updateDedupedObjectHintAndBlockID(aobjHint, naobjHint uint64, id uint16) {
+	if tbl.dedupedAObjectHint == 0 {
+		tbl.dedupedAObjectHint = aobjHint
 		tbl.dedupedBlockID = id
 		return
 	}
-	if tbl.dedupedObjectHint > hint {
-		logutil.Infof("logic error txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedObjectHint, hint)
-		tbl.dedupedObjectHint = hint
+	if tbl.dedupedAObjectHint > aobjHint {
+		logutil.Infof("txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedAObjectHint, aobjHint)
+		tbl.dedupedAObjectHint = aobjHint
 		tbl.dedupedBlockID = id
 		return
 	}
-	if tbl.dedupedObjectHint == hint && id > tbl.dedupedBlockID {
+	if tbl.dedupedNAObjectHint == 0 {
+		tbl.dedupedNAObjectHint = naobjHint
+		return
+	}
+	if tbl.dedupedNAObjectHint > aobjHint {
+		logutil.Infof("txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedNAObjectHint, naobjHint)
+		tbl.dedupedNAObjectHint = naobjHint
+		return
+	}
+	if tbl.dedupedAObjectHint == aobjHint && id > tbl.dedupedBlockID {
 		tbl.dedupedBlockID = id
 	}
 }
@@ -1073,6 +1083,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	it := newObjectItOnSnap(tbl)
 	defer it.Close()
 	maxObjectHint := uint64(0)
+	maxNAObjectHint := uint64(0)
 	pkType := keys.GetType()
 	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
 	if err = index.BatchUpdateZM(keysZM, keys.GetDownstreamVector()); err != nil {
@@ -1091,11 +1102,17 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		// the last appendable obj is appending and shouldn't be skipped
 		// the max object hint should equal id of last aobj
 		// naobj shouldn't count
-		if obj.IsAppendable() && ObjectHint > maxObjectHint {
-			maxObjectHint = ObjectHint
-			blkCount := obj.BlockCnt()
-			if blkCount > 0 {
-				maxBlockID = uint16(blkCount - 1)
+		if obj.IsAppendable() {
+			if ObjectHint > maxObjectHint {
+				maxObjectHint = ObjectHint
+				blkCount := obj.BlockCnt()
+				if blkCount > 0 {
+					maxBlockID = uint16(blkCount - 1)
+				}
+			}
+		} else {
+			if ObjectHint > maxNAObjectHint {
+				maxNAObjectHint = ObjectHint
 			}
 		}
 		objData := obj.GetObjectData()
@@ -1149,7 +1166,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			return
 		}
 	}
-	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID)
+	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)
 	return
 }
 
@@ -1159,15 +1176,22 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objectio.Location, dedupAfterSnapshotTS bool) (err error) {
 	loaded := make(map[int]containers.Vector)
 	maxObjectHint := uint64(0)
+	maxNAObjectHint := uint64(0)
 	maxBlockID := uint16(0)
 	for i, loc := range metaLocs {
 		it := newObjectItOnSnap(tbl)
 		for it.Next() {
 			obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
 			ObjectHint := obj.SortHint
-			if obj.IsAppendable() && ObjectHint > maxObjectHint {
-				maxObjectHint = ObjectHint
-				maxBlockID = uint16(obj.BlockCnt())
+			if obj.IsAppendable() {
+				if ObjectHint > maxObjectHint {
+					maxObjectHint = ObjectHint
+					maxBlockID = uint16(obj.BlockCnt())
+				}
+			} else {
+				if ObjectHint > maxNAObjectHint {
+					maxNAObjectHint = ObjectHint
+				}
 			}
 			objData := obj.GetObjectData()
 			if objData == nil {
@@ -1232,7 +1256,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 		if v, ok := loaded[i]; ok {
 			v.Close()
 		}
-		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxBlockID)
+		tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)
 	}
 	return
 }
@@ -1249,6 +1273,7 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	totalBlkCount := 0
 	t0 := time.Now()
 	maxSortHint := uint64(0)
+	var allAobjectsDeduped, allNAObjectDeduped bool
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		objIt := tbl.entry.MakeObjectIt(true)
 		defer objIt.Release()
@@ -1257,12 +1282,26 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			if obj.SortHint > maxSortHint {
 				maxSortHint = obj.SortHint
 			}
-			if obj.SortHint < tbl.dedupedObjectHint {
-				break
-			}
 			startBlkOffset := uint16(0)
-			if obj.SortHint == tbl.dedupedObjectHint {
-				startBlkOffset = tbl.dedupedBlockID
+			if obj.IsAppendable() {
+				if obj.SortHint < tbl.dedupedAObjectHint {
+					allAobjectsDeduped = true
+					if allNAObjectDeduped {
+						break
+					}
+					continue
+				}
+				if obj.SortHint == tbl.dedupedAObjectHint {
+					startBlkOffset = tbl.dedupedBlockID
+				}
+			} else {
+				if obj.SortHint <= tbl.dedupedNAObjectHint {
+					allNAObjectDeduped = true
+					if allAobjectsDeduped {
+						break
+					}
+					continue
+				}
 			}
 			{
 				//FIXME:: Why need to wait committing here? waiting had happened at Dedup.
@@ -1333,8 +1372,9 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			zap.Int("object count", objCount),
 			zap.Int("aobject count", aobjCount),
 			zap.Int("naobject count", naobjCount),
-			zap.Uint64("max sort hint %d", maxSortHint),
-			zap.Uint64("deduped sort hint %d", tbl.dedupedObjectHint),
+			zap.Uint64("max sort hint", maxSortHint),
+			zap.Uint64("deduped aobject sort hint", tbl.dedupedAObjectHint),
+			zap.Uint64("deduped naobject sort hint", tbl.dedupedNAObjectHint),
 			zap.Int("block count", totalBlkCount),
 			zap.Duration("dedup", duration),
 		)
@@ -1343,21 +1383,42 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 }
 
 func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode) (err error) {
+	objCount := 0
+	aobjCount := 0
+	naobjCount := 0
+	totalBlkCount := 0
+	t0 := time.Now()
 	objIt := tbl.entry.MakeObjectIt(false)
 	defer objIt.Release()
 	var pks containers.Vector
 	//loaded := false
+	maxSortHint := uint64(0)
+	var allAobjectsDeduped, allNAObjectDeduped bool
 	for ok := objIt.Last(); ok; ok = objIt.Prev() {
 		obj := objIt.Item()
-		if !obj.IsCommitted() {
-			continue
-		}
-		if obj.SortHint < tbl.dedupedObjectHint {
-			break
+		if obj.SortHint > maxSortHint {
+			maxSortHint = obj.SortHint
 		}
 		startBlkOffset := uint16(0)
-		if obj.SortHint == tbl.dedupedObjectHint {
-			startBlkOffset = tbl.dedupedBlockID
+		if obj.IsAppendable() {
+			if obj.SortHint < tbl.dedupedAObjectHint {
+				allAobjectsDeduped = true
+				if allNAObjectDeduped {
+					break
+				}
+				continue
+			}
+			if obj.SortHint == tbl.dedupedAObjectHint {
+				startBlkOffset = tbl.dedupedBlockID
+			}
+		} else {
+			if obj.SortHint <= tbl.dedupedNAObjectHint {
+				allNAObjectDeduped = true
+				if allAobjectsDeduped {
+					break
+				}
+				continue
+			}
 		}
 		{
 			//FIXME:: Why need to wait committing here? waiting had happened at Dedup.
@@ -1371,6 +1432,15 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 			if shouldSkip {
 				continue
 			}
+		}
+		blkCount := obj.BlockCnt()
+		totalBlkCount += blkCount
+		totalBlkCount -= int(startBlkOffset)
+		objCount++
+		if obj.IsAppendable() {
+			aobjCount++
+		} else {
+			naobjCount++
 		}
 
 		//TODO::load ZM/BF index first, then load PK column if necessary.
@@ -1409,6 +1479,21 @@ func (tbl *txnTable) DoPrecommitDedupByNode(ctx context.Context, node InsertNode
 		); err != nil {
 			return err
 		}
+	}
+	duration := time.Since(t0)
+	if duration > time.Second {
+		logutil.Warn(
+			"SLOW-LOG",
+			zap.String("txn", fmt.Sprintf("%x", tbl.store.txn.GetID())),
+			zap.Int("object count", objCount),
+			zap.Int("aobject count", aobjCount),
+			zap.Int("naobject count", naobjCount),
+			zap.Uint64("max sort hint", maxSortHint),
+			zap.Uint64("deduped aobject sort hint", tbl.dedupedAObjectHint),
+			zap.Uint64("deduped naobject sort hint", tbl.dedupedNAObjectHint),
+			zap.Int("block count", totalBlkCount),
+			zap.Duration("dedup", duration),
+		)
 	}
 	return
 }

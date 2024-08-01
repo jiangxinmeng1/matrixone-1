@@ -1021,25 +1021,18 @@ func (tbl *txnTable) updateDedupedObjectHintAndBlockID(aobjHint, naobjHint uint6
 	if tbl.dedupedAObjectHint == 0 {
 		tbl.dedupedAObjectHint = aobjHint
 		tbl.dedupedBlockID = id
-		return
-	}
-	if tbl.dedupedAObjectHint > aobjHint {
+	} else if tbl.dedupedAObjectHint > aobjHint {
 		logutil.Infof("txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedAObjectHint, aobjHint)
 		tbl.dedupedAObjectHint = aobjHint
 		tbl.dedupedBlockID = id
-		return
-	}
-	if tbl.dedupedAObjectHint == aobjHint && id > tbl.dedupedBlockID {
+	} else if tbl.dedupedAObjectHint == aobjHint && id > tbl.dedupedBlockID {
 		tbl.dedupedBlockID = id
 	}
 	if tbl.dedupedNAObjectHint == 0 {
 		tbl.dedupedNAObjectHint = naobjHint
-		return
-	}
-	if tbl.dedupedNAObjectHint > naobjHint {
+	} else if tbl.dedupedNAObjectHint > naobjHint {
 		logutil.Infof("txn %x, deduped hint %d, incoming hint %d", tbl.store.txn.GetID(), tbl.dedupedNAObjectHint, naobjHint)
 		tbl.dedupedNAObjectHint = naobjHint
-		return
 	}
 }
 

@@ -113,7 +113,6 @@ type txnTable struct {
 	dedupedAObjectHint  uint64
 	dedupedNAObjectHint uint64
 	dedupedBlockID      uint16
-	debugString         string
 
 	txnEntries *txnEntries
 	csnStart   uint32
@@ -574,8 +573,6 @@ func (tbl *txnTable) AddDeleteNode(id *common.ID, node txnif.DeleteNode) error {
 }
 
 func (tbl *txnTable) Append(ctx context.Context, data *containers.Batch) (err error) {
-	tbl.debugString = fmt.Sprintf("%s[Append;data length %d, pk %v, is index %v, deduptype %d]",
-		tbl.debugString, data.Length(), tbl.schema.HasPK(), tbl.schema.IsSecondaryIndexTable(), tbl.store.txn.GetDedupType())
 	var dedupDur float64
 	if tbl.schema.HasPK() && !tbl.schema.IsSecondaryIndexTable() {
 		now := time.Now()
@@ -1017,7 +1014,6 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context) (err error) {
 }
 
 func (tbl *txnTable) updateDedupedObjectHintAndBlockID(aobjHint, naobjHint uint64, id uint16) {
-	tbl.debugString = fmt.Sprintf("%s;[update deduped hint %d;%d;%d]", tbl.debugString, aobjHint, naobjHint, id)
 	if tbl.dedupedAObjectHint == 0 {
 		tbl.dedupedAObjectHint = aobjHint
 		tbl.dedupedBlockID = id
@@ -1075,7 +1071,6 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 // which are visible and not dropped at txn's snapshot timestamp.
 // 2. It is called when appending data into this table.
 func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, dedupAfterSnapshotTS bool) (err error) {
-	tbl.debugString = fmt.Sprintf("%s[DedupStart;length %d]", tbl.debugString, keys.Length())
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
 	it := tbl.entry.MakeObjectIt(false)
@@ -1085,7 +1080,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	pkType := keys.GetType()
 	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
 	if err = index.BatchUpdateZM(keysZM, keys.GetDownstreamVector()); err != nil {
-		tbl.debugString = fmt.Sprintf("%s[Dedup;err1 %v]", tbl.debugString, err)
 		return
 	}
 	var (
@@ -1142,7 +1136,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		if !stats.ObjectLocation().IsEmpty() {
 			var skip bool
 			if skip, err = tbl.quickSkipThisObject(ctx, keysZM, obj); err != nil {
-				tbl.debugString = fmt.Sprintf("%s[Dedup;err2 %v]", tbl.debugString, err)
 				return
 			} else if skip {
 				continue
@@ -1155,7 +1148,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 				bf,
 				&name,
 			); err != nil {
-				tbl.debugString = fmt.Sprintf("%s[Dedup;err3 %v]", tbl.debugString, err)
 				return
 			}
 		}
@@ -1173,43 +1165,9 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
-			tbl.debugString = fmt.Sprintf("%s[Dedup;err4 %v]", tbl.debugString, err)
 			return
 		}
 	}
-	it2 := tbl.entry.MakeObjectIt(false)
-	totalObjCount := 0
-	maxObjectHint2 := uint64(0)
-	maxDroppedAobj := uint64(0)
-	maxDroppedObj := uint64(0)
-	for it2.Next() {
-		totalObjCount++
-		obj := it2.Item()
-		if obj.SortHint > maxObjectHint2 {
-			maxObjectHint2 = obj.SortHint
-		}
-		if obj.IsVisible(tbl.store.txn) {
-			logutil.Infof("txn %x, obj %v %v is visible", tbl.store.txn.GetID(), obj.ID().String(), obj.SortHint)
-		}
-		if obj.HasDropCommitted() {
-			if obj.IsAppendable() {
-				if obj.SortHint > maxDroppedAobj {
-					maxDroppedAobj = obj.SortHint
-				}
-			} else {
-				if obj.SortHint > maxDroppedObj {
-					maxDroppedObj = obj.SortHint
-				}
-			}
-		}
-	}
-	it2.Release()
-	if maxObjectHint2 == 0 && maxNAObjectHint == 0 {
-		logutil.Infof("txn %x, obj %v, naobj %v, obj count %d/%d, maxObjectHint %d, max dropped aobj %v, max dropped naobj %d",
-			tbl.store.txn.GetID(), maxObjectHint, maxNAObjectHint, objCount, totalObjCount, maxObjectHint2, maxDroppedAobj, maxDroppedObj)
-	}
-	tbl.debugString = fmt.Sprintf("%s[DedupEnd;aobj %v;naobj %d;objCount %d/%d,maxobjhint %d;max dropped aobj %v, max dropped naobj %v]",
-		tbl.debugString, maxObjectHint, maxNAObjectHint, objCount, totalObjCount, maxObjectHint2, maxDroppedAobj, maxDroppedObj)
 	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)
 	return
 }
@@ -1317,7 +1275,6 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 	totalBlkCount := 0
 	t0 := time.Now()
 	maxSortHint := uint64(0)
-	debugStr := ""
 	var allAobjectsDeduped, allNAObjectDeduped bool
 	moprobe.WithRegion(context.Background(), moprobe.TxnTableDoPrecommitDedupByPK, func() {
 		objIt := tbl.entry.MakeObjectIt(true)
@@ -1361,7 +1318,6 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 					continue
 				}
 			}
-			debugStr = fmt.Sprintf("%s %v,%v,%v", debugStr, obj.ID().String(), obj.IsAppendable(), obj.CreatedAt.ToString())
 			blkCount := obj.BlockCnt()
 			totalBlkCount += blkCount
 			totalBlkCount -= int(startBlkOffset)
@@ -1423,8 +1379,6 @@ func (tbl *txnTable) DoPrecommitDedupByPK(pks containers.Vector, pksZM index.ZM)
 			zap.Uint64("deduped naobject sort hint", tbl.dedupedNAObjectHint),
 			zap.Int("block count", totalBlkCount),
 			zap.Duration("dedup", duration),
-			zap.String("dedup details", tbl.debugString),
-			zap.String("obj details", debugStr),
 		)
 	}
 	return

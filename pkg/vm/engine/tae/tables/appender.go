@@ -126,7 +126,7 @@ func (appender *objectAppender) ReplayAppend(
 
 func checkWareHouse(scale int32) {
 	totalCount := types.Decimal64(0)
-	if len(district) == 500 {
+	if len(district) == 10 {
 		for _, dytd := range district {
 			totalCount, _, _ = totalCount.Add(dytd, scale, scale)
 		}
@@ -135,7 +135,7 @@ func checkWareHouse(scale int32) {
 			for i, num := range district {
 				s = fmt.Sprintf("%v %v-%v", s, i, num.Format(scale))
 			}
-			panic(fmt.Sprintf("map %v, total %v %v", s, totalCount, globalYtd))
+			panic(fmt.Sprintf("map %v, total %v %v txn %x", s, totalCount.Format(scale), globalYtd.Format(scale), prevTID))
 		}
 	} else {
 		logutil.Infof("lalala len %d, map %v", len(district), district)

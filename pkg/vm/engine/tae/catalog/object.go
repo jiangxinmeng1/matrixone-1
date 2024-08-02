@@ -332,48 +332,6 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 	return e
 }
 
-func NewSysObjectEntry(table *TableEntry, id types.Uuid) *ObjectEntry {
-	e := &ObjectEntry{
-		table: table,
-		ObjectNode: ObjectNode{
-			state: ES_Appendable,
-		},
-		EntryMVCCNode: EntryMVCCNode{
-			CreatedAt: types.SystemDBTS,
-		},
-		CreateNode:  *txnbase.NewTxnMVCCNodeWithTS(types.SystemDBTS),
-		ObjectState: ObjectState_Create_ApplyCommit,
-	}
-	var bid types.Blockid
-	schema := table.GetLastestSchemaLocked(false)
-	if schema.Name == SystemTableSchema.Name {
-		bid = SystemBlock_Table_ID
-	} else if schema.Name == SystemDBSchema.Name {
-		bid = SystemBlock_DB_ID
-	} else if schema.Name == SystemColumnSchema.Name {
-		bid = SystemBlock_Columns_ID
-	} else {
-		panic("not supported")
-	}
-	objectio.SetObjectStatsObjectName(&e.ObjectStats, objectio.BuildObjectNameWithObjectID(bid.Object()))
-	return e
-}
-func (entry *ObjectEntry) IsVisibleInRange(start, end types.TS) bool {
-	if entry.IsAppendable() {
-		droppedTS := entry.GetDeleteAt()
-		return droppedTS.IsEmpty() || droppedTS.GreaterEq(&end)
-	} else {
-		createTS := entry.GetCreatedAt()
-		if createTS.Less(&start) || createTS.Greater(&end) {
-			return false
-		}
-		droppedTS := entry.GetDeleteAt()
-		if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
-			return false
-		}
-		return true
-	}
-}
 func (entry *ObjectEntry) GetLocation() objectio.Location {
 	location := entry.ObjectStats.ObjectLocation()
 	return location
@@ -639,13 +597,13 @@ func (entry *ObjectEntry) GetPKZoneMap(
 
 // TODO: REMOVEME
 func (entry *ObjectEntry) CheckPrintPrepareCompact() bool {
-	return entry.CheckPrintPrepareCompactLocked()
+
+	return entry.CheckPrintPrepareCompactLocked(30 * time.Minute)
 }
 
-// TODO: REMOVEME
-func (entry *ObjectEntry) CheckPrintPrepareCompactLocked() bool {
+func (entry *ObjectEntry) CheckPrintPrepareCompactLocked(duration time.Duration) bool {
 	startTS := entry.GetLastMVCCNode().GetStart()
-	return startTS.Physical() < time.Now().UTC().UnixNano()-(time.Minute*30).Nanoseconds()
+	return startTS.Physical() < time.Now().UTC().UnixNano()-duration.Nanoseconds()
 }
 
 // TODO: REMOVEME

@@ -20,6 +20,7 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -118,22 +119,26 @@ func (obj *aobject) PrepareCompact() bool {
 
 	droppedCommitted := obj.meta.Load().HasDropCommitted()
 
+	checkDuration := 10 * time.Minute
+	if obj.GetRuntime().Options.CheckpointCfg.FlushInterval < 50*time.Millisecond {
+		checkDuration = 8 * time.Second
+	}
 	if droppedCommitted {
 		if !obj.meta.Load().PrepareCompactLocked() {
-			if obj.meta.Load().CheckPrintPrepareCompactLocked() {
+			if obj.meta.Load().CheckPrintPrepareCompactLocked(checkDuration) {
 				obj.meta.Load().PrintPrepareCompactDebugLog()
 			}
 			return false
 		}
 	} else {
 		if !obj.meta.Load().PrepareCompactLocked() {
-			if obj.meta.Load().CheckPrintPrepareCompactLocked() {
+			if obj.meta.Load().CheckPrintPrepareCompactLocked(checkDuration) {
 				obj.meta.Load().PrintPrepareCompactDebugLog()
 			}
 			return false
 		}
 		if !obj.appendMVCC.PrepareCompact() /* all appends are committed */ {
-			if obj.meta.Load().CheckPrintPrepareCompactLocked() {
+			if obj.meta.Load().CheckPrintPrepareCompactLocked(checkDuration) {
 				logutil.Infof("obj %v, data prepare compact failed", obj.meta.Load().ID().String())
 				if !obj.meta.Load().HasPrintedPrepareComapct.Load() {
 					obj.meta.Load().HasPrintedPrepareComapct.Store(true)
@@ -144,7 +149,7 @@ func (obj *aobject) PrepareCompact() bool {
 		}
 	}
 	prepareCompact := obj.RefCount() == 0
-	if !prepareCompact && obj.meta.Load().CheckPrintPrepareCompactLocked() {
+	if !prepareCompact && obj.meta.Load().CheckPrintPrepareCompactLocked(checkDuration) {
 		logutil.Infof("obj %v, data ref count is %d", obj.meta.Load().ID().String(), obj.RefCount())
 	}
 	return prepareCompact

@@ -15,32 +15,13 @@
 package txnimpl
 
 import (
-	"context"
 	"fmt"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
-	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 )
-
-type txnSysObject struct {
-	*txnObject
-	table   *txnTable
-	catalog *catalog.Catalog
-}
-
-func newSysObject(table *txnTable, meta *catalog.ObjectEntry) *txnSysObject {
-	obj := &txnSysObject{
-		txnObject: newObject(table, meta),
-		table:     table,
-		catalog:   meta.GetTable().GetCatalog(),
-	}
-	return obj
-}
 
 func bool2i8(v bool) int8 {
 	if v {
@@ -48,58 +29,6 @@ func bool2i8(v bool) int8 {
 	} else {
 		return int8(0)
 	}
-}
-
-func (obj *txnSysObject) isSysTable() bool {
-	return isSysTable(obj.table.entry.GetLastestSchemaLocked(false).Name)
-}
-
-func (obj *txnSysObject) GetTotalChanges() int {
-	if obj.isSysTable() {
-		panic("not supported")
-	}
-	return obj.txnObject.GetTotalChanges()
-}
-
-func (obj *txnSysObject) RangeDelete(blkID uint16, start, end uint32, dt handle.DeleteType, mp *mpool.MPool) (err error) {
-	if obj.isSysTable() {
-		panic("not supported")
-	}
-	return obj.txnObject.RangeDelete(blkID, start, end, dt, mp)
-}
-
-func (obj *txnSysObject) processDB(fn func(*catalog.DBEntry) error, ignoreErr bool) (err error) {
-	it := newDBIt(obj.Txn, obj.catalog)
-	for it.linkIt.Valid() {
-		if err = it.GetError(); err != nil && !ignoreErr {
-			break
-		}
-		db := it.GetCurr()
-		if err = fn(db); err != nil && !ignoreErr {
-			break
-		}
-		it.Next()
-	}
-	return
-}
-
-func (obj *txnSysObject) processTable(entry *catalog.DBEntry, fn func(*catalog.TableEntry) error, ignoreErr bool) (err error) {
-	txnDB, err := obj.table.store.getOrSetDB(entry.GetID())
-	if err != nil {
-		return
-	}
-	it := newRelationIt(txnDB)
-	for it.linkIt.Valid() {
-		if err = it.GetError(); err != nil && !ignoreErr {
-			break
-		}
-		table := it.GetCurr()
-		if err = fn(table); err != nil && !ignoreErr {
-			break
-		}
-		it.Next()
-	}
-	return
 }
 
 func FillColumnRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.TableMVCCNode], attr string, colData containers.Vector) {
@@ -161,12 +90,22 @@ func FillColumnRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Ta
 			colData.Append(colDef.SeqNum, false)
 		case pkgcatalog.SystemColAttr_EnumValues:
 			colData.Append([]byte(colDef.EnumValues), false)
+		case pkgcatalog.SystemColAttr_CPKey:
+			packer := types.NewPacker()
+			packer.EncodeUint32(schema.AcInfo.TenantID)
+			packer.EncodeStringType([]byte(table.GetDB().GetName()))
+			packer.EncodeStringType([]byte(schema.Name))
+			packer.EncodeStringType([]byte(colDef.Name))
+			colData.Append(packer.Bytes(), false)
+			packer.Close()
+		case pkgcatalog.Row_ID:
 		default:
 			panic("unexpected colname. if add new catalog def, fill it in this switch")
 		}
 	}
 }
 
+<<<<<<< HEAD
 // func (obj *txnSysObject) GetDeltaPersistedTS() types.TS {
 // 	return types.TS{}.Next()
 // }
@@ -193,6 +132,8 @@ func (obj *txnSysObject) getColumnTableVec(
 	return
 }
 
+=======
+>>>>>>> main
 func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.TableMVCCNode], attr string, colData containers.Vector) {
 	schema := node.BaseNode.Schema
 	switch attr {
@@ -232,18 +173,21 @@ func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Tab
 		colData.Append(schema.Version, false)
 	case pkgcatalog.SystemRelAttr_CatalogVersion:
 		colData.Append(schema.CatalogVersion, false)
-	case catalog.AccountIDDbNameTblName:
-		packer := types.NewPacker(common.WorkspaceAllocator)
+	case pkgcatalog.SystemRelAttr_CPKey:
+		packer := types.NewPacker()
 		packer.EncodeUint32(schema.AcInfo.TenantID)
 		packer.EncodeStringType([]byte(table.GetDB().GetName()))
 		packer.EncodeStringType([]byte(schema.Name))
 		colData.Append(packer.Bytes(), false)
-		packer.FreeMem()
+		packer.Close()
+	case pkgcatalog.Row_ID:
+		// fill outside of this func
 	default:
-		panic("unexpected colname. if add new catalog def, fill it in this switch")
+		panic(fmt.Sprintf("unexpected colname %q. if add new catalog def, fill it in this switch", attr))
 	}
 }
 
+<<<<<<< HEAD
 func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
 	colDef := catalog.SystemTableSchema.ColDefs[colIdx]
 	colName = colDef.Name
@@ -264,6 +208,10 @@ func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool
 	return
 }
 
+=======
+// FillDBRow is used for checkpoint collecting and catalog-tree replaying at the moment.
+// As to Logtail and GetColumnDataById, objects in mo_database are the right place to get data.
+>>>>>>> main
 func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode], attr string, colData containers.Vector) {
 	switch attr {
 	case pkgcatalog.SystemDBAttr_ID:
@@ -284,16 +232,19 @@ func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode],
 		colData.Append(db.GetTenantID(), false)
 	case pkgcatalog.SystemDBAttr_Type:
 		colData.Append([]byte(db.GetDatType()), false)
-	case catalog.AccountIDDbName:
-		packer := types.NewPacker(common.WorkspaceAllocator)
+	case pkgcatalog.SystemDBAttr_CPKey:
+		packer := types.NewPacker()
 		packer.EncodeUint32(db.GetTenantID())
 		packer.EncodeStringType([]byte(db.GetName()))
 		colData.Append(packer.Bytes(), false)
-		packer.FreeMem()
+		packer.Close()
+	case pkgcatalog.Row_ID:
+		// fill outside of this func
 	default:
-		panic("unexpected colname. if add new catalog def, fill it in this switch")
+		panic(fmt.Sprintf("unexpected colname %q. if add new catalog def, fill it in this switch", attr))
 	}
 }
+<<<<<<< HEAD
 func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
 	colDef := catalog.SystemDBSchema.ColDefs[colIdx]
 	colName = colDef.Name
@@ -391,3 +342,5 @@ func (obj *txnSysObject) Scan(
 func (obj *txnSysObject) Prefetch(idxes []int) error {
 	return nil
 }
+=======
+>>>>>>> main

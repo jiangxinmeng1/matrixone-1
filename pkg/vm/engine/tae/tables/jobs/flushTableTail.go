@@ -55,6 +55,7 @@ var FlushTableTailTaskFactory = func(
 	metas, tombstones []*catalog.ObjectEntry, rt *dbutils.Runtime, endTs types.TS, /* end of dirty range*/
 ) tasks.TxnTaskFactory {
 	return func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
+txn.GetMemo().IsFlushOrMerge = true
 		return NewFlushTableTailTask(ctx, txn, metas, tombstones, rt, endTs)
 	}
 }
@@ -73,7 +74,7 @@ type flushTableTailTask struct {
 	dbid uint64
 
 	// record the row mapping from deleted blocks to created blocks
-	transMappings *api.BlkTransferBooking
+	transMappings api.TransferMaps
 	doTransfer    bool
 
 	aObjMetas         []*catalog.ObjectEntry
@@ -239,7 +240,10 @@ func NewFlushTableTailTask(
 	task.transMappings = mergesort.NewBlkTransferBooking(len(task.aObjHandles))
 	task.doTransfer = !strings.Contains(task.schema.Comment, pkgcatalog.MO_COMMENT_NO_DEL_HINT)
 	if task.doTransfer {
-		task.transMappings = mergesort.NewBlkTransferBooking(len(task.aObjHandles))
+		task.transMappings = make(api.TransferMaps, len(task.aObjHandles))
+		for i := range len(task.aObjHandles) {
+			task.transMappings[i] = make(api.TransferMap)
+		}
 	}
 
 	task.BaseTask = tasks.NewBaseTask(task, tasks.DataCompactionTask, ctx)

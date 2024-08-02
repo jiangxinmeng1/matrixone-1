@@ -254,7 +254,7 @@ var (
 	}
 
 	BaseAttr = []string{
-		catalog.AttrRowID,
+		catalog.PhyAddrColumnName,
 		catalog.AttrCommitTs,
 	}
 	BaseTypes = []types.Type{

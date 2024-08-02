@@ -1226,9 +1226,9 @@ func storageUsageDetails(c *storageUsageHistoryArg) (err error) {
 	locations := make([]objectio.Location, 0)
 
 	for idx := range entries {
-		if entries[idx].GetVersion() < logtail.CheckpointVersion11 {
-			continue
-		}
+		// if entries[idx].GetVersion() < logtail.CheckpointVersion11 {
+		// 	continue
+		// }
 		versions = append(versions, entries[idx].GetVersion())
 		locations = append(locations, entries[idx].GetLocation())
 	}

@@ -105,35 +105,6 @@ func FillColumnRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Ta
 	}
 }
 
-<<<<<<< HEAD
-// func (obj *txnSysObject) GetDeltaPersistedTS() types.TS {
-// 	return types.TS{}.Next()
-// }
-
-func (obj *txnSysObject) getColumnTableVec(
-	ts types.TS, colIdx int, mp *mpool.MPool,
-) (colData containers.Vector, colName string, err error) {
-	col := catalog.SystemColumnSchema.ColDefs[colIdx]
-	colData = containers.MakeVector(col.Type, mp)
-	tableFn := func(table *catalog.TableEntry) error {
-		table.RLock()
-		node := table.GetVisibleNodeLocked(obj.Txn)
-		table.RUnlock()
-		FillColumnRow(table, node, col.Name, colData)
-		return nil
-	}
-	dbFn := func(db *catalog.DBEntry) error {
-		return obj.processTable(db, tableFn, false)
-	}
-	err = obj.processDB(dbFn, false)
-	if err != nil {
-		return
-	}
-	return
-}
-
-=======
->>>>>>> main
 func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.TableMVCCNode], attr string, colData containers.Vector) {
 	schema := node.BaseNode.Schema
 	switch attr {
@@ -187,31 +158,8 @@ func FillTableRow(table *catalog.TableEntry, node *catalog.MVCCNode[*catalog.Tab
 	}
 }
 
-<<<<<<< HEAD
-func (obj *txnSysObject) getRelTableVec(ts types.TS, colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
-	colDef := catalog.SystemTableSchema.ColDefs[colIdx]
-	colName = colDef.Name
-	colData = containers.MakeVector(colDef.Type, mp)
-	tableFn := func(table *catalog.TableEntry) error {
-		table.RLock()
-		node := table.GetVisibleNodeLocked(obj.Txn)
-		table.RUnlock()
-		FillTableRow(table, node, colDef.Name, colData)
-		return nil
-	}
-	dbFn := func(db *catalog.DBEntry) error {
-		return obj.processTable(db, tableFn, false)
-	}
-	if err = obj.processDB(dbFn, false); err != nil {
-		return
-	}
-	return
-}
-
-=======
 // FillDBRow is used for checkpoint collecting and catalog-tree replaying at the moment.
 // As to Logtail and GetColumnDataById, objects in mo_database are the right place to get data.
->>>>>>> main
 func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode], attr string, colData containers.Vector) {
 	switch attr {
 	case pkgcatalog.SystemDBAttr_ID:
@@ -244,103 +192,3 @@ func FillDBRow(db *catalog.DBEntry, _ *catalog.MVCCNode[*catalog.EmptyMVCCNode],
 		panic(fmt.Sprintf("unexpected colname %q. if add new catalog def, fill it in this switch", attr))
 	}
 }
-<<<<<<< HEAD
-func (obj *txnSysObject) getDBTableVec(colIdx int, mp *mpool.MPool) (colData containers.Vector, colName string, err error) {
-	colDef := catalog.SystemDBSchema.ColDefs[colIdx]
-	colName = colDef.Name
-	colData = containers.MakeVector(colDef.Type, mp)
-	fn := func(db *catalog.DBEntry) error {
-		FillDBRow(db, nil, colDef.Name, colData)
-		return nil
-	}
-	if err = obj.processDB(fn, false); err != nil {
-		return
-	}
-	return
-}
-
-func (obj *txnSysObject) HybridScan(
-	ctx context.Context, bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
-) (err error) {
-	return obj.Scan(ctx, bat, blkID, colIdx, mp)
-}
-func (obj *txnSysObject) Scan(
-	ctx context.Context, bat **containers.Batch, blkID uint16, colIdx []int, mp *mpool.MPool,
-) (err error) {
-	if !obj.isSysTable() {
-		return obj.txnObject.HybridScan(ctx, bat, blkID, colIdx, mp)
-	}
-	attrs := obj.table.entry.GetLastestSchema(false).Attrs()
-	if obj.table.GetID() == pkgcatalog.MO_DATABASE_ID {
-		if *bat == nil {
-			*bat = containers.NewBatch()
-			for _, idx := range colIdx {
-				vec, _, err := obj.getDBTableVec(idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).AddVector(attrs[idx], vec)
-			}
-		} else {
-			for _, idx := range colIdx {
-				vec, _, err := obj.getDBTableVec(idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
-				vec.Close()
-			}
-		}
-		return nil
-	} else if obj.table.GetID() == pkgcatalog.MO_TABLES_ID {
-		if *bat == nil {
-			*bat = containers.NewBatch()
-			for _, idx := range colIdx {
-				vec, _, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).AddVector(attrs[idx], vec)
-			}
-		} else {
-			for _, idx := range colIdx {
-				vec, _, err := obj.getRelTableVec(obj.Txn.GetStartTS(), idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
-				vec.Close()
-			}
-		}
-		return nil
-	} else if obj.table.GetID() == pkgcatalog.MO_COLUMNS_ID {
-		if *bat == nil {
-			*bat = containers.NewBatch()
-			for _, idx := range colIdx {
-				vec, _, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).AddVector(attrs[idx], vec)
-			}
-		} else {
-			for _, idx := range colIdx {
-				vec, _, err := obj.getColumnTableVec(obj.Txn.GetStartTS(), idx, mp)
-				if err != nil {
-					return err
-				}
-				(*bat).GetVectorByName(attrs[idx]).Extend(vec)
-				vec.Close()
-			}
-		}
-		return nil
-	} else {
-		panic("not supported")
-	}
-}
-
-func (obj *txnSysObject) Prefetch(idxes []int) error {
-	return nil
-}
-=======
->>>>>>> main

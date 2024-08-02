@@ -598,7 +598,7 @@ func checkMOColumns(ctx context.Context, t *testing.T, ins, del, cnIns, segDel *
 }
 
 func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, dataObject, tombstoneObject *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector("",start, end)
+	collector := logtail.NewIncrementalCollector("", start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
 		if be.GetTable().ID != tid {
@@ -624,7 +624,7 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, da
 }
 
 func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (dataObject, tombstoneObject *containers.Batch) {
-	collector := logtail.NewIncrementalCollector("",start, end)
+	collector := logtail.NewIncrementalCollector("", start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
 		if be.GetTable().ID != tid {

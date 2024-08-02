@@ -193,7 +193,7 @@ func makeRespBatchFromSchema(schema *catalog.Schema, mp *mpool.MPool) *container
 	bat := containers.NewBatch()
 
 	bat.AddVector(
-		catalog.AttrRowID,
+		catalog.PhyAddrColumnName,
 		containers.MakeVector(types.T_Rowid.ToType(), mp),
 	)
 	bat.AddVector(

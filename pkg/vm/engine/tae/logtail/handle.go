@@ -134,7 +134,7 @@ func HandleSyncLogTailReq(
 		return
 	}
 	// fill table info, as req.Table will be used as the Table field in TableLogtail response.
-	schema := tableEntry.GetLastestSchemaLocked()
+	schema := tableEntry.GetLastestSchemaLocked(false)
 	req.Table.AccId = schema.AcInfo.TenantID
 	req.Table.DbName = dbEntry.GetName()
 	req.Table.TbName = schema.Name
@@ -208,7 +208,7 @@ func catalogEntry2Batch[
 	for _, col := range schema.ColDefs {
 		fillDataRow(e, node, col.Name, dstBatch.GetVectorByName(col.Name))
 	}
-	dstBatch.GetVectorByName(catalog.AttrRowID).Append(rowid, false)
+	dstBatch.GetVectorByName(catalog.PhyAddrColumnName).Append(rowid, false)
 	dstBatch.GetVectorByName(catalog.AttrCommitTs).Append(commitTs, false)
 }
 
@@ -313,7 +313,7 @@ func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	return nil
 }
 func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNode *txnbase.TxnMVCCNode, create bool, push bool, committs types.TS) {
-	batch.GetVectorByName(catalog.AttrRowID).Append(objectio.HackObjid2Rowid(entry.ID()), false)
+	batch.GetVectorByName(catalog.PhyAddrColumnName).Append(objectio.HackObjid2Rowid(entry.ID()), false)
 	if push {
 		batch.GetVectorByName(catalog.AttrCommitTs).Append(committs, false)
 	} else {

@@ -7636,7 +7636,7 @@ func TestDedupSnapshot3(t *testing.T) {
 		rows := testutil.GetColumnRowsByScan(t, rel, def.Idx, false)
 		if totalRows != rows {
 			t.Log(tae.Catalog.SimplePPString(common.PPL3))
-			it := rel.MakeObjectIt()
+			it := rel.MakeObjectIt(false)
 			for it.Next() {
 				obj := it.GetObject()
 				t.Log(obj.GetMeta().(*catalog.ObjectEntry).GetObjectData().PPString(common.PPL3, 0, "", -1))
@@ -8818,14 +8818,14 @@ func TestCKPCollectObject(t *testing.T) {
 
 			txn, rel := tae.GetRelation()
 			blkMeta1 := testutil.GetOneBlockMeta(rel)
-			task1, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{blkMeta1}, tae.Runtime, txn.GetStartTS())
+			task1, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{blkMeta1}, nil, tae.Runtime, txn.GetStartTS())
 			assert.NoError(t, err)
 			assert.NoError(t, task1.Execute(ctx))
 
-			collector := logtail.NewIncrementalCollector("", types.TS{}, tae.TxnMgr.Now(), true)
+			collector := logtail.NewIncrementalCollector("", types.TS{}, tae.TxnMgr.Now())
 			assert.NoError(t, tae.Catalog.RecurLoop(collector))
 			ckpData := collector.OrphanData()
-			objBatch := ckpData.GetTNObjectBatchs()
+			objBatch := ckpData.GetObjectBatchs()
 			assert.Equal(t, 1, objBatch.Length())
 			assert.NoError(t, txn.Commit(ctx))
 		},

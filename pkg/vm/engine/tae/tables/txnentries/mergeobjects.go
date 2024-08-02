@@ -271,8 +271,9 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 		if err != nil {
 			return
 		}
-		if err = targetObj.RangeDelete(
-			destpos.BlkIdx, destpos.RowIdx, destpos.RowIdx, handle.DT_MergeCompact, common.MergeAllocator,
+		id := targetObj.Fingerprint()
+		if err = targetObj.GetRelation().RangeDelete(
+			id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 		); err != nil {
 			return
 		}

@@ -43,7 +43,6 @@ const DefaultCheckpointBlockRows = 10000
 const DefaultCheckpointSize = 512 * 1024 * 1024
 
 const (
-	CheckpointVersion11 uint32 = 11
 	CheckpointVersion12 uint32 = 12
 
 	CheckpointCurrentVersion = CheckpointVersion12
@@ -96,46 +95,12 @@ type checkpointDataItem struct {
 	attrs  []string
 }
 
-var checkpointDataSchemas_V11 [MaxIDX]*catalog.Schema
 var checkpointDataSchemas_V12 [MaxIDX]*catalog.Schema
 var checkpointDataSchemas_Curr [MaxIDX]*catalog.Schema
 
 var checkpointDataReferVersions map[uint32][MaxIDX]*checkpointDataItem
 
 func init() {
-
-	// v11 add storage usage del bat
-	checkpointDataSchemas_V11 = [MaxIDX]*catalog.Schema{
-		MetaSchema,
-		catalog.SystemDBSchema_V1,
-		TxnNodeSchema,
-		DBDelSchema, // 3
-		DBTNSchema,
-		catalog.SystemTableSchema_V2,
-		TblTNSchema,
-		TblDelSchema, // 7
-		TblTNSchema,
-		catalog.SystemColumnSchema_V2,
-		ColumnDelSchema,
-		SegSchema, // 11
-		SegTNSchema,
-		DelSchema,
-		SegTNSchema,
-		BlkMetaSchema, // 15
-		BlkTNSchema,
-		DelSchema,
-		BlkTNSchema,
-		BlkMetaSchema, // 19
-		BlkTNSchema,
-		DelSchema,
-		BlkTNSchema,
-		BlkMetaSchema, // 23
-		TNMetaSchema,
-		StorageUsageSchema, // 25
-		ObjectInfoSchema,
-		ObjectInfoSchema,
-		StorageUsageSchema,
-	}
 
 	checkpointDataSchemas_V12 = [MaxIDX]*catalog.Schema{
 		MetaSchema,
@@ -157,7 +122,6 @@ func init() {
 	}
 
 	checkpointDataReferVersions = make(map[uint32][MaxIDX]*checkpointDataItem)
-	registerCheckpointDataReferVersion(CheckpointVersion11, checkpointDataSchemas_V11[:])
 	registerCheckpointDataReferVersion(CheckpointVersion12, checkpointDataSchemas_V12[:])
 	checkpointDataSchemas_Curr = checkpointDataSchemas_V12
 }
@@ -521,10 +485,10 @@ func NewIncrementalCollector(
 ) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
-			LoopProcessor:       new(catalog.LoopProcessor),
-			data:                NewCheckpointData(sid, common.CheckpointAllocator),
-			start:               start,
-			end:                 end,
+			LoopProcessor: new(catalog.LoopProcessor),
+			data:          NewCheckpointData(sid, common.CheckpointAllocator),
+			start:         start,
+			end:           end,
 		},
 	}
 	collector.DatabaseFn = collector.VisitDB
@@ -773,16 +737,12 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32, loc o
 		return
 	}
 	tidVec := vector.MustFixedCol[uint64](data.bats[MetaIDX].Vecs[Checkpoint_Meta_TID_IDX])
-	blkIns := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Insert_Block_LOC_IDX]
-	blkDel := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Delete_Block_LOC_IDX]
 	dataObj := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Data_Object_LOC_IDX]
 	tombstoneObj := data.bats[MetaIDX].Vecs[Checkpoint_Meta_Tombstone_Object_LOC_IDX]
 
 	var usageInsVec, usageDelVec *vector.Vector
-	if version >= CheckpointVersion11 {
-		usageInsVec = data.bats[MetaIDX].Vecs[Checkpoint_Meta_Usage_Ins_LOC_IDX]
-		usageDelVec = data.bats[MetaIDX].Vecs[Checkpoint_Meta_Usage_Del_LOC_IDX]
-	}
+	usageInsVec = data.bats[MetaIDX].Vecs[Checkpoint_Meta_Usage_Ins_LOC_IDX]
+	usageDelVec = data.bats[MetaIDX].Vecs[Checkpoint_Meta_Usage_Del_LOC_IDX]
 
 	var i int
 	i = vector.OrderedFindFirstIndexInSortedSlice[uint64](tableID, tidVec)
@@ -790,8 +750,6 @@ func (data *CNCheckpointData) GetTableMeta(tableID uint64, version uint32, loc o
 		return
 	}
 	tid := tidVec[i]
-	blkInsStr := blkIns.GetBytesAt(i)
-	blkDelStr := blkDel.GetBytesAt(i)
 	dataObjStr := dataObj.GetBytesAt(i)
 	tombstoneObjStr := tombstoneObj.GetBytesAt(i)
 	tableMeta := NewCheckpointMeta()
@@ -882,7 +840,7 @@ func (data *CNCheckpointData) ReadFromData(
 }
 
 func (data *CNCheckpointData) GetTableDataFromBats(tid uint64, bats []*batch.Batch) (ins, del, dataObject, tombstoneObject *api.Batch, err error) {
-	var insTaeBat, delTaeBat, dataObjectTaeBat, tombstoneObjectTaeBat *batch.Batch
+	var dataObjectTaeBat, tombstoneObjectTaeBat *batch.Batch
 	if len(bats) == 0 {
 		return
 	}
@@ -1701,10 +1659,8 @@ func (data *CheckpointData) replayMetaBatch(version uint32) {
 	tombstoneObjectVec := bat.GetVectorByName(SnapshotMetaAttr_TombstoneObjectBatchLocation).GetDownstreamVector()
 
 	var usageInsVec, usageDelVec *vector.Vector
-	if version >= CheckpointVersion11 {
-		usageInsVec = bat.GetVectorByName(CheckpointMetaAttr_StorageUsageInsLocation).GetDownstreamVector()
-		usageDelVec = bat.GetVectorByName(CheckpointMetaAttr_StorageUsageDelLocation).GetDownstreamVector()
-	}
+	usageInsVec = bat.GetVectorByName(CheckpointMetaAttr_StorageUsageInsLocation).GetDownstreamVector()
+	usageDelVec = bat.GetVectorByName(CheckpointMetaAttr_StorageUsageDelLocation).GetDownstreamVector()
 
 	for i := 0; i < len(tidVec); i++ {
 		tid := tidVec[i]
@@ -1895,32 +1851,6 @@ const (
 func (data *CheckpointData) GetCheckpointMetaInfo(id uint64, limit int) (res *ObjectInfoJson, err error) {
 	tombstone := make(map[string]struct{})
 	tombstoneInfo := make(map[uint64]*tableinfo)
-	for i := range data.bats[BLKMetaInsertIDX].Length() {
-		deltaLoc := objectio.Location(
-			data.bats[BLKMetaInsertIDX].GetVectorByName(pkgcatalog.BlockMeta_DeltaLoc).Get(i).([]byte))
-		tid := data.bats[BLKMetaInsertTxnIDX].GetVectorByName(SnapshotAttr_TID).Get(i).(uint64)
-
-		if tombstoneInfo[tid] == nil {
-			tombstoneInfo[tid] = &tableinfo{
-				tid: tid,
-			}
-		}
-		if _, ok := tombstone[deltaLoc.Name().String()]; !ok {
-			tombstone[deltaLoc.Name().String()] = struct{}{}
-			tombstoneInfo[tid].delete++
-		}
-		tombstoneInfo[tid].add++
-	}
-	for i := range data.bats[BLKCNMetaInsertIDX].Length() {
-		deltaLoc := objectio.Location(
-			data.bats[BLKCNMetaInsertIDX].GetVectorByName(pkgcatalog.BlockMeta_DeltaLoc).Get(i).([]byte))
-		if deltaLoc.IsEmpty() {
-			return nil, moerr.NewInfoNoCtx("failed to get checkpoint data, deltaLoc in empty")
-		}
-		if _, ok := tombstone[deltaLoc.Name().String()]; !ok {
-			tombstone[deltaLoc.Name().String()] = struct{}{}
-		}
-	}
 
 	insTableIDs := vector.MustFixedCol[uint64](
 		data.bats[ObjectInfoIDX].GetVectorByName(SnapshotAttr_TID).GetDownstreamVector())
@@ -2037,7 +1967,6 @@ func (collector *BaseCollector) LoadAndCollectObject(c *catalog.Catalog, visitOb
 		return nil
 	}
 	collector.data.bats[ObjectInfoIDX] = makeRespBatchFromSchema(ObjectInfoSchema, common.CheckpointAllocator)
-	collector.data.bats[TNObjectInfoIDX] = makeRespBatchFromSchema(ObjectInfoSchema, common.CheckpointAllocator)
 	err := collector.loadObjectInfo()
 	if err != nil {
 		return err
@@ -2159,11 +2088,11 @@ func (collector *BaseCollector) VisitTable(entry *catalog.TableEntry) (err error
 			}
 			// send dropped column del
 			for _, name := range tblNode.BaseNode.Schema.Extra.DroppedAttrs {
-				tableColDelBat.GetVectorByName(catalog.AttrRowID).Append(objectio.HackBytes2Rowid([]byte(fmt.Sprintf("%d-%s", entry.GetID(), name))), false)
+				tableColDelBat.GetVectorByName(catalog.PhyAddrColumnName).Append(objectio.HackBytes2Rowid([]byte(fmt.Sprintf("%d-%s", entry.GetID(), name))), false)
 				tableColDelBat.GetVectorByName(catalog.AttrCommitTs).Append(tblNode.GetEnd(), false)
 				tableColDelBat.GetVectorByName(pkgcatalog.SystemColAttr_UniqName).Append([]byte(fmt.Sprintf("%d-%s", entry.GetID(), name)), false)
 			}
-			rowidVec := tableColInsBat.GetVectorByName(catalog.AttrRowID)
+			rowidVec := tableColInsBat.GetVectorByName(catalog.PhyAddrColumnName)
 			commitVec := tableColInsBat.GetVectorByName(catalog.AttrCommitTs)
 			for _, usercol := range tblNode.BaseNode.Schema.ColDefs {
 				rowidVec.Append(objectio.HackBytes2Rowid([]byte(fmt.Sprintf("%d-%s", entry.GetID(), usercol.Name))), false)
@@ -2196,7 +2125,7 @@ func (collector *BaseCollector) VisitTable(entry *catalog.TableEntry) (err error
 			tableDelTxnBat.GetVectorByName(
 				SnapshotAttr_TID).Append(entry.GetID(), false)
 
-			rowidVec := tableColDelBat.GetVectorByName(catalog.AttrRowID)
+			rowidVec := tableColDelBat.GetVectorByName(catalog.PhyAddrColumnName)
 			commitVec := tableColDelBat.GetVectorByName(catalog.AttrCommitTs)
 			pkVec := tableColDelBat.GetVectorByName(pkgcatalog.SystemColAttr_UniqName)
 			for _, usercol := range tblNode.BaseNode.Schema.ColDefs {

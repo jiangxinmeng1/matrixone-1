@@ -157,29 +157,38 @@ func TestSystemDB1(t *testing.T) {
 	require.NoError(t, err)
 	table, err := catalogDB.GetRelationByName(catalog.MO_DATABASE)
 	require.NoError(t, err)
-	it := table.MakeObjectIt()
+	it := table.MakeObjectIt(false)
+	tableSchema := table.GetMeta().(*catalog2.TableEntry).GetLastestSchema(false)
 	for it.Next() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemDBAttr_Name, common.DefaultAllocator)
-		require.Nil(t, err)
-		defer view.Close()
+		var view *containers.Batch
+		err := blk.Scan(p.Ctx, &view, 0, []int{
+			tableSchema.GetColIdx(catalog.SystemDBAttr_Name)}, common.DefaultAllocator)
 		require.Equal(t, 2, view.Length())
-		view, err = blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemDBAttr_CreateSQL, common.DefaultAllocator)
 		require.Nil(t, err)
-		defer view.Close()
+		view.Close()
+		view = nil
+		err = blk.Scan(p.Ctx, &view, 0, []int{
+			tableSchema.GetColIdx(catalog.SystemDBAttr_Name)}, common.DefaultAllocator)
+		require.Nil(t, err)
 		require.Equal(t, 2, view.Length())
+		view.Close()
 	}
 
 	table, err = catalogDB.GetRelationByName(catalog.MO_TABLES)
 	require.Nil(t, err)
-	it = table.MakeObjectIt()
+	it = table.MakeObjectIt(false)
 	for it.Next() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemRelAttr_Name, common.DefaultAllocator)
+		var view *containers.Batch
+		err := blk.Scan(p.Ctx, &view, 0, []int{
+			tableSchema.GetColIdx(catalog.SystemDBAttr_Name)}, common.DefaultAllocator)
 		require.Nil(t, err)
-		defer view.Close()
 		require.Equal(t, 1, view.Length())
-		view, err = blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemRelAttr_Kind, common.DefaultAllocator)
+		view.Close()
+		view = nil
+		err = blk.Scan(p.Ctx, &view, 0, []int{
+			tableSchema.GetColIdx(catalog.SystemDBAttr_Name)}, common.DefaultAllocator)
 		require.NoError(t, err)
 		defer view.Close()
 		require.Equal(t, 1, view.Length())
@@ -187,25 +196,16 @@ func TestSystemDB1(t *testing.T) {
 
 	table, err = catalogDB.GetRelationByName(catalog.MO_COLUMNS)
 	require.Nil(t, err)
-	bat := containers.NewBatch()
+	var bat *containers.Batch
 	defer bat.Close()
-	it = table.MakeObjectIt()
+	it = table.MakeObjectIt(false)
 	for it.Next() {
 		blk := it.GetObject()
-		view, err := blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemColAttr_DBName, common.DefaultAllocator)
+		err := blk.Scan(p.Ctx, &bat, 0, []int{
+			tableSchema.GetColIdx(catalog.SystemColAttr_DBName),
+			tableSchema.GetColIdx(catalog.SystemColAttr_RelName),
+			tableSchema.GetColIdx(catalog.SystemColAttr_Name)}, common.DefaultAllocator)
 		require.NoError(t, err)
-		defer view.Close()
-		bat.AddVector(catalog.SystemColAttr_DBName, view.Vecs[0])
-
-		view, err = blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemColAttr_RelName, common.DefaultAllocator)
-		require.Nil(t, err)
-		defer view.Close()
-		bat.AddVector(catalog.SystemColAttr_RelName, view.Vecs[0])
-
-		view, err = blk.GetColumnDataByName(p.Ctx, 0, catalog.SystemColAttr_Name, common.DefaultAllocator)
-		require.Nil(t, err)
-		defer view.Close()
-		bat.AddVector(catalog.SystemColAttr_Name, view.Vecs[0])
 	}
 	require.Equal(t, 3, bat.Length())
 	t.Log(bat.PPString(10))
@@ -281,7 +281,7 @@ func TestLogtailBasic(t *testing.T) {
 			txn, _ := tae.StartTxn(nil)
 			db, _ := txn.GetDatabase("db")
 			tbl, _ := db.GetRelationByName("test")
-			blkIt := tbl.MakeObjectIt()
+			blkIt := tbl.MakeObjectIt(false)
 			for blkIt.Next() {
 				obj := blkIt.GetObject()
 				id := obj.GetMeta().(*catalog2.ObjectEntry).ID()

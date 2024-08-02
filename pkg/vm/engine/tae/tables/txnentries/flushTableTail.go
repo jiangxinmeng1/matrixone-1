@@ -49,7 +49,7 @@ type flushTableTailEntry struct {
 	aobjHandles      []handle.Object
 	createdObjHandle handle.Object
 	createdMergeFile string
-	transMappings      api.TransferMaps
+	transMappings    api.TransferMaps
 
 	atombstonesMetas        []*catalog.ObjectEntry
 	atombstoneksHandles     []handle.Object
@@ -135,7 +135,7 @@ func (entry *flushTableTailEntry) addTransferPages(ctx context.Context) {
 		}
 		id := entry.aobjHandles[i].Fingerprint()
 		entry.pageIds = append(entry.pageIds, id)
-		objectIDs := []*objectio.ObjectId{entry.createdBlkHandles.GetID()}
+		objectIDs := []*objectio.ObjectId{entry.createdObjHandle.GetID()}
 		page := model.NewTransferHashPage(id, bts, isTransient, entry.rt.LocalFs.Service, model.GetTTL(), model.GetDiskTTL(), objectIDs)
 		page.Train(m)
 
@@ -213,8 +213,10 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(
 			blkID := objectio.NewBlockidWithObjectID(entry.createdObjHandle.GetID(), destpos.BlkIdx)
 			entry.delTbls[destpos.BlkIdx] = blkID
 			entry.rt.TransferDelsMap.SetDelsForBlk(*blkID, int(destpos.RowIdx), entry.txn.GetPrepareTS(), ts[i])
-			if err = entry.createdObjHandle.RangeDelete(
-				destpos.BlkIdx, destpos.RowIdx, destpos.RowIdx, 
+			id := entry.createdObjHandle.Fingerprint()
+			id.SetBlockOffset(uint16(destpos.BlkIdx))
+			if err = entry.createdObjHandle.GetRelation().RangeDelete(
+				id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 			); err != nil {
 				bat.Close()
 				return

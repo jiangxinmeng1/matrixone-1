@@ -332,6 +332,22 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 	return e
 }
 
+func (entry *ObjectEntry) IsVisibleInRange(start, end types.TS) bool {
+	if entry.IsAppendable() {
+		droppedTS := entry.GetDeleteAt()
+		return droppedTS.IsEmpty() || droppedTS.GreaterEq(&end)
+	} else {
+		createTS := entry.GetCreatedAt()
+		if createTS.Less(&start) || createTS.Greater(&end) {
+			return false
+		}
+		droppedTS := entry.GetDeleteAt()
+		if !droppedTS.IsEmpty() && droppedTS.Less(&end) {
+			return false
+		}
+		return true
+	}
+}
 func (entry *ObjectEntry) GetLocation() objectio.Location {
 	location := entry.ObjectStats.ObjectLocation()
 	return location

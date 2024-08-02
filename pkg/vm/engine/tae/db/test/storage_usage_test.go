@@ -423,7 +423,7 @@ func Test_EstablishFromCheckpoints(t *testing.T) {
 	var usageIns, usageDel []logtail.UsageData
 
 	for idx := 0; idx < version11Cnt; idx++ {
-		data := logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion11, common.DebugAllocator)
+		data := logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion12, common.DebugAllocator)
 		insBat := data.GetBatches()[logtail.StorageUsageInsIDX]
 		delBat := data.GetBatches()[logtail.StorageUsageDelIDX]
 
@@ -440,7 +440,7 @@ func Test_EstablishFromCheckpoints(t *testing.T) {
 		}
 
 		ckps = append(ckps, data)
-		vers = append(vers, logtail.CheckpointVersion11)
+		vers = append(vers, logtail.CheckpointVersion12)
 	}
 
 	memo := logtail.NewTNUsageMemo(nil)

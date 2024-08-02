@@ -55,7 +55,7 @@ var FlushTableTailTaskFactory = func(
 	metas, tombstones []*catalog.ObjectEntry, rt *dbutils.Runtime, endTs types.TS, /* end of dirty range*/
 ) tasks.TxnTaskFactory {
 	return func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-txn.GetMemo().IsFlushOrMerge = true
+		txn.GetMemo().IsFlushOrMerge = true
 		return NewFlushTableTailTask(ctx, txn, metas, tombstones, rt, endTs)
 	}
 }
@@ -237,7 +237,6 @@ func NewFlushTableTailTask(
 		}
 	}
 
-	task.transMappings = mergesort.NewBlkTransferBooking(len(task.aObjHandles))
 	task.doTransfer = !strings.Contains(task.schema.Comment, pkgcatalog.MO_COMMENT_NO_DEL_HINT)
 	if task.doTransfer {
 		task.transMappings = make(api.TransferMaps, len(task.aObjHandles))

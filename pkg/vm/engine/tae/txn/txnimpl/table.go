@@ -1073,7 +1073,7 @@ func (tbl *txnTable) tryGetCurrentObjectBF(
 func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, dedupAfterSnapshotTS bool) (err error) {
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
-	it := tbl.entry.MakeObjectIt(false)
+	it := tbl.entry.MakeObjectIt(true)
 	defer it.Release()
 	maxObjectHint := uint64(0)
 	maxNAObjectHint := uint64(0)

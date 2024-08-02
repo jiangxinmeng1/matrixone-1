@@ -15,10 +15,25 @@
 package tables
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+)
+
+func init() {
+	district = make(map[int32]types.Decimal64)
+}
+
+var (
+	district  map[int32]types.Decimal64
+	globalYtd types.Decimal64
+	prevTID   string
 )
 
 type objectAppender struct {
@@ -108,6 +123,24 @@ func (appender *objectAppender) ReplayAppend(
 	appender.obj.meta.Load().GetTable().AddRows(uint64(bat.Length()))
 	return
 }
+
+func checkWareHouse(scale int32) {
+	totalCount := types.Decimal64(0)
+	if len(district) == 500 {
+		for _, dytd := range district {
+			totalCount, _, _ = totalCount.Add(dytd, scale, scale)
+		}
+		if totalCount != globalYtd {
+			s := ""
+			for i, num := range district {
+				s = fmt.Sprintf("%v %v-%v", s, i, num.Format(scale))
+			}
+			panic(fmt.Sprintf("map %v, total %v %v", s, totalCount, globalYtd))
+		}
+	} else {
+		logutil.Infof("lalala len %d, map %v", len(district), district)
+	}
+}
 func (appender *objectAppender) ApplyAppend(
 	bat *containers.Batch,
 	blkOffset uint16,
@@ -121,6 +154,46 @@ func (appender *objectAppender) ApplyAppend(
 	from, err = node.ApplyAppend(bat, txn, blkOffset)
 
 	schema := node.getwrteSchema()
+	if txn != nil {
+		if strings.Contains(schema.Name, "bmsql_warehouse") {
+			w_idVec := bat.GetVectorByName("w_id")
+			w_ytdVec := bat.GetVectorByName("w_ytd")
+			for i := 0; i < bat.Length(); i++ {
+				wid := w_idVec.Get(i).(int32)
+				wytd := w_ytdVec.Get(i).(types.Decimal64)
+				if wid == 1 {
+					logutil.Infof("append %v id=1 ytd=%v, txn %x %v %v",
+						schema.Name, wytd.Format(w_ytdVec.GetType().Scale),
+						txn.GetID(), txn.GetStartTS().ToString(), txn.GetCommitTS().ToString())
+					if txn.GetID() != prevTID {
+						checkWareHouse(w_ytdVec.GetType().Scale)
+						prevTID = txn.GetID()
+					}
+					globalYtd = wytd
+				}
+			}
+		}
+		if strings.Contains(schema.Name, "bmsql_district") {
+			w_idVec := bat.GetVectorByName("d_id")
+			w_widVec := bat.GetVectorByName("d_w_id")
+			w_ytdVec := bat.GetVectorByName("d_ytd")
+			for i := 0; i < bat.Length(); i++ {
+				id := w_idVec.Get(i).(int32)
+				wid := w_widVec.Get(i).(int32)
+				wytd := w_ytdVec.Get(i).(types.Decimal64)
+				if wid == 1 {
+					logutil.Infof("append %v id=1 %d ytd=%v, txn %x %v %v",
+						schema.Name, id, wytd.Format(w_ytdVec.GetType().Scale),
+						txn.GetID(), txn.GetStartTS().ToString(), txn.GetCommitTS().ToString())
+					if txn.GetID() != prevTID {
+						checkWareHouse(w_ytdVec.GetType().Scale)
+						prevTID = txn.GetID()
+					}
+					district[id] = wytd
+				}
+			}
+		}
+	}
 	for _, colDef := range schema.ColDefs {
 		if colDef.IsPhyAddr() {
 			continue

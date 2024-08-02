@@ -17,6 +17,7 @@ package updates
 import (
 	"fmt"
 	"io"
+	"strings"
 	"sync/atomic"
 
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -236,6 +237,29 @@ func (node *DeleteNode) IsPersistedDeletedNode() bool {
 func (node *DeleteNode) ApplyCommit(id string) (err error) {
 	node.chain.Load().mvcc.Lock()
 	defer node.chain.Load().mvcc.Unlock()
+	obj := node.chain.Load().mvcc.meta
+	schema := obj.GetTable().GetLastestSchema()
+	if strings.Contains(schema.Name, "bmsql_warehouse") {
+		for _, pkVec := range node.rowid2PK {
+			if pkVec.Get(0).(int32) == 1 {
+				logutil.Infof("delete %v, wid = 1, txn %x %v %v",
+					schema.Name, node.Txn.GetID(), node.Txn.GetStartTS().ToString(), node.Txn.GetCommitTS().ToString())
+			}
+		}
+	}
+	if strings.Contains(schema.Name, "bmsql_district") {
+		for _, pkVec := range node.rowid2PK {
+			buf := pkVec.Get(0).([]byte)
+			tuple, err := types.Unpack(buf)
+			if err != nil {
+				panic(err)
+			}
+			if tuple[0] == int32(1) {
+				logutil.Infof("delete %v, wid = 1, dwid = %v, txn %x %v %v",
+					schema.Name, tuple.String(), node.Txn.GetID(), node.Txn.GetStartTS().ToString(), node.Txn.GetCommitTS().ToString())
+			}
+		}
+	}
 	_, err = node.TxnMVCCNode.ApplyCommit(id)
 	if err != nil {
 		return

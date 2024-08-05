@@ -262,7 +262,7 @@ func (e *Engine) GetLatestCatalogCache() *cache.CatalogCache {
 func (e *Engine) getOrCreateSnapPart(
 	ctx context.Context,
 	tbl *txnTable,
-	ts types.TS) (*logtailreplay.PartitionState, error) {
+	ts types.TS) (*logtailreplay.PartitionStateInProgress, error) {
 
 	//check whether the latest partition is available for reuse.
 	// if the snapshot-read's ts is too old , subscribing table maybe timeout.
@@ -302,7 +302,7 @@ func (e *Engine) getOrCreateSnapPart(
 	}
 	snap.ConsumeSnapCkps(ctx, ckps, func(
 		checkpoint *checkpoint.CheckpointEntry,
-		state *logtailreplay.PartitionState) error {
+		state *logtailreplay.PartitionStateInProgress) error {
 		locs := make([]string, 0)
 		locs = append(locs, checkpoint.GetLocation().String())
 		locs = append(locs, strconv.Itoa(int(checkpoint.GetVersion())))
@@ -398,7 +398,7 @@ func (e *Engine) LazyLoadLatestCkp(
 
 	if err := part.ConsumeCheckpoints(
 		ctx,
-		func(checkpoint string, state *logtailreplay.PartitionState) error {
+		func(checkpoint string, state *logtailreplay.PartitionStateInProgress) error {
 			entries, closeCBs, err := logtail.LoadCheckpointEntries(
 				ctx,
 				e.service,

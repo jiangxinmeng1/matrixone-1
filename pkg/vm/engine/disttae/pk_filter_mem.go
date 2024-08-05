@@ -39,7 +39,7 @@ type memPKFilter struct {
 func newMemPKFilter(
 	tableDef *plan.TableDef,
 	ts timestamp.Timestamp,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	packerPool *fileservice.Pool[*types.Packer],
 	basePKFilter basePKFilter,
 ) (filter memPKFilter) {

@@ -223,7 +223,7 @@ func (tbl *txnTable) Size(ctx context.Context, columnName string) (uint64, error
 }
 
 func ForeachVisibleDataObject(
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	ts types.TS,
 	fn func(obj logtailreplay.ObjectEntry) error,
 	executor ConcurrentExecutor,
@@ -266,7 +266,7 @@ func (tbl *txnTable) ApproxObjectsNum(ctx context.Context) int {
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
 	var (
 		err  error
-		part *logtailreplay.PartitionState
+		part *logtailreplay.PartitionStateInProgress
 	)
 	if part, err = tbl.getPartitionState(ctx); err != nil {
 		return nil, nil, err
@@ -453,7 +453,7 @@ func (tbl *txnTable) GetColumMetadataScanInfo(ctx context.Context, name string) 
 	return infoList, nil
 }
 
-func (tbl *txnTable) GetDirtyPersistedBlks(state *logtailreplay.PartitionState) []types.Blockid {
+func (tbl *txnTable) GetDirtyPersistedBlks(state *logtailreplay.PartitionStateInProgress) []types.Blockid {
 	tbl.getTxn().blockId_tn_delete_metaLoc_batch.RLock()
 	defer tbl.getTxn().blockId_tn_delete_metaLoc_batch.RUnlock()
 
@@ -506,7 +506,7 @@ func (tbl *txnTable) LoadDeletesForBlock(bid types.Blockid, offsets *[]int64) (e
 
 // LoadDeletesForMemBlocksIn loads deletes for memory blocks whose data resides in PartitionState.rows
 func (tbl *txnTable) LoadDeletesForMemBlocksIn(
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	deletesRowId map[types.Rowid]uint8) error {
 
 	tbl.getTxn().blockId_tn_delete_metaLoc_batch.RLock()
@@ -643,7 +643,7 @@ func (tbl *txnTable) Ranges(ctx context.Context, exprs []*plan.Expr, txnOffset i
 	ranges = &blocks
 
 	// get the table's snapshot
-	var part *logtailreplay.PartitionState
+	var part *logtailreplay.PartitionStateInProgress
 	if part, err = tbl.getPartitionState(ctx); err != nil {
 		return
 	}
@@ -686,7 +686,7 @@ var slowPathCounter atomic.Int64
 // notice that only clean blocks can be distributed into remote CNs.
 func (tbl *txnTable) rangesOnePart(
 	ctx context.Context,
-	state *logtailreplay.PartitionState, // snapshot state of this transaction
+	state *logtailreplay.PartitionStateInProgress, // snapshot state of this transaction
 	tableDef *plan.TableDef, // table definition (schema)
 	exprs []*plan.Expr, // filter expression
 	outBlocks *objectio.BlockInfoSlice, // output marshaled block list after filtering
@@ -915,7 +915,7 @@ func (tbl *txnTable) collectUnCommittedObjects(txnOffset int) []objectio.ObjectS
 }
 
 func (tbl *txnTable) collectDirtyBlocks(
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	uncommittedObjects []objectio.ObjectStats,
 	txnOffset int, // Transaction writes offset used to specify the starting position for reading data.
 ) map[types.Blockid]struct{} {
@@ -1949,7 +1949,7 @@ func (tbl *txnTable) newReader(
 
 func (tbl *txnTable) getPartitionState(
 	ctx context.Context,
-) (*logtailreplay.PartitionState, error) {
+) (*logtailreplay.PartitionStateInProgress, error) {
 	if !tbl.db.op.IsSnapOp() {
 		if tbl._partState.Load() == nil {
 			ps, err := tbl.tryToSubscribe(ctx)
@@ -1978,7 +1978,7 @@ func (tbl *txnTable) getPartitionState(
 	return tbl._partState.Load(), nil
 }
 
-func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.PartitionState, err error) {
+func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.PartitionStateInProgress, err error) {
 	defer func() {
 		if err == nil {
 			tbl.getTxn().engine.globalStats.notifyLogtailUpdate(tbl.tableId)
@@ -1994,7 +1994,7 @@ func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.Part
 }
 
 func (tbl *txnTable) PKPersistedBetween(
-	p *logtailreplay.PartitionState,
+	p *logtailreplay.PartitionStateInProgress,
 	from types.TS,
 	to types.TS,
 	keys *vector.Vector,
@@ -2211,7 +2211,7 @@ func (tbl *txnTable) PrimaryKeysMayBeModified(
 // TODO::refactor in next PR
 func (tbl *txnTable) transferDeletes(
 	ctx context.Context,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	deleteObjs,
 	createObjs map[objectio.ObjectNameShort]struct{}) error {
 	var blks []objectio.BlockInfo
@@ -2496,7 +2496,7 @@ func (tbl *txnTable) MergeObjects(ctx context.Context, objstats []objectio.Objec
 		return nil, err
 	}
 
-	err = mergesort.DoMergeAndWrite(ctx, tbl.getTxn().op.Txn().DebugString(), sortkeyPos, taskHost,false)
+	err = mergesort.DoMergeAndWrite(ctx, tbl.getTxn().op.Txn().DebugString(), sortkeyPos, taskHost, false)
 	if err != nil {
 		taskHost.commitEntry.Err = err.Error()
 		return taskHost.commitEntry, err

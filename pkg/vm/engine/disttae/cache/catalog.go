@@ -15,6 +15,8 @@
 package cache
 
 import (
+	"fmt"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"sort"
 	"strings"
 	"sync"
@@ -627,6 +629,7 @@ func (cc *CatalogCache) InsertDatabase(bat *batch.Batch) {
 }
 
 func ParseDatabaseBatchAnd(bat *batch.Batch, f func(*DatabaseItem)) {
+	fmt.Println(common.MoBatchToString(bat, 1000))
 	rowids := vector.MustFixedCol[types.Rowid](bat.GetVector(MO_ROWID_IDX))
 	timestamps := vector.MustFixedCol[types.TS](bat.GetVector(MO_TIMESTAMP_IDX))
 	accounts := vector.MustFixedCol[uint32](bat.GetVector(catalog.MO_DATABASE_ACCOUNT_ID_IDX + MO_OFF))

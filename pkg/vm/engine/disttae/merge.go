@@ -44,7 +44,7 @@ type cnMergeTask struct {
 	host   *txnTable
 	// txn
 	snapshot types.TS // start ts, fixed
-	state    *logtailreplay.PartitionState
+	state    *logtailreplay.PartitionStateInProgress
 	proc     *process.Process
 
 	// schema
@@ -77,7 +77,7 @@ func newCNMergeTask(
 	ctx context.Context,
 	tbl *txnTable,
 	snapshot types.TS,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	sortkeyPos int,
 	sortkeyIsPK bool,
 	targets []logtailreplay.ObjectInfo,
@@ -252,7 +252,7 @@ func (t *cnMergeTask) prepareCommitEntry() *api.MergeCommitEntry {
 }
 
 func (t *cnMergeTask) PrepareNewWriter() *blockio.BlockWriter {
-	return mergesort.GetNewWriter(t.fs, t.version, t.colseqnums, t.sortkeyPos, t.sortkeyIsPK, false)// TODO obj.isTombstone
+	return mergesort.GetNewWriter(t.fs, t.version, t.colseqnums, t.sortkeyPos, t.sortkeyIsPK, false) // TODO obj.isTombstone
 }
 
 // readblock reads block data. there is no rowid column, no ablk

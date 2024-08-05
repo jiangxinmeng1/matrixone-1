@@ -760,7 +760,7 @@ type txnTable struct {
 	tableDef      *plan.TableDef
 	seqnums       []uint16
 	typs          []types.Type
-	_partState    atomic.Pointer[logtailreplay.PartitionState]
+	_partState    atomic.Pointer[logtailreplay.PartitionStateInProgress]
 	primaryIdx    int // -1 means no primary key
 	primarySeqnum int // -1 means no primary key
 	clusterByIdx  int // -1 means no clusterBy key

@@ -1091,12 +1091,14 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	maxBlockID := uint16(0)
 	debugStr := ""
 	dedupedCount := 0
-	var skipDuration, indexDuration, dedupDuration time.Duration
+	visibleCount := 0
+	var skipDuration, skipDuration2, updateHintDuration, indexDuration, dedupDuration time.Duration
 	for it.Next() {
 		tSkip := time.Now()
 		obj := it.Item()
 		objCount++
 		updateObjectHintFn := func() {
+			tHint := time.Now()
 			ObjectHint := obj.SortHint
 			// the last appendable obj is appending and shouldn't be skipped
 			// the max object hint should equal id of last aobj
@@ -1114,6 +1116,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 					maxNAObjectHint = ObjectHint
 				}
 			}
+			updateHintDuration += time.Since(tHint)
 		}
 		if !obj.IsVisible(tbl.store.txn) {
 			if obj.HasDropCommitted() {
@@ -1122,16 +1125,19 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			skipDuration += time.Since(tSkip)
 			continue
 		}
+		visibleCount++
 		updateObjectHintFn()
+		skipDuration += time.Since(tSkip)
 		objData := obj.GetObjectData()
 		if objData == nil {
 			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))
 		}
+		tSnapshotDedup := time.Now()
 		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
-			skipDuration += time.Since(tSkip)
+			skipDuration2 += time.Since(tSnapshotDedup)
 			continue
 		}
-		skipDuration += time.Since(tSkip)
+		skipDuration2 += time.Since(tSnapshotDedup)
 		tIndex := time.Now()
 		dedupedCount++
 		debugStr = fmt.Sprintf("%s,%v,%v,%v,%v;",
@@ -1205,6 +1211,8 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			zap.Duration("dedup", duration),
 			zap.String("debugstr", debugStr),
 			zap.Duration("skip", skipDuration),
+			zap.Duration("skip2", skipDuration2),
+			zap.Int("visible count", visibleCount),
 			zap.Duration("index", indexDuration),
 			zap.Duration("dedup", dedupDuration),
 		)

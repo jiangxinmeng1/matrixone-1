@@ -135,7 +135,7 @@ func TestHandle_HandleCommitPerformanceForS3Load(t *testing.T) {
 	assert.Nil(t, err)
 	entries = append(entries, createDbEntries...)
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	for i := 0; i < len(defs); i++ {
 		if attrdef, ok := defs[i].(*engine.AttributeDef); ok {
 			attrdef.Attr.Default = &plan.Default{
@@ -316,7 +316,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	assert.Nil(t, err)
 	entries = append(entries, createDbEntries...)
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	for i := 0; i < len(defs); i++ {
 		if attrdef, ok := defs[i].(*engine.AttributeDef); ok {
 			attrdef.Attr.Default = &plan.Default{
@@ -636,7 +636,7 @@ func TestHandle_HandlePreCommit1PC(t *testing.T) {
 	assert.Nil(t, err)
 
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	for i := 0; i < len(defs); i++ {
 		if attrdef, ok := defs[i].(*engine.AttributeDef); ok {
 			attrdef.Attr.Default = &plan.Default{
@@ -885,7 +885,7 @@ func TestHandle_HandlePreCommit2PCForCoordinator(t *testing.T) {
 	assert.Nil(t, err)
 
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	defs[0].(*engine.AttributeDef).Attr.Default = &plan.Default{
 		NullAbility: true,
 		Expr: &plan.Expr{
@@ -1185,7 +1185,7 @@ func TestHandle_HandlePreCommit2PCForParticipant(t *testing.T) {
 	assert.Nil(t, err)
 
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	defs[0].(*engine.AttributeDef).Attr.Default = &plan.Default{
 		NullAbility: true,
 		Expr: &plan.Expr{
@@ -1544,7 +1544,7 @@ func TestHandle_MVCCVisibility(t *testing.T) {
 	wg.Wait()
 
 	//create table from "dbtest"
-	defs, err := SchemaToDefs(schema)
+	defs, err := catalog.SchemaToDefs(schema)
 	defs[0].(*engine.AttributeDef).Attr.Default = &plan.Default{
 		NullAbility: true,
 		Expr: &plan.Expr{

@@ -64,7 +64,7 @@ func BatchToString(name string, bat *containers.Batch, isSpecialRowID bool) stri
 	_, _ = w.WriteString(fmt.Sprintf("[BatchName=%s]\n", name))
 	for i, vec := range bat.Vecs {
 		_, _ = w.WriteString(fmt.Sprintf("(attr=%s)", bat.Attrs[i]))
-		if bat.Attrs[i] == catalog.AttrRowID {
+		if bat.Attrs[i] == catalog.PhyAddrColumnName {
 			if isSpecialRowID {
 				_, _ = w.WriteString(ToStringTemplate(vec, common.DefaultMaxRowsToPrint, common.WithSpecialRowid{}))
 			} else {
@@ -83,7 +83,7 @@ func makeRespBatchFromSchema(schema *catalog.Schema, mp *mpool.MPool) *container
 	bat := containers.NewBatch()
 
 	bat.AddVector(
-		catalog.AttrRowID,
+		catalog.PhyAddrColumnName,
 		containers.MakeVector(types.T_Rowid.ToType(), mp),
 	)
 	bat.AddVector(

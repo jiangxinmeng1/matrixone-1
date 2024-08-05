@@ -60,6 +60,7 @@ var getDuplicatedRowIDNABlkFunctions = map[types.T]any{
 	types.T_varbinary: getDuplicatedRowIDsNABlkBytesFunc,
 	types.T_json:      getDuplicatedRowIDsNABlkBytesFunc,
 	types.T_text:      getDuplicatedRowIDsNABlkBytesFunc,
+	types.T_datalink:  getDuplicatedRowIDsNABlkBytesFunc,
 
 	types.T_array_float32: getDuplicatedRowIDsNABlkBytesFunc,
 	types.T_array_float64: getDuplicatedRowIDsNABlkBytesFunc,
@@ -98,6 +99,7 @@ var getRowIDAlkFunctions = map[types.T]any{
 	types.T_varbinary: getDuplicatedRowIDABlkBytesFunc,
 	types.T_json:      getDuplicatedRowIDABlkBytesFunc,
 	types.T_text:      getDuplicatedRowIDABlkBytesFunc,
+	types.T_datalink:  getDuplicatedRowIDABlkBytesFunc,
 
 	types.T_array_float32: getDuplicatedRowIDABlkBytesFunc,
 	types.T_array_float64: getDuplicatedRowIDABlkBytesFunc,

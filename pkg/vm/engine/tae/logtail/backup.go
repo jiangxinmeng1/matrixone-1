@@ -370,7 +370,7 @@ func applyDelete(dataBatch *batch.Batch, deleteBatch *batch.Batch, id string) er
 }
 
 func updateBlockMeta(blkMeta, blkMetaTxn *containers.Batch, row int, blockID types.Blockid, location objectio.Location, sort bool) {
-	blkMeta.GetVectorByName(catalog2.AttrRowID).Update(
+	blkMeta.GetVectorByName(catalog2.PhyAddrColumnName).Update(
 		row,
 		objectio.HackBlockid2Rowid(&blockID),
 		false)

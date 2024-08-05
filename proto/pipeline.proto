@@ -187,6 +187,7 @@ message PreInsertSecondaryIndex{
 }
 
 message OnDuplicateKey{
+  // letter case: origin
   repeated string attrs = 1;
   int32 insert_col_count = 2;
   repeated plan.Expr unique_col_check_expr = 3;
@@ -392,6 +393,10 @@ message ValueScan {
 
 }
 
+message UnionAll {
+
+}
+
 message SampleFunc {
   enum SampleType {
     Rows = 0;
@@ -456,6 +461,7 @@ message Instruction{
   ProductL2 product_l2 = 44;
   TableScan table_scan = 45;
   ValueScan value_scan = 46;
+  UnionAll union_all = 47;
 }
 
 message AnalysisList {

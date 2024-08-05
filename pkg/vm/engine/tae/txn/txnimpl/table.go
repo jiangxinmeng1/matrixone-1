@@ -1093,7 +1093,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	dedupedCount := 0
 	visibleCount := 0
 	var skipDuration, skipDuration2, skipDurationTotal, updateHintDuration, indexDuration, dedupDuration time.Duration
-	var blkCountDuration time.Duration
+	var blkCountDuration, maxBlockCount time.Duration
 	for it.Next() {
 		tSkip := time.Now()
 		obj := it.Item()
@@ -1109,7 +1109,12 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 					maxObjectHint = ObjectHint
 					tBLKCount := time.Now()
 					blkCount := obj.BlockCnt()
-					blkCountDuration += time.Since(tBLKCount)
+					dur := time.Since(tBLKCount)
+					if dur > maxBlockCount {
+						maxBlockCount = dur
+						debugStr = fmt.Sprintf("%s;blkcount%v%d,%v", debugStr, obj.IsAppendable(), blkCount, obj.DeletedAt.ToString())
+					}
+					blkCountDuration += dur
 					if blkCount > 0 {
 						maxBlockID = uint16(blkCount - 1)
 					}
@@ -1224,6 +1229,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			zap.Int("visible count", visibleCount),
 			zap.Duration("index", indexDuration),
 			zap.Duration("dedup", dedupDuration),
+			zap.Duration("max blkcount duration", maxBlockCount),
 		)
 	}
 	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)

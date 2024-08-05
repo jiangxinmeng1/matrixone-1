@@ -4131,7 +4131,9 @@ func TestBlockRead(t *testing.T) {
 			objStats := blkEntry.ObjectMVCCNode
 			assert.False(t, objStats.IsEmpty())
 
-			bid, sid := blkEntry.ID(), blkEntry.ID()
+			testDS := NewTestBlockReadSource(objStats.ObjectLocation())
+			ds := logtail.NewDeltaLocDataSource(ctx, tae.DB.Runtime.Fs.Service, beforeDel, testDS)
+			bid, _ := blkEntry.ID(), blkEntry.ID()
 
 			info := &objectio.BlockInfo{
 				BlockID:    *objectio.NewBlockidWithObjectID(bid, 0),

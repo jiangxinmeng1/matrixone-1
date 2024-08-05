@@ -1092,7 +1092,8 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	debugStr := ""
 	dedupedCount := 0
 	visibleCount := 0
-	var skipDuration, skipDuration2, updateHintDuration, indexDuration, dedupDuration time.Duration
+	var skipDuration, skipDuration2, skipDurationTotal, updateHintDuration, indexDuration, dedupDuration time.Duration
+	var blkCountDuration time.Duration
 	for it.Next() {
 		tSkip := time.Now()
 		obj := it.Item()
@@ -1106,7 +1107,9 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			if obj.IsAppendable() {
 				if ObjectHint > maxObjectHint {
 					maxObjectHint = ObjectHint
+					tBLKCount := time.Now()
 					blkCount := obj.BlockCnt()
+					blkCountDuration += time.Since(tBLKCount)
 					if blkCount > 0 {
 						maxBlockID = uint16(blkCount - 1)
 					}
@@ -1123,6 +1126,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 				updateObjectHintFn()
 			}
 			skipDuration += time.Since(tSkip)
+			skipDurationTotal += time.Since(tSkip)
 			continue
 		}
 		visibleCount++
@@ -1135,9 +1139,11 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		tSnapshotDedup := time.Now()
 		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
 			skipDuration2 += time.Since(tSnapshotDedup)
+			skipDurationTotal += time.Since(tSkip)
 			continue
 		}
 		skipDuration2 += time.Since(tSnapshotDedup)
+		skipDurationTotal += time.Since(tSkip)
 		tIndex := time.Now()
 		dedupedCount++
 		debugStr = fmt.Sprintf("%s,%v,%v,%v,%v;",
@@ -1191,7 +1197,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		}
 		dedupDuration += time.Since(tDedup)
 		duration := time.Since(t1)
-		if duration > time.Millisecond {
+		if duration > time.Millisecond*20 {
 			logutil.Warn(
 				"SLOW-LOG",
 				zap.String("txn", tbl.store.txn.Repr()),
@@ -1202,7 +1208,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 		}
 	}
 	duration := time.Since(t0)
-	if duration > time.Millisecond*5 {
+	if duration > time.Millisecond*50 {
 		logutil.Warn(
 			"SLOW-LOG",
 			zap.String("txn", tbl.store.txn.Repr()),
@@ -1212,6 +1218,9 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			zap.String("debugstr", debugStr),
 			zap.Duration("skip", skipDuration),
 			zap.Duration("skip2", skipDuration2),
+			zap.Duration("skip total", skipDurationTotal),
+			zap.Duration("blk count", blkCountDuration),
+			zap.Duration("update hint", updateHintDuration),
 			zap.Int("visible count", visibleCount),
 			zap.Duration("index", indexDuration),
 			zap.Duration("dedup", dedupDuration),

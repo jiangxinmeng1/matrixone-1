@@ -1135,7 +1135,7 @@ func (ls *LocalDataSource) batchPrefetch(seqNums []uint16) {
 	// prefetch blk delta location
 	for idx := begin; idx < end; idx++ {
 		if loc, _, ok := ls.pState.GetBockDeltaLoc(ls.rangeSlice.Get(idx).BlockID); ok {
-			if err = blockio.PrefetchTombstone(
+			if err = blockio.Prefetch(
 				ls.table.proc.Load().GetService(), []uint16{0, 1, 2},
 				[]uint16{objectio.Location(loc[:]).ID()}, ls.fs, objectio.Location(loc[:])); err != nil {
 				logutil.Errorf("prefetch block delta location: %s", err.Error())

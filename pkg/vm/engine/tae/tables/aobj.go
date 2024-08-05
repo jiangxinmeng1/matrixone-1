@@ -137,9 +137,7 @@ func (obj *aobject) PPString(level common.PPLevel, depth int, prefix string, blk
 	return s
 }
 func (obj *aobject) BlockCnt() int {
-	obj.RLock()
-	defer obj.RUnlock()
-	return obj.node.Load().MustMNode().blockCnt()
+	return obj.node.Load().MustMNode().coarseBlockCnt()
 }
 func (obj *aobject) IsAppendable(checkBlkCount bool) bool {
 	if obj.IsAppendFrozen() {

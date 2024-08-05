@@ -17,6 +17,7 @@ package tables
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -650,6 +651,7 @@ type objectMemoryNode struct {
 	common.RefHelper
 	blkMemoryNodes []*memoryNode
 	writeSchema    *catalog.Schema
+	blkCount       atomic.Int32
 }
 
 func newObjectMemoryNode(obj *aobject) *objectMemoryNode {
@@ -711,6 +713,7 @@ func (node *objectMemoryNode) registerNodeLocked() *memoryNode {
 	}
 	blkNode := newMemoryNode(node.obj, uint16(len(node.blkMemoryNodes)))
 	node.blkMemoryNodes = append(node.blkMemoryNodes, blkNode)
+	node.blkCount.Store(int32(len(node.blkMemoryNodes)))
 	return blkNode
 }
 func (node *objectMemoryNode) checkBlockCountLocked() bool {
@@ -859,4 +862,7 @@ func (node *objectMemoryNode) getwrteSchema() *catalog.Schema {
 }
 func (node *objectMemoryNode) blockCnt() int {
 	return len(node.blkMemoryNodes)
+}
+func (node *objectMemoryNode) coarseBlockCnt()int{
+	return int(node.blkCount.Load())
 }

@@ -1142,7 +1142,8 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))
 		}
 		tSnapshotDedup := time.Now()
-		if dedupAfterSnapshotTS && objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
+		committed, blkOffset := objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS())
+		if dedupAfterSnapshotTS && committed {
 			skipDuration2 += time.Since(tSnapshotDedup)
 			skipDurationTotal += time.Since(tSkip)
 			continue
@@ -1194,7 +1195,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			rowmask,
 			false,
 			bf,
-			0,
+			blkOffset+1,
 			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
@@ -1267,8 +1268,8 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 			// if it is in the incremental deduplication scenario
 			// coarse check whether all rows in this block are committed before the snapshot timestamp
 			// if true, skip this block's deduplication
-			if dedupAfterSnapshotTS &&
-				objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS()) {
+			committed, blkOffset := objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS())
+			if dedupAfterSnapshotTS && committed {
 				continue
 			}
 
@@ -1310,7 +1311,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 				rowmask,
 				false,
 				objectio.BloomFilter{},
-				0,
+				blkOffset+1,
 				common.WorkspaceAllocator,
 			); err != nil {
 				// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)

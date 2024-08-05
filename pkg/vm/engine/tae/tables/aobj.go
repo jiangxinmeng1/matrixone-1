@@ -322,11 +322,9 @@ func (obj *aobject) resolveColumnDatas(
 // here we assume that the ts is greater equal than the block's
 // create ts and less than the block's delete ts
 // it is a coarse-grained check
-func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
+func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) (bool, uint16) {
 	// if the block is not frozen, always return false
-	if !obj.IsAppendFrozen() {
-		return false
-	}
+	freeze := obj.IsAppendFrozen()
 
 	node := obj.PinNode()
 	defer node.Unref()
@@ -334,12 +332,14 @@ func (obj *aobject) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
 	// if the block is in memory, check with the in-memory node
 	// it is a fine-grained check if the block is in memory
 	if !node.IsPersisted() {
-		return node.MustMNode().allRowsCommittedBefore(ts)
+		obj.RLock()
+		defer obj.RUnlock()
+		return node.MustMNode().allRowsCommittedBeforeLocked(ts, freeze)
 	}
 
 	// always return false for if the block is persisted
 	// it is a coarse-grained check
-	return false
+	return false, 0
 }
 
 func (obj *aobject) resolveColumnData(

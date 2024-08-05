@@ -121,9 +121,9 @@ func (obj *object) GetColumnDataById(
 		mp,
 	)
 }
-func (obj *object) CoarseCheckAllRowsCommittedBefore(ts types.TS) bool {
+func (obj *object) CoarseCheckAllRowsCommittedBefore(ts types.TS) (bool, uint16) {
 	creatTS := obj.meta.Load().GetCreatedAt()
-	return creatTS.Less(&ts)
+	return creatTS.Less(&ts), 0
 }
 
 func (obj *object) BatchDedup(

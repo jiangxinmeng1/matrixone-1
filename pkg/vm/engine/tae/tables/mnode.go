@@ -839,10 +839,23 @@ func (node *objectMemoryNode) resolveInMemoryColumnData(
 ) (view *containers.Batch, err error) {
 	return node.getMemoryNode(blkID).resolveInMemoryColumnData(txn, readSchema, col, skipDeletes, mp)
 }
-func (node *objectMemoryNode) allRowsCommittedBefore(ts types.TS) bool {
-	node.obj.RLock()
-	defer node.obj.RUnlock()
-	return node.getLastNode().allRowsCommittedBefore(ts)
+func (node *objectMemoryNode) allRowsCommittedBeforeLocked(ts types.TS, freeze bool) (allCommitted bool, lastCommittedBlkOffset uint16) {
+	if freeze {
+		ok := node.getLastNode().allRowsCommittedBefore(ts)
+		if ok {
+			return true, 0
+		}
+	}
+	if len(node.blkMemoryNodes) == 1 {
+		return false, 0
+	}
+	lastIdx := len(node.blkMemoryNodes) - 2
+	for i := lastIdx; i >= 0; i-- {
+		if node.blkMemoryNodes[i].allRowsCommittedBefore(ts) {
+			return false, uint16(i)
+		}
+	}
+	return false, 0
 }
 func (node *objectMemoryNode) resolveInMemoryColumnDatas(
 	ctx context.Context,
@@ -863,6 +876,6 @@ func (node *objectMemoryNode) getwrteSchema() *catalog.Schema {
 func (node *objectMemoryNode) blockCnt() int {
 	return len(node.blkMemoryNodes)
 }
-func (node *objectMemoryNode) coarseBlockCnt()int{
+func (node *objectMemoryNode) coarseBlockCnt() int {
 	return int(node.blkCount.Load())
 }

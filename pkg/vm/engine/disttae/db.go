@@ -414,7 +414,9 @@ func (e *Engine) LazyLoadLatestCkp(
 			}
 			defer func() {
 				for _, cb := range closeCBs {
-					cb()
+					if cb != nil {
+						cb()
+					}
 				}
 			}()
 			for _, entry := range entries {

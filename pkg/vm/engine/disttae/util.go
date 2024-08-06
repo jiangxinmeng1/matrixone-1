@@ -1481,7 +1481,7 @@ func ForeachSnapshotObjects(
 		return
 	}
 
-	iter, err := tableSnapshot.NewObjectsIter(types.TimestampToTS(ts), true)
+	iter, err := tableSnapshot.NewObjectsIter(types.TimestampToTS(ts), true, false)
 	if err != nil {
 		return
 	}

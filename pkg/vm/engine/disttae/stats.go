@@ -527,7 +527,7 @@ func (gs *GlobalStats) updateTableStats(key pb.StatsInfoKey) {
 	}
 
 	partitionState := gs.engine.GetOrCreateLatestPart(key.DatabaseID, key.TableID).Snapshot()
-	approxObjectNum := int64(partitionState.ApproxObjectsNum())
+	approxObjectNum := int64(partitionState.ApproxDataObjectsNum())
 	if approxObjectNum == 0 {
 		// There are no objects flushed yet.
 		return

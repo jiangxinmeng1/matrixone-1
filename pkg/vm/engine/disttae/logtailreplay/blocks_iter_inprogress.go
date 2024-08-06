@@ -17,24 +17,37 @@ package logtailreplay
 import (
 	"bytes"
 	"fmt"
-
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/tidwall/btree"
 )
 
-// ApproxObjectsNum not accurate!  only used by stats
-func (p *PartitionStateInProgress) ApproxObjectsNum() int {
+// ApproxDataObjectsNum not accurate!  only used by stats
+func (p *PartitionStateInProgress) ApproxDataObjectsNum() int {
 	return p.dataObjects.Len()
 }
+func (p *PartitionStateInProgress) ApproxTombstoneObjectsNum() int {
+	return p.tombstoneObjets.Len()
+}
 
-func (p *PartitionStateInProgress) NewObjectsIter(ts types.TS, onlyVisible bool) (ObjectsIter, error) {
+func (p *PartitionStateInProgress) NewObjectsIter(
+	ts types.TS,
+	onlyVisible bool,
+	visitTombstone bool) (ObjectsIter, error) {
+
 	if ts.Less(&p.minTS) {
 		msg := fmt.Sprintf("(%s<%s)", ts.ToString(), p.minTS.ToString())
 		return nil, moerr.NewTxnStaleNoCtx(msg)
 	}
-	iter := p.dataObjects.Copy().Iter()
+
+	var iter btree.IterG[ObjectEntry]
+	if visitTombstone {
+		iter = p.tombstoneObjets.Copy().Iter()
+	} else {
+		iter = p.dataObjects.Copy().Iter()
+	}
+
 	ret := &objectsIter{
 		onlyVisible: onlyVisible,
 		ts:          ts,
@@ -134,4 +147,20 @@ func (p *PartitionStateInProgress) GetObject(name objectio.ObjectNameShort) (Obj
 		}
 	}
 	return ObjectInfo{}, false
+}
+
+// GetTombstoneDeltaLocs TODO: remove
+func (p *PartitionStateInProgress) GetTombstoneDeltaLocs(mp map[types.Blockid]BlockDeltaInfo) (err error) {
+	//iter := p.blockDeltas.Copy().Iter()
+	//defer iter.Release()
+	//
+	//for ok := iter.First(); ok; ok = iter.Next() {
+	//	item := iter.Item()
+	//	mp[item.BlockID] = BlockDeltaInfo{
+	//		Loc: item.DeltaLoc[:],
+	//		Cts: item.CommitTs,
+	//	}
+	//}
+
+	return nil
 }

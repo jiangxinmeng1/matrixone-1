@@ -524,16 +524,29 @@ func ReadBlockDelete(
 	return
 }
 
+//func ReadTombstoneBlock(
+//	ctx context.Context,
+//	location objectio.Location,
+//	fs fileservice.FileService,
+//	isPersistedByCN bool,
+//) (bat *batch.Batch, release func(), err error) {
+//
+//}
+
 func ReadBlockDeleteBySchema(
 	ctx context.Context, deltaloc objectio.Location, fs fileservice.FileService, isPersistedByCN bool,
 ) (bat *batch.Batch, release func(), err error) {
 	var cols []uint16
+	var typs []types.Type
+
 	if isPersistedByCN {
-		cols = []uint16{0, 1}
+		cols = []uint16{0}
+		typs = []types.Type{types.T_Rowid.ToType()}
 	} else {
-		cols = []uint16{0, 1, 2, 3}
+		cols = []uint16{0, objectio.SEQNUM_COMMITTS}
+		typs = []types.Type{types.T_Rowid.ToType(), types.T_TS.ToType()}
 	}
-	bat, release, err = LoadColumns(ctx, cols, nil, fs, deltaloc, nil, fileservice.Policy(0))
+	bat, release, err = LoadTombstoneColumns(ctx, cols, typs, fs, deltaloc, nil, fileservice.Policy(0))
 	return
 }
 
@@ -564,13 +577,13 @@ func EvalDeleteRowsByTimestamp(
 
 	rowids := vector.MustFixedCol[types.Rowid](deletes.Vecs[0])
 	tss := vector.MustFixedCol[types.TS](deletes.Vecs[1])
-	aborts := deletes.Vecs[3]
+	//aborts := deletes.Vecs[3]
 
 	start, end := FindIntervalForBlock(rowids, blockid)
 
 	for i := start; i < end; i++ {
-		abort := vector.GetFixedAt[bool](aborts, i)
-		if abort || tss[i].Greater(&ts) {
+		//abort := vector.GetFixedAt[bool](aborts, i)
+		if tss[i].Greater(&ts) {
 			continue
 		}
 		row := rowids[i].GetRowOffset()

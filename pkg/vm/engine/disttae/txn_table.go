@@ -105,7 +105,7 @@ func (tbl *txnTable) stats(ctx context.Context) (*pb.StatsInfo, error) {
 		return nil, err
 	}
 	e := tbl.db.getEng()
-	approxObjectNum := int64(partitionState.ApproxObjectsNum())
+	approxObjectNum := int64(partitionState.ApproxDataObjectsNum())
 	if approxObjectNum == 0 {
 		// There are no objects flushed yet.
 		return nil, nil
@@ -228,7 +228,7 @@ func ForeachVisibleDataObject(
 	fn func(obj logtailreplay.ObjectEntry) error,
 	executor ConcurrentExecutor,
 ) (err error) {
-	iter, err := state.NewObjectsIter(ts, true)
+	iter, err := state.NewObjectsIter(ts, true, false)
 	if err != nil {
 		return err
 	}
@@ -260,7 +260,7 @@ func (tbl *txnTable) ApproxObjectsNum(ctx context.Context) int {
 	if err != nil {
 		return 0
 	}
-	return part.ApproxObjectsNum()
+	return part.ApproxDataObjectsNum()
 }
 
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
@@ -372,7 +372,7 @@ func (tbl *txnTable) GetColumMetadataScanInfo(ctx context.Context, name string) 
 	if err != nil {
 		return nil, err
 	}
-	infoList := make([]*plan.MetadataScanInfo, 0, state.ApproxObjectsNum())
+	infoList := make([]*plan.MetadataScanInfo, 0, state.ApproxDataObjectsNum())
 	var updateMu sync.Mutex
 	onObjFn := func(obj logtailreplay.ObjectEntry) error {
 		createTs, err := obj.CreateTime.Marshal()
@@ -2397,7 +2397,7 @@ func (tbl *txnTable) MergeObjects(
 		}
 	} else {
 		objInfos = make([]logtailreplay.ObjectInfo, 0, len(objstats))
-		iter, err := state.NewObjectsIter(snapshot, true)
+		iter, err := state.NewObjectsIter(snapshot, true, false)
 		if err != nil {
 			logutil.Errorf("txn: %s, error: %v", tbl.db.op.Txn().DebugString(), err)
 			return nil, err
@@ -2438,7 +2438,7 @@ func (tbl *txnTable) MergeObjects(
 		return nil, err
 	}
 
-	err = mergesort.DoMergeAndWrite(ctx, tbl.getTxn().op.Txn().DebugString(), sortkeyPos, taskHost,false)
+	err = mergesort.DoMergeAndWrite(ctx, tbl.getTxn().op.Txn().DebugString(), sortkeyPos, taskHost, false)
 	if err != nil {
 		taskHost.commitEntry.Err = err.Error()
 		return taskHost.commitEntry, err

@@ -483,7 +483,8 @@ func readBlockData(
 	readABlkColumns := func(cols []uint16) (result *batch.Batch, deletes nulls.Bitmap, err error) {
 		var loaded *batch.Batch
 		// appendable block should be filtered by committs
-		cols = append(cols, objectio.SEQNUM_COMMITTS, objectio.SEQNUM_ABORT) // committs, aborted
+		//cols = append(cols, objectio.SEQNUM_COMMITTS, objectio.SEQNUM_ABORT) // committs, aborted
+		cols = append(cols, objectio.SEQNUM_COMMITTS) // committs, aborted
 
 		// no need to add typs, the two columns won't be generated
 		if result, loaded, err = readColumns(cols); err != nil {
@@ -491,10 +492,10 @@ func readBlockData(
 		}
 
 		t0 := time.Now()
-		aborts := vector.MustFixedCol[bool](loaded.Vecs[len(loaded.Vecs)-1])
+		//aborts := vector.MustFixedCol[bool](loaded.Vecs[len(loaded.Vecs)-1])
 		commits := vector.MustFixedCol[types.TS](loaded.Vecs[len(loaded.Vecs)-2])
 		for i := 0; i < len(commits); i++ {
-			if aborts[i] || commits[i].Greater(&ts) {
+			if commits[i].Greater(&ts) {
 				deletes.Add(uint64(i))
 			}
 		}

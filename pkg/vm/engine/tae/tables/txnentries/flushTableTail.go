@@ -44,7 +44,7 @@ type flushTableTailEntry struct {
 	taskName   string
 	tableEntry *catalog.TableEntry
 
-	transMappings      *api.BlkTransferBooking
+	transMappings      api.TransferMaps
 	ablksMetas         []*catalog.ObjectEntry
 	delSrcMetas        []*catalog.ObjectEntry
 	ablksHandles       []handle.Object
@@ -73,7 +73,7 @@ func NewFlushTableTailEntry(
 	ctx context.Context,
 	txn txnif.AsyncTxn,
 	taskName string,
-	mapping *api.BlkTransferBooking,
+	mapping api.TransferMaps,
 	tableEntry *catalog.TableEntry,
 	ablksMetas []*catalog.ObjectEntry,
 	nblksMetas []*catalog.ObjectEntry,
@@ -139,12 +139,11 @@ func (entry *flushTableTailEntry) getObjectOffset(blkOffset int) (int, uint16) {
 func (entry *flushTableTailEntry) addTransferPages(ctx context.Context) {
 	isTransient := !entry.tableEntry.GetLastestSchemaLocked().HasPK()
 	ioVector := model.InitTransferPageIO()
-	pages := make([]*model.TransferHashPage, 0, len(entry.transMappings.Mappings))
+	pages := make([]*model.TransferHashPage, 0, len(entry.transMappings))
 	var duration time.Duration
 	var start time.Time
 	bts := time.Now().Add(time.Hour)
-	for i, mcontainer := range entry.transMappings.Mappings {
-		m := mcontainer.M
+	for i, m := range entry.transMappings {
 		if len(m) == 0 {
 			continue
 		}
@@ -152,14 +151,9 @@ func (entry *flushTableTailEntry) addTransferPages(ctx context.Context) {
 		id := entry.ablksHandles[objOffset].Fingerprint()
 		id.SetBlockOffset(blkOffset)
 		entry.pageIds = append(entry.pageIds, id)
-		page := model.NewTransferHashPage(id, bts, isTransient, entry.rt.LocalFs.Service, model.GetTTL(), model.GetDiskTTL())
-		mapping := make(map[uint32][]byte, len(m))
-		for srcRow, dst := range m {
-			blkid := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(dst.BlkIdx))
-			rowID := objectio.NewRowid(blkid, uint32(dst.RowIdx))
-			mapping[uint32(srcRow)] = rowID[:]
-		}
-		page.Train(mapping)
+		objectIDs := []*objectio.ObjectId{entry.createdBlkHandles.GetID()}
+		page := model.NewTransferHashPage(id, bts, isTransient, entry.rt.LocalFs.Service, model.GetTTL(), model.GetDiskTTL(), objectIDs)
+		page.Train(m)
 
 		start = time.Now()
 		err := model.AddTransferPage(page, ioVector)
@@ -200,7 +194,7 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 		blkCnt := blk.BlockCnt()
 		existed := false
 		for j := 0; j < blkCnt; j++ {
-			mapping := entry.transMappings.Mappings[blkOffset+j].M
+			mapping := entry.transMappings[blkOffset+j]
 			if len(mapping) != 0 {
 				existed = true
 				break
@@ -235,16 +229,16 @@ func (entry *flushTableTailEntry) collectDelsAndTransfer(from, to types.TS) (tra
 		transCnt += count
 		for i := 0; i < count; i++ {
 			row := rowid[i].GetRowOffset()
-			mapping := entry.transMappings.Mappings[blkOffset+int(rowid[i].GetBlockOffset())].M
-			destpos, ok := mapping[int32(row)]
+			mapping := entry.transMappings[blkOffset+int(rowid[i].GetBlockOffset())]
+			destpos, ok := mapping[row]
 			if !ok {
 				panic(fmt.Sprintf("%s-%d find no transfer mapping for row %d, commit ts %v", blk.ID().String(), rowid[i].GetBlockOffset(), row, ts[i].ToString()))
 			}
-			blkID := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), uint16(destpos.BlkIdx))
+			blkID := objectio.NewBlockidWithObjectID(entry.createdBlkHandles.GetID(), destpos.BlkIdx)
 			entry.delTbls[destpos.BlkIdx] = blkID
 			entry.rt.TransferDelsMap.SetDelsForBlk(*blkID, int(destpos.RowIdx), entry.txn.GetPrepareTS(), ts[i])
 			if err = entry.createdBlkHandles.RangeDelete(
-				uint16(destpos.BlkIdx), uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact, common.MergeAllocator,
+				destpos.BlkIdx, destpos.RowIdx, destpos.RowIdx, handle.DT_MergeCompact, common.MergeAllocator,
 			); err != nil {
 				bat.Close()
 				return

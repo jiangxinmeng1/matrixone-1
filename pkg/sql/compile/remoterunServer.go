@@ -410,8 +410,8 @@ func (receiver *messageReceiverOnServer) newCompile() (*Compile, error) {
 	c.execType = plan2.ExecTypeAP_MULTICN
 	c.e = cnInfo.storeEngine
 	c.MessageBoard = c.MessageBoard.SetMultiCN(c.GetMessageCenter(), c.proc.GetStmtProfile().GetStmtId())
-	c.proc.Base.MessageBoard = c.MessageBoard
-	c.anal = newAnaylze()
+	c.proc.SetMessageBoard(c.MessageBoard)
+	c.anal = newAnalyzeModule()
 	c.anal.analInfos = proc.Base.AnalInfos
 	c.addr = receiver.cnInformation.cnAddr
 	c.proc.Ctx = perfcounter.WithCounterSet(c.proc.Ctx, c.counterSet)

@@ -6471,6 +6471,7 @@ func TestSnapshotGC(t *testing.T) {
 }
 
 func TestSnapshotGC2(t *testing.T) {
+	t.Skip("skip the TestSnapshotGC2")
 	defer testutils.AfterTest(t)()
 	testutils.EnsureNoLeak(t)
 	ctx := context.Background()

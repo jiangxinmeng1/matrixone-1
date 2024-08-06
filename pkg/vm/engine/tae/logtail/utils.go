@@ -1814,7 +1814,6 @@ func (data *CheckpointData) GetTombstoneObjectBatchs() *containers.Batch {
 func (data *CheckpointData) GetObjectBatchs() *containers.Batch {
 	return data.bats[ObjectInfoIDX]
 }
-<<<<<<< HEAD
 
 type tableinfo struct {
 	tid    uint64

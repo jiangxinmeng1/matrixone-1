@@ -1142,11 +1142,16 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))
 		}
 		tSnapshotDedup := time.Now()
-		committed, blkOffset := objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS())
-		if dedupAfterSnapshotTS && committed {
-			skipDuration2 += time.Since(tSnapshotDedup)
-			skipDurationTotal += time.Since(tSkip)
-			continue
+		var blkOffset uint16
+		if dedupAfterSnapshotTS {
+			committed, committedblkOffset := objData.CoarseCheckAllRowsCommittedBefore(tbl.store.txn.GetSnapshotTS())
+			blkOffset = committedblkOffset
+			if committed {
+				skipDuration2 += time.Since(tSnapshotDedup)
+				skipDurationTotal += time.Since(tSkip)
+				logutil.Infof("obj %v is skipped", obj.ID().String())
+				continue
+			}
 		}
 		skipDuration2 += time.Since(tSnapshotDedup)
 		skipDurationTotal += time.Since(tSkip)
@@ -1195,7 +1200,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			rowmask,
 			false,
 			bf,
-			blkOffset+1,
+			blkOffset,
 			common.WorkspaceAllocator,
 		); err != nil {
 			// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)
@@ -1311,7 +1316,7 @@ func (tbl *txnTable) DedupSnapByMetaLocs(ctx context.Context, metaLocs []objecti
 				rowmask,
 				false,
 				objectio.BloomFilter{},
-				blkOffset+1,
+				blkOffset,
 				common.WorkspaceAllocator,
 			); err != nil {
 				// logutil.Infof("%s, %s, %v", obj.String(), rowmask, err)

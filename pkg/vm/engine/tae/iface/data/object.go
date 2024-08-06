@@ -113,7 +113,7 @@ type Object interface {
 	// 3. if the object is persisted, return false
 	// if the object is not an appendable object:
 	// only check with the created ts
-	CoarseCheckAllRowsCommittedBefore(ts types.TS) (bool,uint16)
+	CoarseCheckAllRowsCommittedBefore(ts types.TS) (bool, uint16)
 
 	BatchDedup(ctx context.Context,
 		txn txnif.AsyncTxn,

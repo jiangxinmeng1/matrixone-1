@@ -839,7 +839,7 @@ func (node *objectMemoryNode) resolveInMemoryColumnData(
 ) (view *containers.Batch, err error) {
 	return node.getMemoryNode(blkID).resolveInMemoryColumnData(txn, readSchema, col, skipDeletes, mp)
 }
-func (node *objectMemoryNode) allRowsCommittedBeforeLocked(ts types.TS, freeze bool) (allCommitted bool, lastCommittedBlkOffset uint16) {
+func (node *objectMemoryNode) allRowsCommittedBeforeLocked(ts types.TS, freeze bool) (allCommitted bool, firstUncommittedBlkOffset uint16) {
 	if freeze {
 		ok := node.getLastNode().allRowsCommittedBefore(ts)
 		if ok {
@@ -852,7 +852,7 @@ func (node *objectMemoryNode) allRowsCommittedBeforeLocked(ts types.TS, freeze b
 	lastIdx := len(node.blkMemoryNodes) - 2
 	for i := lastIdx; i >= 0; i-- {
 		if node.blkMemoryNodes[i].allRowsCommittedBefore(ts) {
-			return false, uint16(i)
+			return false, uint16(i) + 1
 		}
 	}
 	return false, 0

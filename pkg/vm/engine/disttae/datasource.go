@@ -110,21 +110,6 @@ func NewLocalDataSource(
 	source.txnOffset = txnOffset
 	source.snapshotTS = types.TimestampToTS(table.getTxn().op.SnapshotTS())
 
-	source.tombstoneObjects = make([]logtailreplay.ObjectEntry, 0, state.ApproxTombstoneObjectsNum())
-	iter, err := state.NewObjectsIter(
-		source.snapshotTS, true, true)
-	if err != nil {
-		return nil, err
-	}
-
-	for iter.Next() {
-		source.tombstoneObjects = append(source.tombstoneObjects, iter.Entry())
-	}
-
-	if err = iter.Close(); err != nil {
-		return nil, err
-	}
-
 	source.iteratePhase = engine.InMem
 	if skipReadMem {
 		source.iteratePhase = engine.Persisted
@@ -320,9 +305,8 @@ type LocalDataSource struct {
 	rangeSlice objectio.BlockInfoSlice
 	pState     *logtailreplay.PartitionStateInProgress
 
-	tombstoneObjects []logtailreplay.ObjectEntry
-	memPKFilter      *MemPKFilter
-	pStateRows       struct {
+	memPKFilter *MemPKFilter
+	pStateRows  struct {
 		insIter logtailreplay.RowsIter
 	}
 
@@ -1138,13 +1122,21 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return offsets, nil
 	}
 
+	if ls.pState.ApproxTombstoneObjectsNum() == 0 {
+		return offsets, nil
+	}
+
+	scanOp := func(onTombstone func(tombstone logtailreplay.ObjectEntry) (bool, error)) (err error) {
+		return ForeachTombstoneObject(ls.snapshotTS, onTombstone, ls.pState)
+	}
+
 	if err = GetTombstonesByBlockId(
 		ls.ctx,
 		ls.fs,
 		bid,
 		ls.snapshotTS,
 		deletedRows,
-		ls.tombstoneObjects...); err != nil {
+		scanOp); err != nil {
 		return nil, err
 	}
 
@@ -1248,7 +1240,7 @@ func GetTombstonesByBlockId(
 	bid objectio.Blockid,
 	snapshot types.TS,
 	deleteMask *nulls.Nulls,
-	tombstoneObjects ...logtailreplay.ObjectEntry,
+	scanOp func(func(tombstone logtailreplay.ObjectEntry) (bool, error)) error,
 ) (err error) {
 
 	if deleteMask == nil {
@@ -1264,26 +1256,29 @@ func GetTombstonesByBlockId(
 		location objectio.Location
 	)
 
-	for _, obj := range tombstoneObjects {
-		if snapshot.Less(&obj.CommitTS) {
-			continue
+	bidZM := index.BuildZM(types.T_binary, bid[:])
+
+	onTombstone := func(obj logtailreplay.ObjectEntry) (bool, error) {
+		objZM := obj.SortKeyZoneMap()
+		if skip := !objZM.FastIntersect(bidZM); skip {
+			return true, nil
 		}
 
 		if bf, err = objectio.FastLoadBF(
 			ctx, obj.Location(), false, fs); err != nil {
-			return err
+			return false, err
 		}
 
 		for idx := 0; idx < int(obj.BlkCnt()); idx++ {
 			buf := bf.GetBloomFilter(uint32(idx))
 			bfIndex = index.NewEmptyBloomFilterWithType(index.HBF)
 			if err = index.DecodeBloomFilter(bfIndex, buf); err != nil {
-				return err
+				return false, err
 			}
 
 			if exist, err = bfIndex.PrefixMayContainsKey(
 				bid[:], index.PrefixFnID_Block, 2); err != nil {
-				return err
+				return false, err
 			} else if !exist {
 				continue
 			}
@@ -1292,12 +1287,15 @@ func GetTombstonesByBlockId(
 
 			if mask, err = loadBlockDeletesByLocation(
 				ctx, fs, bid, location, snapshot, obj.CommitTS); err != nil {
-				return err
+				return false, err
 			}
 
 			deleteMask.Merge(mask)
 		}
+		return true, nil
 	}
 
-	return nil
+	err = scanOp(onTombstone)
+
+	return err
 }

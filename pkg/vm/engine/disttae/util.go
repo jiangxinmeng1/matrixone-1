@@ -1460,6 +1460,27 @@ func ForeachCommittedObjects(
 
 }
 
+func ForeachTombstoneObject(
+	ts types.TS,
+	onTombstone func(tombstone logtailreplay.ObjectEntry) (next bool, err error),
+	pState *logtailreplay.PartitionStateInProgress,
+) error {
+	iter, err := pState.NewObjectsIter(ts, true, true)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		obj := iter.Entry()
+		if next, err := onTombstone(obj); !next || err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func ForeachSnapshotObjects(
 	ts timestamp.Timestamp,
 	onObject func(obj logtailreplay.ObjectInfo, isCommitted bool) error,

@@ -272,6 +272,7 @@ func (entry *mergeObjectsEntry) transferObjectDeletes(
 			return
 		}
 		id := targetObj.Fingerprint()
+		id.SetBlockOffset(destpos.BlkIdx)
 		if err = targetObj.GetRelation().RangeDelete(
 			id, uint32(destpos.RowIdx), uint32(destpos.RowIdx), handle.DT_MergeCompact,
 		); err != nil {

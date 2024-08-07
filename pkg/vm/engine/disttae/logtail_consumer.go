@@ -286,7 +286,7 @@ func (c *PushClient) validLogTailMustApplied(snapshotTS timestamp.Timestamp) {
 
 func (c *PushClient) toSubscribeTable(
 	ctx context.Context,
-	tbl *txnTable) (ps *logtailreplay.PartitionState, err error) {
+	tbl *txnTable) (ps *logtailreplay.PartitionStateInProgress, err error) {
 
 	tableId := tbl.tableId
 	//if table has been subscribed, return quickly.
@@ -936,7 +936,7 @@ type SubTableStatus struct {
 	LatestTime time.Time
 }
 
-func (c *PushClient) isSubscribed(dbId, tId uint64) (*logtailreplay.PartitionState, bool) {
+func (c *PushClient) isSubscribed(dbId, tId uint64) (*logtailreplay.PartitionStateInProgress, bool) {
 	s := &c.subscribed
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -994,7 +994,7 @@ func (s *subscribedTable) isSubscribed(dbId, tblId uint64) bool {
 func (c *PushClient) loadAndConsumeLatestCkp(
 	ctx context.Context,
 	tableId uint64,
-	tbl *txnTable) (SubscribeState, *logtailreplay.PartitionState, error) {
+	tbl *txnTable) (SubscribeState, *logtailreplay.PartitionStateInProgress, error) {
 
 	//part, err := c.eng.lazyLoadLatestCkp(ctx, tbl)
 	//if err != nil {
@@ -1843,7 +1843,7 @@ func consumeLogTail(
 	ctx context.Context,
 	primarySeqnum int,
 	engine *Engine,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	lt *logtail.TableLogtail,
 ) error {
 	return hackConsumeLogtail(ctx, primarySeqnum, engine, state, lt)
@@ -1871,7 +1871,7 @@ func consumeCkpsAndLogTail(
 	ctx context.Context,
 	primarySeqnum int,
 	engine *Engine,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	lt *logtail.TableLogtail,
 	databaseId uint64,
 	tableId uint64,
@@ -1889,7 +1889,9 @@ func consumeCkpsAndLogTail(
 	}
 	defer func() {
 		for _, cb := range closeCBs {
-			cb()
+			if cb != nil {
+				cb()
+			}
 		}
 	}()
 	for _, entry := range entries {
@@ -1905,7 +1907,7 @@ func hackConsumeLogtail(
 	ctx context.Context,
 	primarySeqnum int,
 	engine *Engine,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	lt *logtail.TableLogtail) error {
 
 	if lt.Table.DbName == "" {

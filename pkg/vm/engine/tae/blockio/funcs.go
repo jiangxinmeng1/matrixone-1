@@ -131,6 +131,18 @@ func LoadColumnsData2(
 	return
 }
 
+func LoadTombstoneColumns(
+	ctx context.Context,
+	cols []uint16,
+	typs []types.Type,
+	fs fileservice.FileService,
+	location objectio.Location,
+	m *mpool.MPool,
+	policy fileservice.Policy,
+) (bat *batch.Batch, release func(), err error) {
+	return LoadColumnsData(ctx, objectio.SchemaTombstone, cols, typs, fs, location, m, policy)
+}
+
 func LoadColumns(
 	ctx context.Context,
 	cols []uint16,

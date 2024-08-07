@@ -79,7 +79,7 @@ func newCNMergeTask(
 	ctx context.Context,
 	tbl *txnTable,
 	snapshot types.TS,
-	state *logtailreplay.PartitionState,
+	state *logtailreplay.PartitionStateInProgress,
 	sortkeyPos int,
 	sortkeyIsPK bool,
 	targets []logtailreplay.ObjectInfo,

@@ -1440,9 +1440,8 @@ func (i *StatsBlkIter) Entry() objectio.BlockInfo {
 func ForeachCommittedObjects(
 	createObjs map[objectio.ObjectNameShort]struct{},
 	delObjs map[objectio.ObjectNameShort]struct{},
-	p *logtailreplay.PartitionState,
-	onObj func(info logtailreplay.ObjectInfo) error,
-) (err error) {
+	p *logtailreplay.PartitionStateInProgress,
+	onObj func(info logtailreplay.ObjectInfo) error) (err error) {
 	for obj := range createObjs {
 		if objInfo, ok := p.GetObject(obj); ok {
 			if err = onObj(objInfo); err != nil {
@@ -1461,10 +1460,31 @@ func ForeachCommittedObjects(
 
 }
 
+func ForeachTombstoneObject(
+	ts types.TS,
+	onTombstone func(tombstone logtailreplay.ObjectEntry) (next bool, err error),
+	pState *logtailreplay.PartitionStateInProgress,
+) error {
+	iter, err := pState.NewObjectsIter(ts, true, true)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		obj := iter.Entry()
+		if next, err := onTombstone(obj); !next || err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func ForeachSnapshotObjects(
 	ts timestamp.Timestamp,
 	onObject func(obj logtailreplay.ObjectInfo, isCommitted bool) error,
-	tableSnapshot *logtailreplay.PartitionState,
+	tableSnapshot *logtailreplay.PartitionStateInProgress,
 	uncommitted ...objectio.ObjectStats,
 ) (err error) {
 	// process all uncommitted objects first
@@ -1482,7 +1502,7 @@ func ForeachSnapshotObjects(
 		return
 	}
 
-	iter, err := tableSnapshot.NewObjectsIter(types.TimestampToTS(ts), true)
+	iter, err := tableSnapshot.NewObjectsIter(types.TimestampToTS(ts), true, false)
 	if err != nil {
 		return
 	}

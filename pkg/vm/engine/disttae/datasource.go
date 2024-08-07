@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	catalog2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"slices"
 	"sort"
@@ -1254,13 +1255,22 @@ func GetTombstonesByBlockId(
 		bfIndex  index.StaticFilter
 		mask     *nulls.Nulls
 		location objectio.Location
+
+		totalBlk     int
+		zmBreak      int
+		blBreak      int
+		loaded       int
+		totalScanned int
 	)
 
 	bidZM := index.BuildZM(types.T_binary, bid[:])
 
 	onTombstone := func(obj logtailreplay.ObjectEntry) (bool, error) {
+		totalScanned++
+
 		objZM := obj.SortKeyZoneMap()
 		if skip := !objZM.FastIntersect(bidZM); skip {
+			zmBreak++
 			return true, nil
 		}
 
@@ -1269,6 +1279,7 @@ func GetTombstonesByBlockId(
 			return false, err
 		}
 
+		totalBlk += int(obj.BlkCnt())
 		for idx := 0; idx < int(obj.BlkCnt()); idx++ {
 			buf := bf.GetBloomFilter(uint32(idx))
 			bfIndex = index.NewEmptyBloomFilterWithType(index.HBF)
@@ -1280,9 +1291,11 @@ func GetTombstonesByBlockId(
 				bid[:], index.PrefixFnID_Block, 2); err != nil {
 				return false, err
 			} else if !exist {
+				blBreak++
 				continue
 			}
 
+			loaded++
 			location = catalog2.BuildLocation(obj.ObjectStats, uint16(idx), options.DefaultBlockMaxRows)
 
 			if mask, err = loadBlockDeletesByLocation(
@@ -1296,6 +1309,15 @@ func GetTombstonesByBlockId(
 	}
 
 	err = scanOp(onTombstone)
+
+	v2.TxnReaderEachBLKLoadedTombstoneHistogram.Observe(float64(loaded))
+	v2.TxnReaderScannedTotalTombstoneHistogram.Observe(float64(totalScanned))
+	if totalScanned != 0 {
+		v2.TxnReaderTombstoneZMSelectivityHistogram.Observe(float64(zmBreak) / float64(totalScanned))
+	}
+	if totalBlk != 0 {
+		v2.TxnReaderTombstoneBLSelectivityHistogram.Observe(float64(blBreak) / float64(totalBlk))
+	}
 
 	return err
 }

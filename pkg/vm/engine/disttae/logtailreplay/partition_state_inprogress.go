@@ -389,7 +389,6 @@ func (p *PartitionStateInProgress) HandleRowsDelete(
 
 	numDeletes := int64(0)
 	for i, rowID := range rowIDVector {
-
 		blockID := rowID.CloneBlockID()
 		pivot := RowEntry{
 			BlockID: blockID,
@@ -468,7 +467,6 @@ func (p *PartitionStateInProgress) HandleRowsInsert(
 
 	var numInserted int64
 	for i, rowID := range rowIDVector {
-
 		blockID := rowID.CloneBlockID()
 		pivot := RowEntry{
 			BlockID: blockID,

@@ -493,7 +493,7 @@ func readBlockData(
 
 		t0 := time.Now()
 		//aborts := vector.MustFixedCol[bool](loaded.Vecs[len(loaded.Vecs)-1])
-		commits := vector.MustFixedCol[types.TS](loaded.Vecs[len(loaded.Vecs)-2])
+		commits := vector.MustFixedCol[types.TS](loaded.Vecs[len(loaded.Vecs)-1])
 		for i := 0; i < len(commits); i++ {
 			if commits[i].Greater(&ts) {
 				deletes.Add(uint64(i))
@@ -524,15 +524,6 @@ func ReadBlockDelete(
 	bat, release, err = ReadBlockDeleteBySchema(ctx, deltaloc, fs, isPersistedByCN)
 	return
 }
-
-//func ReadTombstoneBlock(
-//	ctx context.Context,
-//	location objectio.Location,
-//	fs fileservice.FileService,
-//	isPersistedByCN bool,
-//) (bat *batch.Batch, release func(), err error) {
-//
-//}
 
 func ReadBlockDeleteBySchema(
 	ctx context.Context, deltaloc objectio.Location, fs fileservice.FileService, isPersistedByCN bool,

@@ -775,7 +775,9 @@ func (task *flushTableTailTask) flushAllDeletesFromDelSrc(ctx context.Context) (
 		defer func() {
 			for _, v := range recorder.TempCache {
 				v.Bat = nil
-				v.Release()
+				if v.Release != nil {
+					v.Release()
+				}
 			}
 		}()
 	}

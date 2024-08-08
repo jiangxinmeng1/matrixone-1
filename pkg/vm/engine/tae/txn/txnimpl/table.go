@@ -1093,7 +1093,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	dedupedCount := 0
 	visibleCount := 0
 	var skipDuration, skipDuration2, skipDurationTotal, updateHintDuration, indexDuration, dedupDuration time.Duration
-	var blkCountDuration, maxBlockCount time.Duration
 	for it.Next() {
 		tSkip := time.Now()
 		obj := it.Item()
@@ -1107,14 +1106,7 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			if obj.IsAppendable() {
 				if ObjectHint > maxObjectHint {
 					maxObjectHint = ObjectHint
-					tBLKCount := time.Now()
 					blkCount := obj.BlockCnt()
-					dur := time.Since(tBLKCount)
-					if dur > maxBlockCount {
-						maxBlockCount = dur
-						debugStr = fmt.Sprintf("%s;blkcount%v%d,%v", debugStr, obj.IsAppendable(), blkCount, obj.DeletedAt.ToString())
-					}
-					blkCountDuration += dur
 					if blkCount > 0 {
 						maxBlockID = uint16(blkCount - 1)
 					}
@@ -1149,7 +1141,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			if committed {
 				skipDuration2 += time.Since(tSnapshotDedup)
 				skipDurationTotal += time.Since(tSkip)
-				logutil.Infof("obj %v is skipped", obj.ID().String())
 				continue
 			}
 		}
@@ -1230,12 +1221,10 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 			zap.Duration("skip", skipDuration),
 			zap.Duration("skip2", skipDuration2),
 			zap.Duration("skip total", skipDurationTotal),
-			zap.Duration("blk count", blkCountDuration),
 			zap.Duration("update hint", updateHintDuration),
 			zap.Int("visible count", visibleCount),
 			zap.Duration("index", indexDuration),
 			zap.Duration("dedup", dedupDuration),
-			zap.Duration("max blkcount duration", maxBlockCount),
 		)
 	}
 	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint, maxNAObjectHint, maxBlockID)

@@ -971,12 +971,13 @@ func applyDeletesWithinDeltaLocations(
 		}
 
 		if offsets != nil {
-			for _, offset := range offsets {
-				if mask.Contains(uint64(offset)) {
-					continue
+			leftRows = removeIf(offsets, func(t int64) bool {
+				if mask.Contains(uint64(t)) {
+					return true
 				}
-				leftRows = append(leftRows, offset)
-			}
+				return false
+			})
+
 		} else if deletedRows != nil {
 			deletedRows.Merge(mask)
 		}
@@ -1117,7 +1118,7 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 	bid objectio.Blockid,
 	offsets []int64,
 	deletedRows *nulls.Nulls,
-) (leftRows []int64, err error) {
+) ([]int64, error) {
 
 	if ls.rc.SkipPStateDeletes {
 		return offsets, nil
@@ -1131,7 +1132,7 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return ForeachTombstoneObject(ls.snapshotTS, onTombstone, ls.pState)
 	}
 
-	if err = GetTombstonesByBlockId(
+	if err := GetTombstonesByBlockId(
 		ls.ctx,
 		ls.fs,
 		bid,
@@ -1141,15 +1142,14 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return nil, err
 	}
 
-	if len(offsets) > 0 {
-		for _, o := range offsets {
-			if !deletedRows.Contains(uint64(o)) {
-				leftRows = append(leftRows, o)
-			}
+	offsets = removeIf(offsets, func(t int64) bool {
+		if deletedRows.Contains(uint64(t)) {
+			return true
 		}
-	}
+		return false
+	})
 
-	return
+	return offsets, nil
 }
 
 func (ls *LocalDataSource) batchPrefetch(seqNums []uint16) {

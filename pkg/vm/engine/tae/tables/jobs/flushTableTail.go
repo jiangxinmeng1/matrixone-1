@@ -484,7 +484,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		}
 	}
 	if task.doTransfer {
-		mergesort.AddSortPhaseMapping(task.transMappings, task.getBlockOffset(objIdx, blkIdx), totalRowCnt, sortMapping)
+		mergesort.AddSortPhaseMapping(task.transMappings[task.getBlockOffset(objIdx, blkIdx)], totalRowCnt, sortMapping)
 	}
 	return
 }

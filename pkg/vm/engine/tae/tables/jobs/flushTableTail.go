@@ -206,7 +206,7 @@ func NewFlushTableTailTask(
 			objCount := len(task.aObjBlockCounts)
 			blkCount = task.aObjBlockOffsets[objCount-1] + task.aObjBlockCounts[objCount-1]
 		}
-		task.transMappings = make(api.TransferMaps,blkCount)
+		task.transMappings = make(api.TransferMaps, blkCount)
 		for i := range blkCount {
 			task.transMappings[i] = make(api.TransferMap)
 		}
@@ -484,7 +484,7 @@ func (task *flushTableTailTask) prepareAObjSortedData(
 		}
 	}
 	if task.doTransfer {
-		mergesort.AddSortPhaseMapping(task.transMappings, task.getBlockOffset(objIdx, blkIdx), totalRowCnt, sortMapping)
+		mergesort.AddSortPhaseMapping(task.transMappings[task.getBlockOffset(objIdx, blkIdx)], totalRowCnt, sortMapping)
 	}
 	return
 }
@@ -775,7 +775,9 @@ func (task *flushTableTailTask) flushAllDeletesFromDelSrc(ctx context.Context) (
 		defer func() {
 			for _, v := range recorder.TempCache {
 				v.Bat = nil
-				v.Release()
+				if v.Release != nil {
+					v.Release()
+				}
 			}
 		}()
 	}

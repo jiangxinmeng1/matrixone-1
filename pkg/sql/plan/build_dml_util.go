@@ -1263,6 +1263,10 @@ func buildInsertPlansWithRelatedHiddenTable(
 	var lastNodeId int32
 	var err error
 
+	if builder.isRestore {
+		checkInsertPkDupForHiddenIndexTable = false
+	}
+
 	multiTableIndexes := make(map[string]*MultiTableIndex)
 	if updateColLength == 0 {
 		for idx, indexdef := range tableDef.Indexes {
@@ -1501,10 +1505,6 @@ func buildInsertPlansWithRelatedHiddenTable(
 				break
 			}
 		}
-	}
-
-	if stmt != nil && stmt.IsRestore {
-		checkInsertPkDupForHiddenIndexTable = false
 	}
 
 	return makeOneInsertPlan(ctx, builder, bindCtx, objRef, tableDef,
@@ -3809,7 +3809,7 @@ func runSql(ctx CompilerContext, sql string) (executor.Result, error) {
 		WithDatabase(proc.GetSessionInfo().Database).
 		WithTimeZone(proc.GetSessionInfo().TimeZone).
 		WithAccountID(proc.GetSessionInfo().AccountId)
-	return exec.Exec(proc.Ctx, sql, opts)
+	return exec.Exec(proc.GetTopContext(), sql, opts)
 }
 
 /*

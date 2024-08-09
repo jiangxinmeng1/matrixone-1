@@ -32,6 +32,7 @@ import (
 	db_holder "github.com/matrixorigin/matrixone/pkg/util/export/etl/db"
 	"github.com/matrixorigin/matrixone/pkg/vm"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 	"go.uber.org/zap"
@@ -603,7 +604,16 @@ func sortByKey(proc *process.Process, bat *batch.Batch, sortIndex int, allow_nul
 func (w *S3Writer) WriteBlock(bat *batch.Batch, dataType ...objectio.DataMetaType) error {
 	if w.pk > -1 {
 		pkIdx := uint16(w.pk)
-		w.writer.SetPrimaryKey(pkIdx)
+		if len(dataType) > 0 && dataType[0] == objectio.SchemaTombstone {
+			w.writer.SetPrimaryKeyWithType(
+				uint16(pkIdx),
+				index.HBF,
+				index.ObjectPrefixFn,
+				index.BlockPrefixFn,
+			)
+		} else {
+			w.writer.SetPrimaryKey(pkIdx)
+		}
 	}
 	if w.sortIndex > -1 {
 		w.writer.SetSortKey(uint16(w.sortIndex))

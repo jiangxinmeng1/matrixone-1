@@ -585,9 +585,9 @@ func EvalDeleteRowsByTimestamp(
 }
 
 func EvalDeleteRowsByTimestampForDeletesPersistedByCN(
-	deletes *batch.Batch, ts types.TS, committs types.TS,
+	deletes *batch.Batch,
 ) (rows *nulls.Bitmap) {
-	if deletes == nil || ts.Less(&committs) {
+	if deletes == nil {
 		return
 	}
 	// record visible delete rows

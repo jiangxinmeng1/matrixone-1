@@ -17,7 +17,6 @@ package objectio
 import (
 	"bytes"
 	"fmt"
-
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 )
@@ -179,4 +178,43 @@ func ForeachObjectStats(onStats func(stats *ObjectStats) bool, statsList ...Obje
 			return
 		}
 	}
+}
+
+type ObjectStatsSlice []byte
+
+func (o *ObjectStatsSlice) Get(i int) *ObjectStats {
+	stats := ObjectStats((*o)[i*ObjectStatsLen : (i+1)*ObjectStatsLen])
+	return &stats
+}
+
+func (o *ObjectStatsSlice) GetBytes(i int) []byte {
+	return (*o)[i*ObjectStatsLen : (i+1)*ObjectStatsLen]
+}
+
+func (o *ObjectStatsSlice) Len() int {
+	return len(*o) / ObjectStatsLen
+}
+
+func (o *ObjectStatsSlice) Append(stats []byte) {
+	*o = append(*o, stats...)
+}
+
+func (o *ObjectStatsSlice) Size() int {
+	return len(*o)
+}
+
+func (o *ObjectStatsSlice) SetBytes(stats []byte) {
+	*o = stats
+}
+
+func (o *ObjectStatsSlice) GetAllBytes() []byte {
+	return (*o)[:]
+}
+
+func (o *ObjectStatsSlice) Slice(i, j int) []byte {
+	return (*o)[i*ObjectStatsLen : j*ObjectStatsLen]
+}
+
+func (o *ObjectStatsSlice) Set(i int, stats []byte) {
+	copy((*o)[i*ObjectStatsLen:(i+1)*ObjectStatsLen], stats)
 }

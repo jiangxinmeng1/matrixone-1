@@ -216,38 +216,13 @@ func (rs *RemoteDataSource) applyPersistedTombstones(
 		return rowsOffset, nil
 	}
 
-	apply := func(
-		ctx context.Context,
-		loc objectio.Location,
-		cts types.TS,
-		rowsOffset []int64,
-		deleted *nulls.Nulls) (left []int64, err error) {
-
-		deletes, err := loadBlockDeletesByLocation(ctx, rs.fs, bid, loc, rs.ts, cts)
-		if err != nil {
-			return nil, err
-		}
-
-		if rowsOffset != nil {
-			for _, offset := range rowsOffset {
-				if deletes.Contains(uint64(offset)) {
-					continue
-				}
-				left = append(left, offset)
-			}
-		} else if deleted != nil {
-			deleted.Merge(deletes)
-		}
-
-		return
-	}
-
 	return rs.data.GetTombstones().ApplyPersistedTombstones(
 		ctx,
+		rs.fs,
+		rs.ts,
 		bid,
 		rowsOffset,
-		mask,
-		apply)
+		mask)
 }
 
 func (rs *RemoteDataSource) ApplyTombstones(
@@ -769,7 +744,7 @@ func loadBlockDeletesByLocation(
 	fs fileservice.FileService,
 	blockId types.Blockid,
 	location objectio.Location,
-	snapshotTS, blockCommitTS types.TS,
+	snapshotTS types.TS,
 ) (deleteMask *nulls.Nulls, err error) {
 
 	var (
@@ -791,7 +766,7 @@ func loadBlockDeletesByLocation(
 		//readCost := time.Since(t1)
 
 		if persistedByCN {
-			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(persistedDeletes, snapshotTS, blockCommitTS)
+			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(persistedDeletes)
 		} else {
 			//t2 := time.Now()
 			rows = blockio.EvalDeleteRowsByTimestamp(persistedDeletes, snapshotTS, &blockId)
@@ -966,7 +941,7 @@ func applyDeletesWithinDeltaLocations(
 
 	for _, loc := range locations {
 		if mask, err = loadBlockDeletesByLocation(
-			ctx, fs, bid, loc[:], snapshotTS, blkCommitTS); err != nil {
+			ctx, fs, bid, loc[:], snapshotTS); err != nil {
 			return nil, err
 		}
 
@@ -1268,10 +1243,12 @@ func GetTombstonesByBlockId(
 	onTombstone := func(obj logtailreplay.ObjectEntry) (bool, error) {
 		totalScanned++
 
-		objZM := obj.SortKeyZoneMap()
-		if skip := !objZM.FastIntersect(bidZM); skip {
-			zmBreak++
-			return true, nil
+		if !obj.ZMIsEmpty() {
+			objZM := obj.SortKeyZoneMap()
+			if skip := !objZM.PrefixEq(bidZM); skip {
+				zmBreak++
+				return true, nil
+			}
 		}
 
 		if bf, err = objectio.FastLoadBF(
@@ -1299,7 +1276,7 @@ func GetTombstonesByBlockId(
 			location = catalog2.BuildLocation(obj.ObjectStats, uint16(idx), options.DefaultBlockMaxRows)
 
 			if mask, err = loadBlockDeletesByLocation(
-				ctx, fs, bid, location, snapshot, obj.CommitTS); err != nil {
+				ctx, fs, bid, location, snapshot); err != nil {
 				return false, err
 			}
 

@@ -621,6 +621,8 @@ func (tbl *txnTable) CollectTombstones(
 	if err := tbl.getTxn().getUncommittedS3TombstoneInProgress(&tombstone.files); err != nil {
 		return nil, err
 	}
+
+	tombstone.SortInMemory()
 	//collect committed persisted tombstones from partition state.
 	//state.GetTombstoneDeltaLocs(tombstone.blk2CommitLoc)
 	snapshot := types.TimestampToTS(tbl.db.op.Txn().SnapshotTS)

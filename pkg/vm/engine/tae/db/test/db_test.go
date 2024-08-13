@@ -4093,7 +4093,6 @@ func NewTestBlockReadSource(deltaLoc objectio.Location) logtail.DeltaSource {
 }
 
 func TestBlockRead(t *testing.T) {
-	return
 	blockio.RunPipelineTest(
 		func() {
 			defer testutils.AfterTest(t)()
@@ -4128,7 +4127,7 @@ func TestBlockRead(t *testing.T) {
 			afterSecondDel := tsAlloc.Alloc()
 
 			tae.CompactBlocks(false)
-			objStats := blkEntry.ObjectMVCCNode
+			objStats := blkEntry.GetLatestNode().ObjectMVCCNode
 			assert.False(t, objStats.IsEmpty())
 
 			testDS := NewTestBlockReadSource(objStats.ObjectLocation())

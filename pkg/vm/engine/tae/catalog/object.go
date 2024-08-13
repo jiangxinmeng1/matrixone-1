@@ -511,6 +511,7 @@ func (entry *ObjectEntry) PrepareRollback() (err error) {
 	case ObjectState_Delete_Active, ObjectState_Delete_PrepareCommit:
 		newEntry := entry.Clone()
 		newEntry.DeleteNode.Reset()
+		newEntry.ObjectState = ObjectState_Create_ApplyCommit
 		entry.table.link.Update(newEntry, entry)
 	default:
 		panic(fmt.Sprintf("invalid object state %v", lastNode.ObjectState))

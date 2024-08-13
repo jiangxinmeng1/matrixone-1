@@ -1136,7 +1136,11 @@ func ExecuteBlockFilter(
 					// skip the following block checks
 					if quickBreak {
 						blkFilterHit++
-						break
+						if obj.Appendable {
+							continue
+						} else {
+							break
+						}
 					}
 					// skip this block
 					if !ok2 {

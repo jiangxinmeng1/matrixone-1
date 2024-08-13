@@ -191,6 +191,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 				false,
 				nil,
 			)
+			defer closeFunc()
 			if err != nil {
 				return err
 			}
@@ -224,7 +225,6 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 				}
 			}
 			tbl.store.warChecker.Delete(id)
-			closeFunc()
 			// if offset == len(tbl.tombstoneTable.tableSpace.stats)-1 {
 			// 	tbl.tombstoneTable.tableSpace.stats = tbl.tombstoneTable.tableSpace.stats[:offset]
 			// } else {

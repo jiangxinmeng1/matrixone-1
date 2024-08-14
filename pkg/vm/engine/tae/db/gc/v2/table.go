@@ -373,6 +373,7 @@ func (t *GCTable) replayData(
 		return nil, err
 	}
 	for i := range attrs {
+		logutil.Infof("[DiskCleaner]", "replayData", "batch", typ, "col", attrs[i], "type", types[i], "length", mobat.Vecs[i].Length(), "BatchType", typ)
 		pkgVec := mobat.Vecs[i]
 		var vec containers.Vector
 		if pkgVec.Length() == 0 {

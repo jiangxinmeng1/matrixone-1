@@ -411,7 +411,7 @@ func (t *GCTable) ReadTable(ctx context.Context, name string, size int64, fs *ob
 	if err != nil {
 		return err
 	}
-	release2, err = t.replayData(ctx, TombstoneList, TombstoneSchemaAttr, TombstoneSchemaTypes, bats, bs, reader)
+	release2, err = t.replayData(ctx, TombstoneList, BlockSchemaAttr, BlockSchemaTypes, bats, bs, reader)
 	if err != nil {
 		return err
 	}

@@ -9012,3 +9012,78 @@ func TestClearPersistTransferTable(t *testing.T) {
 		},
 	)
 }
+
+func TestTryDeleteByDeltaloc1(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	rows := 100
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, rows)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	// apply deleteloc fails on ablk
+	txn, _ := tae.StartTxn(nil)
+	v1 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(1)
+	ok, err := tae.TryDeleteByDeltalocWithTxn([]any{v1}, txn)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	tae.MergeBlocks(true)
+	t.Log(tae.Catalog.SimplePPString(3))
+
+	err = txn.Commit(ctx)
+	assert.NoError(t, err)
+
+	tae.CheckRowsByScan(rows-1, true)
+	t.Log(tae.Catalog.SimplePPString(3))
+}
+
+func TestTryDeleteByDeltaloc2(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	rows := 100
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, rows)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	// apply deleteloc fails on ablk
+	txn, rel := tae.GetRelation()
+	v1 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(1)
+	filter := handle.NewEQFilter(v1)
+	id, offset, err := rel.GetByFilter(ctx, filter)
+	assert.NoError(t, err)
+	obj, err := rel.GetMeta().(*catalog.TableEntry).GetObjectByID(id.ObjectID(), false)
+	assert.NoError(t, err)
+	_, blkOffset := id.BlockID.Offsets()
+	deltaLoc, err := testutil.MockCNDeleteInS3(tae.Runtime.Fs, obj.GetObjectData(), blkOffset, schema, txn, []uint32{offset})
+	assert.NoError(t, err)
+
+	tae.MergeBlocks(true)
+	t.Log(tae.Catalog.SimplePPString(3))
+
+	ok, err := rel.TryDeleteByDeltaloc(id, deltaLoc)
+	assert.NoError(t, err)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	err = txn.Commit(ctx)
+	assert.NoError(t, err)
+
+	tae.CheckRowsByScan(rows-1, true)
+	t.Log(tae.Catalog.SimplePPString(3))
+}

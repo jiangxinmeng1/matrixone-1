@@ -228,7 +228,7 @@ func (t *GCTable) updateObjectListLocked(ins *containers.Batch, objects map[stri
 }
 
 func (t *GCTable) makeBatchWithGCTable() []*containers.Batch {
-	bats := make([]*containers.Batch, 3)
+	bats := make([]*containers.Batch, 2)
 	bats[ObjectList] = containers.NewBatch()
 	bats[TombstoneList] = containers.NewBatch()
 	return bats

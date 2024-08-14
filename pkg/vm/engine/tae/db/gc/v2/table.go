@@ -278,6 +278,7 @@ func (t *GCTable) SaveTable(start, end types.TS, fs *objectio.ObjectFS, files []
 		return nil, err
 	}
 	for i := range bats {
+		logutil.Infof("[DiskCleaner]", "SaveTable", "batch", i, "length", bats[i].Length(), "col", len(bats[i].Vecs))
 		if _, err := writer.WriteWithoutSeqnum(containers.ToCNBatch(bats[i])); err != nil {
 			return nil, err
 		}
@@ -336,7 +337,6 @@ func (t *GCTable) SaveFullTable(start, end types.TS, fs *objectio.ObjectFS, file
 }
 
 func (t *GCTable) rebuildTable(bats []*containers.Batch, idx BatchType, objects map[string]*ObjectEntry) {
-	logutil.Infof("[DiskCleaner] rebuildTable %d, bat len %d", idx, len(bats[idx].Vecs))
 	for i := 0; i < bats[idx].Length(); i++ {
 		name := string(bats[idx].GetVectorByName(GCAttrObjectName).Get(i).([]byte))
 		creatTS := bats[idx].GetVectorByName(GCCreateTS).Get(i).(types.TS)

@@ -94,7 +94,9 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 	if task.isAObj {
 		writer.SetAppendable()
 	}
+
 	if task.meta.IsTombstone {
+		writer.SetDataType(objectio.SchemaTombstone)
 		writer.SetPrimaryKeyWithType(
 			uint16(catalog.TombstonePrimaryKeyIdx),
 			index.HBF,
@@ -102,6 +104,7 @@ func (task *flushObjTask) Execute(ctx context.Context) (err error) {
 			index.BlockPrefixFn,
 		)
 	} else {
+		writer.SetDataType(objectio.SchemaData)
 		if task.meta.GetSchema().HasPK() {
 			writer.SetPrimaryKey(uint16(task.meta.GetSchema().GetSingleSortKeyIdx()))
 		} else if task.meta.GetSchema().HasSortKey() {

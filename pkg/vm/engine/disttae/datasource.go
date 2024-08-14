@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
-	catalog2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"slices"
 	"sort"
 
@@ -34,9 +32,11 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
+	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae/logtailreplay"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
+	catalog2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
@@ -766,7 +766,7 @@ func loadBlockDeletesByLocation(
 		//readCost := time.Since(t1)
 
 		if persistedByCN {
-			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(persistedDeletes)
+			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(blockId, persistedDeletes)
 		} else {
 			//t2 := time.Now()
 			rows = blockio.EvalDeleteRowsByTimestamp(persistedDeletes, snapshotTS, &blockId)
@@ -1107,6 +1107,11 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return ForeachTombstoneObject(ls.snapshotTS, onTombstone, ls.pState)
 	}
 
+	if deletedRows == nil {
+		deletedRows = &nulls.Nulls{}
+		deletedRows.InitWithSize(8192)
+	}
+
 	if err := GetTombstonesByBlockId(
 		ls.ctx,
 		ls.fs,
@@ -1218,11 +1223,6 @@ func GetTombstonesByBlockId(
 	deleteMask *nulls.Nulls,
 	scanOp func(func(tombstone logtailreplay.ObjectEntry) (bool, error)) error,
 ) (err error) {
-
-	if deleteMask == nil {
-		deleteMask = &nulls.Nulls{}
-		deleteMask.InitWithSize(8192)
-	}
 
 	var (
 		exist    bool

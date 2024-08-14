@@ -242,6 +242,11 @@ func (tomb *tombstoneData) ApplyPersistedTombstones(
 		return nil
 	}
 
+	if deletedMask == nil {
+		deletedMask = &nulls.Nulls{}
+		deletedMask.InitWithSize(8192)
+	}
+
 	if err = GetTombstonesByBlockId(
 		ctx,
 		fs,

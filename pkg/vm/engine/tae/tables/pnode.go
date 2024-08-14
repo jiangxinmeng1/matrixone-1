@@ -228,7 +228,7 @@ func (node *persistedNode) CollectObjectTombstoneInRange(
 					}
 					(*bat).GetVectorByName(catalog.AttrRowID).Append(rowIDs[i], false)
 					(*bat).GetVectorByName(catalog.AttrPKVal).Append(vecs[1].Get(i), false)
-					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(commitTS[i], false)
+					(*bat).GetVectorByName(catalog.AttrCommitTs).Append(commitTS, false)
 				}
 			}
 		} else {

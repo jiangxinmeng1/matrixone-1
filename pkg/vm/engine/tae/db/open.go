@@ -296,7 +296,7 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 	go TaeMetricsTask(ctx)
 
 	// For debug or test
-	// logutil.Info(db.Catalog.SimplePPString(common.PPL2))
+	//fmt.Println(db.Catalog.SimplePPString(common.PPL3))
 	return
 }
 

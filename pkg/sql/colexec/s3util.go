@@ -627,18 +627,18 @@ func (w *S3Writer) WriteBlock(bat *batch.Batch, dataType ...objectio.DataMetaTyp
 		logutil.Warnf("CN write s3 table %q: seqnums length not match seqnums: %v, attrs: %v",
 			w.tablename, w.seqnums, bat.Attrs)
 	}
-	// logutil.Infof("write s3 batch(%d) %q: %v, %v", bat.vecs[0].Length(), w.tablename, w.seqnums, w.attrs)
-	if len(dataType) > 0 && dataType[0] == objectio.SchemaTombstone {
-		_, err := w.writer.WriteBatch(bat)
-		if err != nil {
-			return err
-		}
+	if len(dataType) > 0 {
+		w.writer.SetDataType(dataType[0])
 	} else {
-		_, err := w.writer.WriteBatch(bat)
-		if err != nil {
-			return err
-		}
+		w.writer.SetDataType(objectio.SchemaData)
 	}
+
+	// logutil.Infof("write s3 batch(%d) %q: %v, %v", bat.vecs[0].Length(), w.tablename, w.seqnums, w.attrs)
+	_, err := w.writer.WriteBatch(bat)
+	if err != nil {
+		return err
+	}
+
 	w.lengths = append(w.lengths, uint64(bat.Vecs[0].Length()))
 	return nil
 }

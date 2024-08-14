@@ -702,9 +702,11 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	if err != nil {
 		return err
 	}
+
 	if schema.HasPK() {
 		pkIdx := schema.GetSingleSortKeyIdx()
 		if isTombstone {
+			writer.SetDataType(objectio.SchemaTombstone)
 			writer.SetPrimaryKeyWithType(
 				uint16(catalog.TombstonePrimaryKeyIdx),
 				index.HBF,

@@ -44,7 +44,7 @@ func MergeCheckpoint(
 	deleteFiles := make([]string, 0)
 	for _, ckpEntry := range ckpEntries {
 		logutil.Infof("merge checkpoint %v", ckpEntry.String())
-		objectNames, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
+		_, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
 			ckpEntry.GetLocation(), ckpEntry.GetVersion(), nil, &types.TS{})
 		if err != nil {
 			return nil, err
@@ -54,9 +54,6 @@ func MergeCheckpoint(
 			checkpoint.CheckpointDir, checkpoint.PrefixMetadata,
 			ckpEntry.GetStart(), ckpEntry.GetEnd())
 		deleteFiles = append(deleteFiles, nameMeta)
-		for _, objectName := range objectNames {
-			deleteFiles = append(deleteFiles, objectName.Location.Name().String())
-		}
 	}
 	if len(datas) == 0 {
 		logutil.Infof("no checkpoint data to merge")

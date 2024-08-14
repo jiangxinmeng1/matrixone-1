@@ -36,7 +36,7 @@ func MergeCheckpoint(
 	ckpEntries []*checkpoint.CheckpointEntry,
 	gcTable *GCTable,
 	pool *mpool.MPool,
-) ([]string, error) {
+) ([]string, string, error) {
 	objects := gcTable.getObjects()
 	tombstones := gcTable.getTombstones()
 	ckpData := logtail.NewCheckpointData(sid, pool)
@@ -47,7 +47,7 @@ func MergeCheckpoint(
 		_, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
 			ckpEntry.GetLocation(), ckpEntry.GetVersion(), nil, &types.TS{})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		datas = append(datas, data)
 		nameMeta := blockio.EncodeCheckpointMetadataFileName(
@@ -57,7 +57,7 @@ func MergeCheckpoint(
 	}
 	if len(datas) == 0 {
 		logutil.Infof("no checkpoint data to merge")
-		return nil, nil
+		return nil, "", nil
 	}
 	for _, data := range datas {
 		ins := data.GetObjectBatchs()
@@ -85,7 +85,7 @@ func MergeCheckpoint(
 			if data.GetOneBatch(i).Vecs[2].Length() > 0 {
 				err := ckpData.GetOneBatch(i).Append(data.GetOneBatch(i))
 				if err != nil {
-					return nil, err
+					return nil, "", err
 				}
 			}
 		}
@@ -108,16 +108,16 @@ func MergeCheckpoint(
 	name := blockio.EncodeCheckpointMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), end.Next())
 	writer, err := objectio.NewObjectWriterSpecial(objectio.WriterCheckpoint, name, fs)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if _, err = writer.Write(containers.ToCNBatch(bat)); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// TODO: checkpoint entry should maintain the location
 	_, err = writer.WriteEnd(ctx)
 	logutil.Infof("write checkpoint %s", name)
-	return deleteFiles, err
+	return deleteFiles, name, err
 }
 
 func makeBatchFromSchema(schema *catalog.Schema) *containers.Batch {

@@ -179,6 +179,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	id := tbl.entry.AsCommonID()
 	// transfer deltaloc
 	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
+		hasConflict := false
 		for blkID := range stats.BlkCnt() {
 			loc := catalog.BuildLocation(stats, uint16(blkID), tbl.dataTable.schema.BlockMaxRows)
 			vectors, closeFunc, err := blockio.LoadColumns2(
@@ -198,6 +199,10 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			rowID := vectors[0].Get(0).(types.Rowid)
 			blkID, _ := rowID.Decode()
 			id.BlockID = blkID
+			if tbl.store.warChecker.HasConflict(*id.ObjectID()) {
+				// the blk has been transferd
+				continue
+			}
 			if err = tbl.store.warChecker.checkOne(
 				id,
 				ts,
@@ -208,6 +213,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			if !moerr.IsMoErrCode(err, moerr.ErrTxnRWConflict) {
 				return err
 			}
+			hasConflict = true
 			for i := 0; i < vectors[0].Length(); i++ {
 				rowID := vectors[0].Get(i).(types.Rowid)
 				blkID2, offset := rowID.Decode()
@@ -224,7 +230,6 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 					return err
 				}
 			}
-			tbl.store.warChecker.Delete(id)
 			// if offset == len(tbl.tombstoneTable.tableSpace.stats)-1 {
 			// 	tbl.tombstoneTable.tableSpace.stats = tbl.tombstoneTable.tableSpace.stats[:offset]
 			// } else {
@@ -232,7 +237,9 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			// 		append(tbl.tombstoneTable.tableSpace.stats[:offset], tbl.tombstoneTable.tableSpace.stats[offset+1:]...)
 			// }
 		}
-
+		if hasConflict {
+			tbl.store.warChecker.Delete(id)
+		}
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
@@ -1413,6 +1420,14 @@ func (tbl *txnTable) TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Locati
 	if tbl.tombstoneTable == nil {
 		tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
 	}
+	obj, err := tbl.store.GetObject(id, false)
+	if err != nil {
+		if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+			return false, nil
+		}
+		return
+	}
+	tbl.store.warChecker.Insert(obj.GetMeta().(*catalog.ObjectEntry))
 	stats := tbl.deltaloc2ObjectStat(deltaloc, tbl.store.rt.Fs.Service)
 	err = tbl.addObjsWithMetaLoc(tbl.store.ctx, stats, true)
 	if err == nil {

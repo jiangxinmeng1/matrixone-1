@@ -229,22 +229,8 @@ func (t *GCTable) updateObjectListLocked(ins *containers.Batch, objects map[stri
 
 func (t *GCTable) makeBatchWithGCTable() []*containers.Batch {
 	bats := make([]*containers.Batch, 3)
-	bats[Versions] = containers.NewBatch()
 	bats[ObjectList] = containers.NewBatch()
 	bats[TombstoneList] = containers.NewBatch()
-	return bats
-}
-
-func (t *GCTable) makeBatchWithGCTableV2() []*containers.Batch {
-	bats := make([]*containers.Batch, 1)
-	bats[CreateBlock] = containers.NewBatch()
-	return bats
-}
-
-func (t *GCTable) makeBatchWithGCTableV1() []*containers.Batch {
-	bats := make([]*containers.Batch, 2)
-	bats[CreateBlock] = containers.NewBatch()
-	bats[DeleteBlock] = containers.NewBatch()
 	return bats
 }
 
@@ -263,10 +249,6 @@ func (t *GCTable) collectData(files []string) []*containers.Batch {
 	for i, attr := range BlockSchemaAttr {
 		bats[TombstoneList].AddVector(attr, containers.MakeVector(BlockSchemaTypes[i], common.DefaultAllocator))
 	}
-	for i, attr := range VersionsSchemaAttr {
-		bats[Versions].AddVector(attr, containers.MakeVector(VersionsSchemaTypes[i], common.DefaultAllocator))
-	}
-	bats[Versions].GetVectorByName(GCAttrVersion).Append(CurrentVersion, false)
 	for name, entry := range t.objects {
 		bats[ObjectList].GetVectorByName(GCAttrObjectName).Append([]byte(name), false)
 		bats[ObjectList].GetVectorByName(GCCreateTS).Append(entry.createTS, false)
@@ -353,14 +335,7 @@ func (t *GCTable) SaveFullTable(start, end types.TS, fs *objectio.ObjectFS, file
 	return blocks, err
 }
 
-func (t *GCTable) rebuildTableV3(bats []*containers.Batch) {
-	t.Lock()
-	defer t.Unlock()
-	t.rebuildTableV2(bats, ObjectList, t.objects)
-	t.rebuildTableV2(bats, TombstoneList, t.tombstones)
-}
-
-func (t *GCTable) rebuildTableV2(bats []*containers.Batch, idx BatchType, objects map[string]*ObjectEntry) {
+func (t *GCTable) rebuildTable(bats []*containers.Batch, idx BatchType, objects map[string]*ObjectEntry) {
 	for i := 0; i < bats[idx].Length(); i++ {
 		name := string(bats[idx].GetVectorByName(GCAttrObjectName).Get(i).([]byte))
 		creatTS := bats[idx].GetVectorByName(GCCreateTS).Get(i).(types.TS)
@@ -380,32 +355,8 @@ func (t *GCTable) rebuildTableV2(bats []*containers.Batch, idx BatchType, object
 	}
 }
 
-func (t *GCTable) rebuildTable(bats []*containers.Batch, ts types.TS) {
-	for i := 0; i < bats[CreateBlock].Length(); i++ {
-		name := string(bats[CreateBlock].GetVectorByName(GCAttrObjectName).Get(i).([]byte))
-		if t.objects[name] != nil {
-			continue
-		}
-		object := &ObjectEntry{
-			createTS: ts,
-			commitTS: ts,
-		}
-		t.addObject(name, object, ts, t.objects)
-	}
-	for i := 0; i < bats[DeleteBlock].Length(); i++ {
-		name := string(bats[DeleteBlock].GetVectorByName(GCAttrObjectName).Get(i).([]byte))
-		if t.objects[name] == nil {
-			logutil.Fatalf("delete object should not be nil")
-		}
-		object := &ObjectEntry{
-			dropTS:   ts,
-			commitTS: ts,
-		}
-		t.addObject(name, object, ts, t.objects)
-	}
-}
-
-func (t *GCTable) replayData(ctx context.Context,
+func (t *GCTable) replayData(
+	ctx context.Context,
 	typ BatchType,
 	attrs []string,
 	types []types.Type,
@@ -435,16 +386,13 @@ func (t *GCTable) replayData(ctx context.Context,
 
 // ReadTable reads an s3 file and replays a GCTable in memory
 func (t *GCTable) ReadTable(ctx context.Context, name string, size int64, fs *objectio.ObjectFS, ts types.TS) error {
-	var release1, release2, release3 func()
+	var release1, release2 func()
 	defer func() {
 		if release1 != nil {
 			release1()
 		}
 		if release2 != nil {
 			release2()
-		}
-		if release3 != nil {
-			release3()
 		}
 	}()
 	reader, err := blockio.NewFileReaderNoCache(fs.Service, name)
@@ -455,54 +403,21 @@ func (t *GCTable) ReadTable(ctx context.Context, name string, size int64, fs *ob
 	if err != nil {
 		return err
 	}
-	if len(bs) == 3 {
-		bats := t.makeBatchWithGCTable()
-		defer t.closeBatch(bats)
-		release1, err = t.replayData(ctx, Versions, VersionsSchemaAttr, VersionsSchemaTypes, bats, bs, reader)
-		if err != nil {
-			return err
-		}
-		version := getVersion(bats[Versions])
-		if version != CurrentVersion {
-			panic(fmt.Sprintf("version %d is not supported", version))
-		}
-		release2, err = t.replayData(ctx, ObjectList, BlockSchemaAttr, BlockSchemaTypes, bats, bs, reader)
-		if err != nil {
-			return err
-		}
-		release3, err = t.replayData(ctx, TombstoneList, TombstoneSchemaAttr, TombstoneSchemaTypes, bats, bs, reader)
-		if err != nil {
-			return err
-		}
-		t.rebuildTableV3(bats)
-		return nil
-	}
-	if len(bs) == 1 {
-		bats := t.makeBatchWithGCTableV2()
-		defer t.closeBatch(bats)
-		release1, err = t.replayData(ctx, CreateBlock, BlockSchemaAttr, BlockSchemaTypes, bats, bs, reader)
-		if err != nil {
-			return err
-		}
-		t.rebuildTableV2(bats, CreateBlock, t.objects)
-		return nil
-	}
-	bats := t.makeBatchWithGCTableV1()
+	bats := t.makeBatchWithGCTable()
 	defer t.closeBatch(bats)
-	release2, err = t.replayData(ctx, CreateBlock, BlockSchemaAttrV1, BlockSchemaTypesV1, bats, bs, reader)
+	release1, err = t.replayData(ctx, ObjectList, BlockSchemaAttr, BlockSchemaTypes, bats, bs, reader)
 	if err != nil {
 		return err
 	}
-	release3, err = t.replayData(ctx, DeleteBlock, BlockSchemaAttrV1, BlockSchemaTypesV1, bats, bs, reader)
+	release2, err = t.replayData(ctx, TombstoneList, TombstoneSchemaAttr, TombstoneSchemaTypes, bats, bs, reader)
 	if err != nil {
 		return err
 	}
-	t.rebuildTable(bats, ts)
+	t.Lock()
+	t.rebuildTable(bats, ObjectList, t.objects)
+	t.rebuildTable(bats, TombstoneList, t.tombstones)
+	t.Unlock()
 	return nil
-}
-
-func getVersion(bat *containers.Batch) uint16 {
-	return vector.GetFixedAt[uint16](bat.GetVectorByName(GCAttrVersion).GetDownstreamVector(), 0)
 }
 
 // For test

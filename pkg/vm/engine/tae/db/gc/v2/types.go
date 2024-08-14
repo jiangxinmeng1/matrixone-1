@@ -35,8 +35,7 @@ type CleanerState int8
 const CurrentVersion = uint16(3)
 
 const (
-	Versions BatchType = iota
-	ObjectList
+	ObjectList BatchType = iota
 	TombstoneList
 )
 

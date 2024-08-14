@@ -178,7 +178,7 @@ func (tomb *tombstoneData) PrefetchTombstones(
 ) {
 	for i, end := 0, tomb.files.Len(); i < end; i++ {
 		loc := tomb.files.Get(i)
-		if err := blockio.PrefetchTombstone(
+		if err := blockio.Prefetch(
 			srvId,
 			[]uint16{0, 1, 2},
 			[]uint16{loc.ID()},

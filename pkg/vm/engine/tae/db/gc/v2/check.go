@@ -90,6 +90,11 @@ func (c *checker) Check() error {
 
 	// Collect all objects
 	allObjects, err := c.getObjects()
+	defer func() {
+		if err != nil {
+			logutil.Errorf("[Check GC]get objects failed: %v", err)
+		}
+	}()
 	if err != nil {
 		return err
 	}
@@ -98,6 +103,7 @@ func (c *checker) Check() error {
 	ckpfiles := c.cleaner.GetCheckpoints()
 	checkFiles, _, err := checkpoint.ListSnapshotMeta(c.cleaner.ctx, c.cleaner.fs.Service, entry.GetStart(), nil)
 	if err != nil {
+		logutil.Errorf("[Check GC]list checkpoint files failed: %v", err)
 		return err
 	}
 	// The number of checkpoint files is ckpObjectCount
@@ -138,7 +144,7 @@ func (c *checker) Check() error {
 			logutil.Errorf("[Check GC]not deleted checkpoint file %s", name)
 		}
 	}
-
+	logutil.Infof("MakeDBIt is start")
 	// Collect all objects in memory
 	catalog := c.cleaner.ckpClient.GetCatalog()
 	it := catalog.MakeDBIt(true)
@@ -156,6 +162,7 @@ func (c *checker) Check() error {
 			}
 		}
 	}
+	logutil.Infof("MakeDBIt is end")
 
 	if len(objects) != 0 || len(tombstones) != 0 || len(unconsumedObjects) != 0 || len(unconsumedTombstones) != 0 {
 		for name := range objects {

@@ -21,6 +21,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
@@ -38,8 +39,9 @@ type baseTable struct {
 	schema      *catalog.Schema
 	isTombstone bool
 
-	tableSpace        *tableSpace
-	dedupedObjectHint uint64
+	tableSpace          *tableSpace
+	dedupedAObjectHint  uint64
+	dedupedNAObjectHint uint64
 }
 
 func newBaseTable(schema *catalog.Schema, isTombstone bool, txnTable *txnTable) *baseTable {
@@ -160,12 +162,18 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 	if err != nil {
 		return
 	}
-	maxObjectHint := uint64(0)
+	maxAObjectHint, maxNAObjectHint := uint64(0), uint64(0)
 	for it.Next() {
 		obj := it.GetObject().GetMeta().(*catalog.ObjectEntry)
 		objectHint := obj.SortHint
-		if objectHint > maxObjectHint {
-			maxObjectHint = objectHint
+		if obj.IsAppendable() {
+			if objectHint > maxAObjectHint {
+				maxAObjectHint = objectHint
+			}
+		} else {
+			if objectHint > maxNAObjectHint {
+				maxNAObjectHint = objectHint
+			}
 		}
 		objData := obj.GetObjectData()
 		if objData == nil {
@@ -201,7 +209,7 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 			return
 		}
 	}
-	tbl.updateDedupedObjectHintAndBlockID(maxObjectHint)
+	tbl.updateDedupedObjectHintAndBlockID(maxAObjectHint, maxNAObjectHint)
 	return
 }
 
@@ -215,12 +223,26 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 		pks.Length(),
 		common.WorkspaceAllocator,
 	)
-	dedupedHint := tbl.dedupedObjectHint
+	dedupedAHint := tbl.dedupedAObjectHint
+	dedupedNAHint := tbl.dedupedNAObjectHint
+
+	var aobjDeduped, naobjDeduped bool
 	defer objIt.Release()
 	for ok := objIt.Last(); ok; ok = objIt.Prev() {
-		obj := objIt.Item()
-		if obj.SortHint < dedupedHint {
+		if aobjDeduped && naobjDeduped {
 			break
+		}
+		obj := objIt.Item()
+		if obj.IsAppendable() {
+			if obj.SortHint < dedupedAHint {
+				aobjDeduped = true
+				continue
+			}
+		} else {
+			if obj.SortHint <= dedupedNAHint {
+				naobjDeduped = true
+				continue
+			}
 		}
 		shouldSkip := obj.HasDropCommitted() || obj.IsCreatingOrAborted()
 		if shouldSkip {
@@ -243,15 +265,22 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 	return
 }
 
-func (tbl *baseTable) updateDedupedObjectHintAndBlockID(hint uint64) {
-	if tbl.dedupedObjectHint == 0 {
-		tbl.dedupedObjectHint = hint
-		return
+func (tbl *baseTable) updateDedupedObjectHintAndBlockID(ahint, ohint uint64) {
+	if tbl.dedupedAObjectHint == 0 {
+		tbl.dedupedAObjectHint = ahint
+	} else {
+		if tbl.dedupedAObjectHint > ahint {
+			logutil.Warnf("table %v, current aobj hint %d, incoming hint %d", tbl.txnTable.getSchema(false).Name, tbl.dedupedAObjectHint, ahint)
+			tbl.dedupedAObjectHint = ahint
+		}
 	}
-	if tbl.dedupedObjectHint > hint {
-		tbl.dedupedObjectHint = hint
-		tbl.dedupedObjectHint = hint
-		return
+	if tbl.dedupedNAObjectHint == 0 {
+		tbl.dedupedNAObjectHint = ohint
+	} else {
+		if tbl.dedupedNAObjectHint > ohint {
+			logutil.Warnf("table %v, current aobj hint %d, incoming hint %d", tbl.txnTable.getSchema(false).Name, tbl.dedupedNAObjectHint, ohint)
+			tbl.dedupedNAObjectHint = ohint
+		}
 	}
 }
 

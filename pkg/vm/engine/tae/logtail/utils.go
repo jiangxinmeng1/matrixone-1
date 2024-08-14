@@ -1979,6 +1979,11 @@ func (collector *BaseCollector) LoadAndCollectObject(c *catalog.Catalog, visitOb
 	}
 	return err
 }
+
+func (data *CheckpointData) GetOneBatch(idx uint16) *containers.Batch {
+	return data.bats[idx]
+}
+
 func (collector *BaseCollector) VisitDB(entry *catalog.DBEntry) error {
 	if shouldIgnoreDBInLogtail(entry.ID) {
 		return nil

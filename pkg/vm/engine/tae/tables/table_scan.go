@@ -50,6 +50,9 @@ func HybridScanByBlock(
 	it := tableEntry.MakeTombstoneObjectIt()
 	for it.Next() {
 		tombstone := it.Item()
+		if !tombstone.IsVisible(txn) {
+			continue
+		}
 		err := tombstone.GetObjectData().FillBlockTombstones(ctx, txn, blkID, &(*bat).Deletes, mp)
 		if err != nil {
 			return err

@@ -278,7 +278,6 @@ func (t *GCTable) SaveTable(start, end types.TS, fs *objectio.ObjectFS, files []
 		return nil, err
 	}
 	for i := range bats {
-		logutil.Infof("[DiskCleaner]", "SaveTable", "batch", i, "length", bats[i].Length(), "col", len(bats[i].Vecs))
 		if _, err := writer.WriteWithoutSeqnum(containers.ToCNBatch(bats[i])); err != nil {
 			return nil, err
 		}
@@ -373,7 +372,6 @@ func (t *GCTable) replayData(
 		return nil, err
 	}
 	for i := range attrs {
-		logutil.Infof("[DiskCleaner]", "replayData", "batch", typ, "col", attrs[i], "type", types[i], "length", mobat.Vecs[i].Length(), "BatchType", typ)
 		pkgVec := mobat.Vecs[i]
 		var vec containers.Vector
 		if pkgVec.Length() == 0 {

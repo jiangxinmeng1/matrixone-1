@@ -800,7 +800,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 					"[FLUSH-AOBJ-ERR]",
 					common.AnyField("error", err),
 					zap.String("task", task.Name()),
-					zap.String("obj",obj.ID().String())
+					zap.String("obj", obj.ID().String()),
 				)
 				dataVer.Close()
 				return

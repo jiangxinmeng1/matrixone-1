@@ -336,6 +336,7 @@ func (t *GCTable) SaveFullTable(start, end types.TS, fs *objectio.ObjectFS, file
 }
 
 func (t *GCTable) rebuildTable(bats []*containers.Batch, idx BatchType, objects map[string]*ObjectEntry) {
+	logutil.Infof("[DiskCleaner] rebuildTable %d, bat len %d", idx, len(bats[idx].Vecs))
 	for i := 0; i < bats[idx].Length(); i++ {
 		name := string(bats[idx].GetVectorByName(GCAttrObjectName).Get(i).([]byte))
 		creatTS := bats[idx].GetVectorByName(GCCreateTS).Get(i).(types.TS)

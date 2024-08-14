@@ -27,8 +27,6 @@ import (
 	"testing"
 	"time"
 
-	"sort"
-
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -49,7 +47,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/dbutils"
-	gc "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc/v1"
+	gc "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/gc/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/testutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
@@ -66,6 +64,7 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sort"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -6393,8 +6392,31 @@ func TestSnapshotGC(t *testing.T) {
 			}
 			i++
 			time.Sleep(200 * time.Millisecond)
-			snapshot := time.Now().UTC().Unix()
+			snapshot := time.Now().UTC().UnixNano()
 			snapshots = append(snapshots, snapshot)
+			attrs := []string{"col0", "col1", "ts", "col3", "col4", "col5", "col6", "id"}
+			vecTypes := []types.Type{types.T_uint64.ToType(),
+				types.T_uint64.ToType(), types.T_int64.ToType(),
+				types.T_enum.ToType(), types.T_uint64.ToType(), types.T_uint64.ToType(),
+				types.T_uint64.ToType(), types.T_uint64.ToType()}
+			opt := containers.Options{}
+			opt.Capacity = 0
+			data1 := containers.BuildBatch(attrs, vecTypes, opt)
+			data1.Vecs[0].Append(uint64(0), false)
+			data1.Vecs[1].Append(uint64(0), false)
+			data1.Vecs[2].Append(snapshot, false)
+			data1.Vecs[3].Append(types.Enum(1), false)
+			data1.Vecs[4].Append(uint64(0), false)
+			data1.Vecs[5].Append(uint64(0), false)
+			data1.Vecs[6].Append(uint64(0), false)
+			data1.Vecs[7].Append(uint64(0), false)
+			txn1, _ := db.StartTxn(nil)
+			database, _ := txn1.GetDatabase("db")
+			rel, _ := database.GetRelationByName(snapshotSchema.Name)
+			err = rel.Append(context.Background(), data1)
+			data1.Close()
+			assert.Nil(t, err)
+			assert.Nil(t, txn1.Commit(context.Background()))
 		}
 	}()
 	for _, data := range bats {
@@ -6406,31 +6428,143 @@ func TestSnapshotGC(t *testing.T) {
 		assert.Nil(t, err)
 	}
 	snapWG.Wait()
-	for _, snapshot := range snapshots {
-		attrs := []string{"col0", "col1", "ts", "col3", "col4", "col5", "col6", "id"}
-		vecTypes := []types.Type{types.T_uint64.ToType(),
-			types.T_uint64.ToType(), types.T_int64.ToType(),
-			types.T_enum.ToType(), types.T_uint64.ToType(), types.T_uint64.ToType(),
-			types.T_uint64.ToType(), types.T_uint64.ToType()}
-		opt := containers.Options{}
-		opt.Capacity = 0
-		data1 := containers.BuildBatch(attrs, vecTypes, opt)
-		data1.Vecs[0].Append(uint64(0), false)
-		data1.Vecs[1].Append(uint64(0), false)
-		data1.Vecs[2].Append(snapshot, false)
-		data1.Vecs[3].Append(types.Enum(1), false)
-		data1.Vecs[4].Append(uint64(0), false)
-		data1.Vecs[5].Append(uint64(0), false)
-		data1.Vecs[6].Append(uint64(0), false)
-		data1.Vecs[7].Append(uint64(0), false)
-		txn1, _ := db.StartTxn(nil)
-		database, _ := txn1.GetDatabase("db")
-		rel, _ := database.GetRelationByName(snapshotSchema.Name)
-		err = rel.Append(context.Background(), data1)
-		data1.Close()
-		assert.Nil(t, err)
-		assert.Nil(t, txn1.Commit(context.Background()))
+	wg.Wait()
+	testutils.WaitExpect(10000, func() bool {
+		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0
+	})
+	if db.Runtime.Scheduler.GetPenddingLSNCnt() != 0 {
+		return
 	}
+	db.DiskCleaner.GetCleaner().EnableGCForTest()
+	t.Log(tae.Catalog.SimplePPString(common.PPL1))
+	assert.Equal(t, uint64(0), db.Runtime.Scheduler.GetPenddingLSNCnt())
+	testutils.WaitExpect(5000, func() bool {
+		return db.DiskCleaner.GetCleaner().GetMinMerged() != nil
+	})
+	minMerged := db.DiskCleaner.GetCleaner().GetMinMerged()
+	testutils.WaitExpect(5000, func() bool {
+		return db.DiskCleaner.GetCleaner().GetMinMerged() != nil
+	})
+	if db.DiskCleaner.GetCleaner().GetMinMerged() == nil {
+		return
+	}
+	assert.NotNil(t, minMerged)
+	err = db.DiskCleaner.GetCleaner().CheckGC()
+	assert.Nil(t, err)
+	tae.RestartDisableGC(ctx)
+	db = tae.DB
+	db.DiskCleaner.GetCleaner().SetMinMergeCountForTest(1)
+	testutils.WaitExpect(5000, func() bool {
+		if db.DiskCleaner.GetCleaner().GetMaxConsumed() == nil {
+			return false
+		}
+		end := db.DiskCleaner.GetCleaner().GetMaxConsumed().GetEnd()
+		minEnd := minMerged.GetEnd()
+		return end.GreaterEq(&minEnd)
+	})
+	end := db.DiskCleaner.GetCleaner().GetMaxConsumed().GetEnd()
+	minEnd := minMerged.GetEnd()
+	assert.True(t, end.GreaterEq(&minEnd))
+	err = db.DiskCleaner.GetCleaner().CheckGC()
+	assert.Nil(t, err)
+
+}
+
+func TestSnapshotGC2(t *testing.T) {
+	t.Skip("skip the TestSnapshotGC2")
+	defer testutils.AfterTest(t)()
+	testutils.EnsureNoLeak(t)
+	ctx := context.Background()
+
+	opts := new(options.Options)
+	opts = config.WithQuickScanAndALotCKPOpts(opts)
+	options.WithDisableGCCheckpoint()(opts)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	db := tae.DB
+	db.DiskCleaner.GetCleaner().SetMinMergeCountForTest(1)
+
+	snapshotSchema := catalog.MockSnapShotSchema()
+	snapshotSchema.BlockMaxRows = 2
+	snapshotSchema.ObjectMaxBlocks = 1
+	schema1 := catalog.MockSchemaAll(13, 2)
+	schema1.BlockMaxRows = 10
+	schema1.ObjectMaxBlocks = 2
+
+	schema2 := catalog.MockSchemaAll(13, 2)
+	schema2.BlockMaxRows = 10
+	schema2.ObjectMaxBlocks = 2
+	var rel3 handle.Relation
+	{
+		txn, _ := db.StartTxn(nil)
+		database, err := txn.CreateDatabase("db", "", "")
+		assert.Nil(t, err)
+		_, err = database.CreateRelation(schema1)
+		assert.Nil(t, err)
+		_, err = database.CreateRelation(schema2)
+		assert.Nil(t, err)
+		rel3, err = database.CreateRelation(snapshotSchema)
+		assert.Nil(t, err)
+		assert.Nil(t, txn.Commit(context.Background()))
+	}
+	db.DiskCleaner.GetCleaner().SetTid(rel3.ID())
+	db.DiskCleaner.GetCleaner().DisableGCForTest()
+	bat := catalog.MockBatch(schema1, int(schema1.BlockMaxRows*100-1))
+	defer bat.Close()
+	bats := bat.Split(bat.Length())
+
+	pool, err := ants.NewPool(20)
+	assert.Nil(t, err)
+	defer pool.Release()
+	snapshots := make([]int64, 0)
+	var wg sync.WaitGroup
+	var snapWG sync.WaitGroup
+	snapWG.Add(1)
+	go func() {
+		i := 0
+		for {
+			if i > 3 {
+				snapWG.Done()
+				break
+			}
+			i++
+			time.Sleep(200 * time.Millisecond)
+			snapshot := time.Now().UTC().UnixNano()
+			snapshots = append(snapshots, snapshot)
+			attrs := []string{"col0", "col1", "ts", "col3", "col4", "col5", "col6", "id"}
+			vecTypes := []types.Type{types.T_uint64.ToType(),
+				types.T_uint64.ToType(), types.T_int64.ToType(),
+				types.T_enum.ToType(), types.T_uint64.ToType(), types.T_uint64.ToType(),
+				types.T_uint64.ToType(), types.T_uint64.ToType()}
+			opt := containers.Options{}
+			opt.Capacity = 0
+			data1 := containers.BuildBatch(attrs, vecTypes, opt)
+			data1.Vecs[0].Append(uint64(0), false)
+			data1.Vecs[1].Append(uint64(0), false)
+			data1.Vecs[2].Append(snapshot, false)
+			data1.Vecs[3].Append(types.Enum(1), false)
+			data1.Vecs[4].Append(uint64(0), false)
+			data1.Vecs[5].Append(uint64(0), false)
+			data1.Vecs[6].Append(uint64(0), false)
+			data1.Vecs[7].Append(uint64(0), false)
+			txn1, _ := db.StartTxn(nil)
+			database, _ := txn1.GetDatabase("db")
+			rel, _ := database.GetRelationByName(snapshotSchema.Name)
+			err = rel.Append(context.Background(), data1)
+			data1.Close()
+			assert.Nil(t, err)
+			assert.Nil(t, txn1.Commit(context.Background()))
+		}
+	}()
+	for _, data := range bats {
+		wg.Add(2)
+		err = pool.Submit(testutil.AppendClosure(t, data, schema1.Name, db, &wg))
+		assert.Nil(t, err)
+
+		err = pool.Submit(testutil.AppendClosure(t, data, schema2.Name, db, &wg))
+		assert.Nil(t, err)
+	}
+	snapWG.Wait()
 	wg.Wait()
 	testutils.WaitExpect(10000, func() bool {
 		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0

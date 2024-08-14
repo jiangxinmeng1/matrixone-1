@@ -228,6 +228,7 @@ func (c *checkpointCleaner) Replay() error {
 	for _, dir := range readDirs {
 		table := NewGCTable()
 		_, end, _ := blockio.DecodeGCMetadataFileName(dir.Name)
+		logutil.Infof("Replay GC metadata file %s", dir.Name)
 		err = table.ReadTable(c.ctx, GCMetaDir+dir.Name, dir.Size, c.fs, end)
 		if err != nil {
 			return err

@@ -241,7 +241,7 @@ func (t *GCTable) closeBatch(bs []*containers.Batch) {
 }
 
 // collectData collects data from memory that can be written to s3
-func (t *GCTable) collectData(files []string) []*containers.Batch {
+func (t *GCTable) collectData() []*containers.Batch {
 	bats := t.makeBatchWithGCTable()
 	for i, attr := range BlockSchemaAttr {
 		bats[ObjectList].AddVector(attr, containers.MakeVector(BlockSchemaTypes[i], common.DefaultAllocator))
@@ -270,7 +270,7 @@ func (t *GCTable) collectData(files []string) []*containers.Batch {
 
 // SaveTable is to write data to s3
 func (t *GCTable) SaveTable(start, end types.TS, fs *objectio.ObjectFS, files []string) ([]objectio.BlockObject, error) {
-	bats := t.collectData(files)
+	bats := t.collectData()
 	defer t.closeBatch(bats)
 	name := blockio.EncodeCheckpointMetadataFileName(GCMetaDir, PrefixGCMeta, start, end)
 	writer, err := objectio.NewObjectWriterSpecial(objectio.WriterGC, name, fs.Service)
@@ -316,7 +316,7 @@ func (t *GCTable) SaveFullTable(start, end types.TS, fs *objectio.ObjectFS, file
 			zap.Int("object count :", objectCount),
 			zap.Int("tombstone count :", tombstoneCount))
 	}()
-	bats = t.collectData(files)
+	bats = t.collectData()
 	collectCost = time.Since(now)
 	now = time.Now()
 	name := blockio.EncodeGCMetadataFileName(GCMetaDir, PrefixGCMeta, start, end)

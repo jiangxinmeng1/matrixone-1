@@ -146,10 +146,6 @@ func initTxnMetrics() {
 
 	registry.MustRegister(txnRangesSelectivityHistogram)
 	registry.MustRegister(txnTNDeduplicateDurationHistogram)
-
-	registry.MustRegister(TxnReaderScannedTotalTombstoneHistogram)
-	registry.MustRegister(TxnReaderEachBLKLoadedTombstoneHistogram)
-	registry.MustRegister(txnReaderTombstoneSelectivityHistogram)
 }
 
 func initRPCMetrics() {

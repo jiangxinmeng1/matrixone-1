@@ -32,7 +32,6 @@ import (
 	db_holder "github.com/matrixorigin/matrixone/pkg/util/export/etl/db"
 	"github.com/matrixorigin/matrixone/pkg/vm"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 	"go.uber.org/zap"
@@ -604,16 +603,7 @@ func sortByKey(proc *process.Process, bat *batch.Batch, sortIndex int, allow_nul
 func (w *S3Writer) WriteBlock(bat *batch.Batch, dataType ...objectio.DataMetaType) error {
 	if w.pk > -1 {
 		pkIdx := uint16(w.pk)
-		if len(dataType) > 0 && dataType[0] == objectio.SchemaTombstone {
-			w.writer.SetPrimaryKeyWithType(
-				uint16(pkIdx),
-				index.HBF,
-				index.ObjectPrefixFn,
-				index.BlockPrefixFn,
-			)
-		} else {
-			w.writer.SetPrimaryKey(pkIdx)
-		}
+		w.writer.SetPrimaryKey(pkIdx)
 	}
 	if w.sortIndex > -1 {
 		w.writer.SetSortKey(uint16(w.sortIndex))
@@ -627,18 +617,18 @@ func (w *S3Writer) WriteBlock(bat *batch.Batch, dataType ...objectio.DataMetaTyp
 		logutil.Warnf("CN write s3 table %q: seqnums length not match seqnums: %v, attrs: %v",
 			w.tablename, w.seqnums, bat.Attrs)
 	}
-	if len(dataType) > 0 {
-		w.writer.SetDataType(dataType[0])
-	} else {
-		w.writer.SetDataType(objectio.SchemaData)
-	}
-
 	// logutil.Infof("write s3 batch(%d) %q: %v, %v", bat.vecs[0].Length(), w.tablename, w.seqnums, w.attrs)
-	_, err := w.writer.WriteBatch(bat)
-	if err != nil {
-		return err
+	if len(dataType) > 0 && dataType[0] == objectio.SchemaTombstone {
+		_, err := w.writer.WriteBatch(bat)
+		if err != nil {
+			return err
+		}
+	} else {
+		_, err := w.writer.WriteBatch(bat)
+		if err != nil {
+			return err
+		}
 	}
-
 	w.lengths = append(w.lengths, uint64(bat.Vecs[0].Length()))
 	return nil
 }

@@ -21,6 +21,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 )
 
@@ -214,6 +215,8 @@ type ObjectNode struct {
 
 	// for tombstone
 	IsTombstone bool
+
+	remainingRows *common.FixedSampleIII[int]
 }
 
 const (

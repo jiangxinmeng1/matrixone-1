@@ -91,7 +91,7 @@ type activeEntry struct {
 	insertAt time.Time
 }
 
-var ActiveCNObj = ActiveCNObjMap{
+var ActiveCNObj ActiveCNObjMap = ActiveCNObjMap{
 	o: make(map[objectio.ObjectId]activeEntry),
 }
 
@@ -192,8 +192,10 @@ func CleanUpUselessFiles(entry *api.MergeCommitEntry, fs fileservice.FileService
 }
 
 const (
-	constMaxMemCap     = 12 * common.Const1GBytes // max original memory for an object
-	constSmallMergeGap = 3 * time.Minute
+	constMergeMinBlks       = 5
+	constMergeExpansionRate = 6
+	constMaxMemCap          = 4 * constMergeExpansionRate * common.Const1GBytes // max orginal memory for a object
+	constSmallMergeGap      = 3 * time.Minute
 )
 
 type Policy interface {
@@ -209,10 +211,10 @@ func NewUpdatePolicyReq(c *BasicPolicyConfig) *api.AlterTableReq {
 		Kind: api.AlterKind_UpdatePolicy,
 		Operation: &api.AlterTableReq_UpdatePolicy{
 			UpdatePolicy: &api.AlterTablePolicy{
-				MinOsizeQuailifed: c.ObjectMinOsize,
+				MinOsizeQuailifed: uint32(c.ObjectMinOsize),
 				MaxObjOnerun:      uint32(c.MergeMaxOneRun),
-				MaxOsizeMergedObj: c.MaxOsizeMergedObj,
-				MinCnMergeSize:    c.MinCNMergeSize,
+				MaxOsizeMergedObj: uint32(c.MaxOsizeMergedObj),
+				MinCnMergeSize:    uint64(c.MinCNMergeSize),
 				Hints:             c.MergeHints,
 			},
 		},

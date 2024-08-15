@@ -17,7 +17,6 @@ package merge
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -55,8 +54,8 @@ type MergeExecutor struct {
 	memUsing            int
 	transPageLimit      uint64
 	cpuPercent          float64
-	activeMergeBlkCount atomic.Int32
-	activeEstimateBytes atomic.Int64
+	activeMergeBlkCount int32
+	activeEstimateBytes int64
 	roundMergeRows      uint64
 	taskConsume         struct {
 		sync.Mutex
@@ -122,7 +121,7 @@ func (e *MergeExecutor) RefreshMemInfo() {
 }
 
 func (e *MergeExecutor) PrintStats() {
-	cnt := e.activeMergeBlkCount.Load()
+	cnt := atomic.LoadInt32(&e.activeMergeBlkCount)
 	if cnt == 0 && e.MemAvailBytes() > 512*common.Const1MBytes {
 		return
 	}
@@ -131,14 +130,14 @@ func (e *MergeExecutor) PrintStats() {
 		"MergeExecutorMemoryStats",
 		common.AnyField("process-limit", common.HumanReadableBytes(e.memLimit)),
 		common.AnyField("process-mem", common.HumanReadableBytes(e.memUsing)),
-		common.AnyField("inuse-mem", common.HumanReadableBytes(int(e.activeEstimateBytes.Load()))),
+		common.AnyField("inuse-mem", common.HumanReadableBytes(int(atomic.LoadInt64(&e.activeEstimateBytes)))),
 		common.AnyField("inuse-cnt", cnt),
 	)
 }
 
 func (e *MergeExecutor) AddActiveTask(taskId uint64, blkn, esize int) {
-	e.activeEstimateBytes.Add(int64(esize))
-	e.activeMergeBlkCount.Add(int32(blkn))
+	atomic.AddInt64(&e.activeEstimateBytes, int64(esize))
+	atomic.AddInt32(&e.activeMergeBlkCount, int32(blkn))
 	e.taskConsume.Lock()
 	if e.taskConsume.m == nil {
 		e.taskConsume.m = make(activeTaskStats)
@@ -158,8 +157,8 @@ func (e *MergeExecutor) OnExecDone(v any) {
 	delete(e.taskConsume.m, task.ID())
 	e.taskConsume.Unlock()
 
-	e.activeMergeBlkCount.Add(-int32(stat.blk))
-	e.activeEstimateBytes.Add(-int64(stat.estBytes))
+	atomic.AddInt32(&e.activeMergeBlkCount, -int32(stat.blk))
+	atomic.AddInt64(&e.activeEstimateBytes, -int64(stat.estBytes))
 }
 
 func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, mobjs []*catalog.ObjectEntry, kind TaskHostKind) {
@@ -173,7 +172,7 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, mobjs []*catalog.O
 	}
 
 	if kind == TaskHostCN {
-		osize, esize := estimateMergeConsume(mobjs)
+		osize, esize, _ := estimateMergeConsume(mobjs)
 		blkCnt := 0
 		for _, obj := range mobjs {
 			blkCnt += obj.BlockCnt()
@@ -241,14 +240,14 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, mobjs []*catalog.O
 	}
 }
 func (e *MergeExecutor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalog.ObjectEntry, blkCnt int, entry *catalog.TableEntry, isTombstone bool) {
-	osize, esize := estimateMergeConsume(mobjs)
+	osize, esize, _ := estimateMergeConsume(mobjs)
 	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
 		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes, isTombstone)
 	}
 	task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTaskWithObserver(nil, tasks.DataCompactionTask, scopes, factory, e)
 	if err != nil {
-		if !errors.Is(err, tasks.ErrScheduleScopeConflict) {
+		if err != tasks.ErrScheduleScopeConflict {
 			logutil.Info(
 				"MergeExecutorError",
 				common.OperationField("schedule-merge-task"),
@@ -260,14 +259,14 @@ func (e *MergeExecutor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalo
 	}
 	e.AddActiveTask(task.ID(), blkCnt, esize)
 	for _, obj := range mobjs {
-		e.roundMergeRows += uint64(obj.GetRows())
+		e.roundMergeRows += uint64(obj.GetRemainingRows())
 	}
 	logMergeTask(e.tableName, task.ID(), mobjs, blkCnt, osize, esize)
 	entry.Stats.AddMerge(osize, len(mobjs), blkCnt)
 
 }
 func (e *MergeExecutor) MemAvailBytes() int {
-	merging := int(e.activeEstimateBytes.Load())
+	merging := int(atomic.LoadInt64(&e.activeEstimateBytes))
 	avail := e.memLimit - e.memUsing - merging
 	if avail < 0 {
 		avail = 0
@@ -287,7 +286,7 @@ func logMergeTask(name string, taskId uint64, merges []*catalog.ObjectEntry, blk
 	rows := 0
 	infoBuf := &bytes.Buffer{}
 	for _, obj := range merges {
-		r := obj.GetRows()
+		r := obj.GetRemainingRows()
 		rows += r
 		infoBuf.WriteString(fmt.Sprintf(" %d(%s)", r, obj.ID().ShortStringEx()))
 	}

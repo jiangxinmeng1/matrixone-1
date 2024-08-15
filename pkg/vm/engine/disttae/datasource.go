@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	catalog2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"slices"
 	"sort"
 
@@ -32,11 +33,9 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
-	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae/logtailreplay"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
-	catalog2 "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
@@ -216,13 +215,38 @@ func (rs *RemoteDataSource) applyPersistedTombstones(
 		return rowsOffset, nil
 	}
 
+	apply := func(
+		ctx context.Context,
+		loc objectio.Location,
+		cts types.TS,
+		rowsOffset []int64,
+		deleted *nulls.Nulls) (left []int64, err error) {
+
+		deletes, err := loadBlockDeletesByLocation(ctx, rs.fs, bid, loc, rs.ts, cts)
+		if err != nil {
+			return nil, err
+		}
+
+		if rowsOffset != nil {
+			for _, offset := range rowsOffset {
+				if deletes.Contains(uint64(offset)) {
+					continue
+				}
+				left = append(left, offset)
+			}
+		} else if deleted != nil {
+			deleted.Merge(deletes)
+		}
+
+		return
+	}
+
 	return rs.data.GetTombstones().ApplyPersistedTombstones(
 		ctx,
-		rs.fs,
-		rs.ts,
 		bid,
 		rowsOffset,
-		mask)
+		mask,
+		apply)
 }
 
 func (rs *RemoteDataSource) ApplyTombstones(
@@ -744,7 +768,7 @@ func loadBlockDeletesByLocation(
 	fs fileservice.FileService,
 	blockId types.Blockid,
 	location objectio.Location,
-	snapshotTS types.TS,
+	snapshotTS, blockCommitTS types.TS,
 ) (deleteMask *nulls.Nulls, err error) {
 
 	var (
@@ -766,7 +790,7 @@ func loadBlockDeletesByLocation(
 		//readCost := time.Since(t1)
 
 		if persistedByCN {
-			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(blockId, persistedDeletes)
+			rows = blockio.EvalDeleteRowsByTimestampForDeletesPersistedByCN(persistedDeletes, snapshotTS, blockCommitTS)
 		} else {
 			//t2 := time.Now()
 			rows = blockio.EvalDeleteRowsByTimestamp(persistedDeletes, snapshotTS, &blockId)
@@ -941,18 +965,17 @@ func applyDeletesWithinDeltaLocations(
 
 	for _, loc := range locations {
 		if mask, err = loadBlockDeletesByLocation(
-			ctx, fs, bid, loc[:], snapshotTS); err != nil {
+			ctx, fs, bid, loc[:], snapshotTS, blkCommitTS); err != nil {
 			return nil, err
 		}
 
 		if offsets != nil {
-			leftRows = removeIf(offsets, func(t int64) bool {
-				if mask.Contains(uint64(t)) {
-					return true
+			for _, offset := range offsets {
+				if mask.Contains(uint64(offset)) {
+					continue
 				}
-				return false
-			})
-
+				leftRows = append(leftRows, offset)
+			}
 		} else if deletedRows != nil {
 			deletedRows.Merge(mask)
 		}
@@ -1093,7 +1116,7 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 	bid objectio.Blockid,
 	offsets []int64,
 	deletedRows *nulls.Nulls,
-) ([]int64, error) {
+) (leftRows []int64, err error) {
 
 	if ls.rc.SkipPStateDeletes {
 		return offsets, nil
@@ -1107,12 +1130,7 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return ForeachTombstoneObject(ls.snapshotTS, onTombstone, ls.pState)
 	}
 
-	if deletedRows == nil {
-		deletedRows = &nulls.Nulls{}
-		deletedRows.InitWithSize(8192)
-	}
-
-	if err := GetTombstonesByBlockId(
+	if err = GetTombstonesByBlockId(
 		ls.ctx,
 		ls.fs,
 		bid,
@@ -1122,14 +1140,15 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 		return nil, err
 	}
 
-	offsets = removeIf(offsets, func(t int64) bool {
-		if deletedRows.Contains(uint64(t)) {
-			return true
+	if len(offsets) > 0 {
+		for _, o := range offsets {
+			if !deletedRows.Contains(uint64(o)) {
+				leftRows = append(leftRows, o)
+			}
 		}
-		return false
-	})
+	}
 
-	return offsets, nil
+	return
 }
 
 func (ls *LocalDataSource) batchPrefetch(seqNums []uint16) {
@@ -1224,31 +1243,25 @@ func GetTombstonesByBlockId(
 	scanOp func(func(tombstone logtailreplay.ObjectEntry) (bool, error)) error,
 ) (err error) {
 
+	if deleteMask == nil {
+		deleteMask = &nulls.Nulls{}
+		deleteMask.InitWithSize(8192)
+	}
+
 	var (
 		exist    bool
 		bf       objectio.BloomFilter
 		bfIndex  index.StaticFilter
 		mask     *nulls.Nulls
 		location objectio.Location
-
-		totalBlk     int
-		zmBreak      int
-		blBreak      int
-		loaded       int
-		totalScanned int
 	)
 
 	bidZM := index.BuildZM(types.T_binary, bid[:])
 
 	onTombstone := func(obj logtailreplay.ObjectEntry) (bool, error) {
-		totalScanned++
-
-		if !obj.ZMIsEmpty() {
-			objZM := obj.SortKeyZoneMap()
-			if skip := !objZM.PrefixEq(bidZM); skip {
-				zmBreak++
-				return true, nil
-			}
+		objZM := obj.SortKeyZoneMap()
+		if skip := !objZM.FastIntersect(bidZM); skip {
+			return true, nil
 		}
 
 		if bf, err = objectio.FastLoadBF(
@@ -1256,7 +1269,6 @@ func GetTombstonesByBlockId(
 			return false, err
 		}
 
-		totalBlk += int(obj.BlkCnt())
 		for idx := 0; idx < int(obj.BlkCnt()); idx++ {
 			buf := bf.GetBloomFilter(uint32(idx))
 			bfIndex = index.NewEmptyBloomFilterWithType(index.HBF)
@@ -1268,15 +1280,13 @@ func GetTombstonesByBlockId(
 				bid[:], index.PrefixFnID_Block, 2); err != nil {
 				return false, err
 			} else if !exist {
-				blBreak++
 				continue
 			}
 
-			loaded++
 			location = catalog2.BuildLocation(obj.ObjectStats, uint16(idx), options.DefaultBlockMaxRows)
 
 			if mask, err = loadBlockDeletesByLocation(
-				ctx, fs, bid, location, snapshot); err != nil {
+				ctx, fs, bid, location, snapshot, obj.CommitTS); err != nil {
 				return false, err
 			}
 
@@ -1286,15 +1296,6 @@ func GetTombstonesByBlockId(
 	}
 
 	err = scanOp(onTombstone)
-
-	v2.TxnReaderEachBLKLoadedTombstoneHistogram.Observe(float64(loaded))
-	v2.TxnReaderScannedTotalTombstoneHistogram.Observe(float64(totalScanned))
-	if totalScanned != 0 {
-		v2.TxnReaderTombstoneZMSelectivityHistogram.Observe(float64(zmBreak) / float64(totalScanned))
-	}
-	if totalBlk != 0 {
-		v2.TxnReaderTombstoneBLSelectivityHistogram.Observe(float64(blBreak) / float64(totalBlk))
-	}
 
 	return err
 }

@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
 	"sort"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -73,7 +71,7 @@ func NewEmptyTombstoneWithDeltaLoc() *tombstoneDataWithDeltaLoc {
 
 type tombstoneData struct {
 	rowids []types.Rowid
-	files  objectio.ObjectStatsSlice
+	files  objectio.LocationSlice
 }
 
 func (tomb *tombstoneData) MarshalBinaryWithBuffer(buf *bytes.Buffer) (err error) {
@@ -112,7 +110,7 @@ func (tomb *tombstoneData) UnmarshalBinary(buf []byte) error {
 	tomb.rowids = types.DecodeSlice[types.Rowid](buf[:size*types.RowidSize])
 	buf = buf[size*types.RowidSize:]
 	buf = buf[4:]
-	tomb.files = objectio.ObjectStatsSlice(buf[:])
+	tomb.files = objectio.LocationSlice(buf[:])
 	return nil
 }
 
@@ -121,9 +119,9 @@ func (tomb *tombstoneData) AppendInMemory(rowids ...types.Rowid) error {
 	return nil
 }
 
-func (tomb *tombstoneData) AppendFiles(stats ...objectio.ObjectStats) error {
-	for _, ss := range stats {
-		tomb.files.Append(ss[:])
+func (tomb *tombstoneData) AppendFiles(locs ...objectio.Location) error {
+	for _, loc := range locs {
+		tomb.files = append(tomb.files, loc[:]...)
 	}
 	return nil
 }
@@ -179,17 +177,15 @@ func (tomb *tombstoneData) PrefetchTombstones(
 	bids []objectio.Blockid,
 ) {
 	for i, end := 0, tomb.files.Len(); i < end; i++ {
-		stats := tomb.files.Get(i)
-		for j := 0; j < int(stats.BlkCnt()); j++ {
-			loc := catalog.BuildLocation(*stats, uint16(j), options.DefaultBlockMaxRows)
-			if err := blockio.Prefetch(
-				srvId,
-				[]uint16{0, 1, 2},
-				[]uint16{loc.ID()},
-				fs,
-				loc); err != nil {
-				logutil.Errorf("prefetch block delta location: %s", err.Error())
-			}
+		loc := tomb.files.Get(i)
+		if err := blockio.Prefetch(
+			srvId,
+			[]uint16{0, 1, 2},
+			[]uint16{loc.ID()},
+			fs,
+			*loc,
+		); err != nil {
+			logutil.Errorf("prefetch block delta location: %s", err.Error())
 		}
 	}
 }
@@ -218,55 +214,32 @@ func (tomb *tombstoneData) ApplyInMemTombstones(
 
 func (tomb *tombstoneData) ApplyPersistedTombstones(
 	ctx context.Context,
-	fs fileservice.FileService,
-	snapshot types.TS,
 	bid types.Blockid,
 	rowsOffset []int64,
-	deletedMask *nulls.Nulls,
+	mask *nulls.Nulls,
+	apply func(
+		ctx context.Context,
+		loc objectio.Location,
+		cts types.TS,
+		rowsOffset []int64,
+		deleted *nulls.Nulls,
+	) (left []int64, err error),
 ) (left []int64, err error) {
 
 	left = rowsOffset
-	if tomb.files.Len() == 0 {
+	if len(tomb.files) == 0 {
 		return
 	}
 
-	var obj logtailreplay.ObjectEntry
-	scanOp := func(onTombstone func(tombstone logtailreplay.ObjectEntry) (bool, error)) error {
-		for i, end := 0, tomb.files.Len(); i < end; i++ {
-			stats := tomb.files.Get(i)
-			obj.ObjectStats = *stats
-			if goOn, err := onTombstone(obj); err != nil || !goOn {
-				return err
-			}
+	for i, end := 0, tomb.files.Len(); i < end; i++ {
+		loc := tomb.files.Get(i)
+		left, err = apply(ctx, *loc, types.TS{}, left, mask)
+		if err != nil {
+			return
 		}
-		return nil
 	}
 
-	if deletedMask == nil {
-		deletedMask = &nulls.Nulls{}
-		deletedMask.InitWithSize(8192)
-	}
-
-	if err = GetTombstonesByBlockId(
-		ctx,
-		fs,
-		bid,
-		snapshot,
-		deletedMask,
-		scanOp); err != nil {
-		return nil, err
-	}
-
-	if len(rowsOffset) != 0 {
-		left = removeIf(rowsOffset, func(t int64) bool {
-			if deletedMask.Contains(uint64(t)) {
-				return true
-			}
-			return false
-		})
-	}
-
-	return left, nil
+	return
 }
 
 func (tomb *tombstoneData) SortInMemory() {
@@ -525,38 +498,23 @@ func (tomb *tombstoneDataWithDeltaLoc) ApplyInMemTombstones(
 
 func (tomb *tombstoneDataWithDeltaLoc) ApplyPersistedTombstones(
 	ctx context.Context,
-	fs fileservice.FileService,
-	snapshot types.TS,
 	bid types.Blockid,
 	rowsOffset []int64,
-	deletedMask *nulls.Nulls,
+	mask *nulls.Nulls,
+	apply func(
+		ctx context.Context,
+		loc objectio.Location,
+		cts types.TS,
+		rowsOffset []int64,
+		deleted *nulls.Nulls,
+	) (left []int64, err error),
 ) (left []int64, err error) {
 
 	left = rowsOffset
 
-	apply := func(loc objectio.Location, cts types.TS) (err error) {
-		deletes, err := loadBlockDeletesByLocation(ctx, fs, bid, loc, snapshot)
-		if err != nil {
-			return err
-		}
-
-		if len(rowsOffset) != 0 {
-			left = removeIf(rowsOffset, func(t int64) bool {
-				if deletedMask.Contains(uint64(t)) {
-					return true
-				}
-				return false
-			})
-		} else if deletedMask != nil {
-			deletedMask.Merge(deletes)
-		}
-
-		return
-	}
-
 	if locs, ok := tomb.blk2UncommitLoc[bid]; ok {
 		for _, loc := range locs {
-			err = apply(loc, types.TS{})
+			left, err = apply(ctx, loc, types.TS{}, left, mask)
 			if err != nil {
 				return
 			}
@@ -564,7 +522,7 @@ func (tomb *tombstoneDataWithDeltaLoc) ApplyPersistedTombstones(
 	}
 
 	if loc, ok := tomb.blk2CommitLoc[bid]; ok {
-		err = apply(loc.Loc, loc.Cts)
+		left, err = apply(ctx, loc.Loc, loc.Cts, left, mask)
 		if err != nil {
 			return
 		}

@@ -498,7 +498,7 @@ func getAllowedMergeFiles(
 	snapshot types.TS,
 	listFunc checkpoint.GetCheckpointRange) (ok bool, files []*checkpoint.MetaFile, idxes []int, err error) {
 	var idx int
-	files, idx, err = checkpoint.ListSnapshotMetaWithDiskCleaner(snapshot, listFunc, metas)
+	files, idx, err, _ = checkpoint.ListSnapshotMetaWithDiskCleaner(snapshot, listFunc, metas)
 	if err != nil {
 		return
 	}
@@ -632,9 +632,13 @@ func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList ma
 		}
 		ckpGC = new(types.TS)
 		deleteFiles = append(deleteFiles, delFiles...)
-		delFiles, err = MergeCheckpoint(c.ctx, c.sid, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
+		var newName string
+		delFiles, newName, err = MergeCheckpoint(c.ctx, c.sid, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
 		if err != nil {
 			return err
+		}
+		if newName != "" {
+			c.ckpClient.AddCheckpointMetaFile(newName)
 		}
 		deleteFiles = append(deleteFiles, delFiles...)
 	}

@@ -36,7 +36,7 @@ func MergeCheckpoint(
 	ckpEntries []*checkpoint.CheckpointEntry,
 	gcTable *GCTable,
 	pool *mpool.MPool,
-) ([]string, error) {
+) ([]string, string, error) {
 	objects := gcTable.getObjects()
 	tombstones := gcTable.getTombstones()
 	ckpData := logtail.NewCheckpointData(sid, pool)
@@ -44,23 +44,20 @@ func MergeCheckpoint(
 	deleteFiles := make([]string, 0)
 	for _, ckpEntry := range ckpEntries {
 		logutil.Infof("merge checkpoint %v", ckpEntry.String())
-		objectNames, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
+		_, data, err := logtail.LoadCheckpointEntriesFromKey(context.Background(), sid, fs,
 			ckpEntry.GetLocation(), ckpEntry.GetVersion(), nil, &types.TS{})
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		datas = append(datas, data)
 		nameMeta := blockio.EncodeCheckpointMetadataFileName(
 			checkpoint.CheckpointDir, checkpoint.PrefixMetadata,
 			ckpEntry.GetStart(), ckpEntry.GetEnd())
 		deleteFiles = append(deleteFiles, nameMeta)
-		for _, objectName := range objectNames {
-			deleteFiles = append(deleteFiles, objectName.Location.Name().String())
-		}
 	}
 	if len(datas) == 0 {
 		logutil.Infof("no checkpoint data to merge")
-		return nil, nil
+		return nil, "", nil
 	}
 	for _, data := range datas {
 		ins := data.GetObjectBatchs()
@@ -88,7 +85,7 @@ func MergeCheckpoint(
 			if data.GetOneBatch(i).Vecs[2].Length() > 0 {
 				err := ckpData.GetOneBatch(i).Append(data.GetOneBatch(i))
 				if err != nil {
-					return nil, err
+					return nil, "", err
 				}
 			}
 		}
@@ -96,9 +93,10 @@ func MergeCheckpoint(
 	cnLocation, tnLocation, _, err := ckpData.WriteTo(
 		fs, logtail.DefaultCheckpointBlockRows, logtail.DefaultCheckpointSize,
 	)
+	end := ckpEntries[len(ckpEntries)-1].GetEnd()
 	bat := makeBatchFromSchema(checkpoint.CheckpointSchema)
-	bat.GetVectorByName(checkpoint.CheckpointAttr_StartTS).Append(ckpEntries[0].GetStart(), false)
-	bat.GetVectorByName(checkpoint.CheckpointAttr_EndTS).Append(ckpEntries[len(ckpEntries)-1].GetEnd(), false)
+	bat.GetVectorByName(checkpoint.CheckpointAttr_StartTS).Append(ckpEntries[0].GetEnd(), false)
+	bat.GetVectorByName(checkpoint.CheckpointAttr_EndTS).Append(end.Next(), false)
 	bat.GetVectorByName(checkpoint.CheckpointAttr_MetaLocation).Append([]byte(cnLocation), false)
 	bat.GetVectorByName(checkpoint.CheckpointAttr_EntryType).Append(false, false)
 	bat.GetVectorByName(checkpoint.CheckpointAttr_Version).Append(ckpEntries[len(ckpEntries)-1].GetVersion(), false)
@@ -107,20 +105,19 @@ func MergeCheckpoint(
 	bat.GetVectorByName(checkpoint.CheckpointAttr_TruncateLSN).Append(uint64(0), false)
 	bat.GetVectorByName(checkpoint.CheckpointAttr_Type).Append(int8(checkpoint.ET_Global), false)
 	defer bat.Close()
-	end := ckpEntries[len(ckpEntries)-1].GetEnd()
 	name := blockio.EncodeCheckpointMetadataFileName(checkpoint.CheckpointDir, checkpoint.PrefixMetadata, ckpEntries[0].GetStart(), end.Next())
 	writer, err := objectio.NewObjectWriterSpecial(objectio.WriterCheckpoint, name, fs)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if _, err = writer.Write(containers.ToCNBatch(bat)); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// TODO: checkpoint entry should maintain the location
 	_, err = writer.WriteEnd(ctx)
 	logutil.Infof("write checkpoint %s", name)
-	return deleteFiles, err
+	return deleteFiles, name, err
 }
 
 func makeBatchFromSchema(schema *catalog.Schema) *containers.Batch {

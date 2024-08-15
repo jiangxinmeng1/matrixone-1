@@ -247,7 +247,7 @@ func (o *basic) Revise(cpu, mem int64) ([]*catalog.ObjectEntry, TaskHostKind) {
 	dnobjs := o.controlMem(objs, mem)
 	dnobjs = o.optimize(dnobjs)
 
-	dnosize, _, _ := estimateMergeConsume(dnobjs)
+	dnosize, _ := estimateMergeConsume(dnobjs)
 
 	schedDN := func() ([]*catalog.ObjectEntry, TaskHostKind) {
 		if cpu > 85 {
@@ -325,15 +325,8 @@ func (o *basic) controlMem(objs []*catalog.ObjectEntry, mem int64) []*catalog.Ob
 	}
 
 	needPopout := func(ss []*catalog.ObjectEntry) bool {
-		_, esize, _ := estimateMergeConsume(ss)
-		if esize > int(2*mem/3) {
-			return true
-		}
-
-		if len(ss) <= 2 {
-			return false
-		}
-		return false
+		_, esize := estimateMergeConsume(ss)
+		return esize > int(2*mem/3)
 	}
 	for needPopout(objs) {
 		objs = objs[:len(objs)-1]

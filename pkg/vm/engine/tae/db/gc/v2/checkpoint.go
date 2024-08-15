@@ -632,7 +632,6 @@ func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList ma
 		}
 		ckpGC = new(types.TS)
 		deleteFiles = append(deleteFiles, delFiles...)
-		logutil.Infof("[MergeCheckpoint] deleteFiles len %d", len(deleteFiles))
 		var newName string
 		delFiles, newName, err = MergeCheckpoint(c.ctx, c.sid, c.fs.Service, mergeFile, c.GetInputs(), c.mPool)
 		if err != nil {
@@ -641,7 +640,6 @@ func (c *checkpointCleaner) mergeCheckpointFiles(stage types.TS, snapshotList ma
 		if newName != "" {
 			c.ckpClient.AddCheckpointMetaFile(newName)
 		}
-		logutil.Infof("[MergeCheckpoint] delFiles len %d", len(delFiles))
 		deleteFiles = append(deleteFiles, delFiles...)
 	}
 

@@ -16,6 +16,7 @@ package disttae
 
 import (
 	"context"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"strconv"
 	"strings"
 	"sync"
@@ -299,6 +300,9 @@ func (e *Engine) getOrCreateSnapPart(
 	ckps, err := checkpoint.ListSnapshotCheckpoint(ctx, e.service, e.fs, ts, tbl.tableId, nil)
 	if err != nil {
 		return nil, err
+	}
+	for _, ckp := range ckps {
+		logutil.Infof("getOrCreateSnapPart: tableId:%d, ckp:%s", tbl.tableId, ckp.String())
 	}
 	snap.ConsumeSnapCkps(ctx, ckps, func(
 		checkpoint *checkpoint.CheckpointEntry,

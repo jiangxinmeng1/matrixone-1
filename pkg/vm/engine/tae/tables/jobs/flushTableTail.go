@@ -332,7 +332,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	now := time.Now()
 
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 
 	phaseDesc = "1-flushing appendable objects for snapshot"
@@ -347,7 +347,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	}
 
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 
 	phaseDesc = "1-flushing appendable tombstones for snapshot"
@@ -362,7 +362,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	}()
 
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 
 	phaseDesc = "1-merge aobjects"
@@ -380,7 +380,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	}
 
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 
 	phaseDesc = "1-merge atombstones"
@@ -397,8 +397,19 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 		return
 	}
 
+	///////////////////
+	//// phase separator
+	///////////////////
+
+	phaseDesc = "1-merging persisted tombstones"
+	inst = time.Now()
+	if err = task.mergePersistedTombstones(ctx); err != nil {
+		return
+	}
+	statWaitTombstoneMerge := time.Since(inst)
+
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 	phaseDesc = "1-waiting flushing appendable blocks for snapshot"
 	// wait flush tasks
@@ -409,7 +420,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 	statWaitAobj := time.Since(inst)
 
 	/////////////////////
-	//// phase seperator
+	//// phase separator
 	///////////////////
 
 	phaseDesc = "1-waiting flushing appendable tombstones for snapshot"
@@ -474,6 +485,7 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 			common.AnyField("wait-aobj-flush", statWaitAobj),
 			common.AnyField("wait-dels-flush", statWaitTombstones),
 			common.AnyField("log-txn-entry", statNewFlushEntry),
+			common.AnyField("tombstone-merge", statWaitTombstoneMerge),
 		)
 	}
 
@@ -850,6 +862,33 @@ func (task *flushTableTailTask) waitFlushAObjForSnapshot(ctx context.Context, su
 		}
 	}
 	return nil
+}
+
+func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) error {
+	tombstones := make([]*catalog.ObjectEntry, 0)
+	tombstoneIter := task.rel.MakeObjectItOnSnap(true)
+	for tombstoneIter.Next() {
+		tombstones = append(tombstones, tombstoneIter.GetObject().GetMeta().(*catalog.ObjectEntry))
+	}
+
+	tombstoneTask, err := NewMergeObjectsTask(
+		tasks.WaitableCtx,
+		task.txn,
+		tombstones,
+		task.rt,
+		common.DefaultMaxOsizeObjMB*common.Const1MBytes,
+		true,
+	)
+	if err != nil {
+		return err
+	}
+	if err = task.rt.Scheduler.Schedule(tombstoneTask); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	defer cancel()
+	return tombstoneTask.WaitDone(ctx)
 }
 
 func releaseFlushObjTasks(ftask *flushTableTailTask, subtasks []*flushObjTask, err error) {

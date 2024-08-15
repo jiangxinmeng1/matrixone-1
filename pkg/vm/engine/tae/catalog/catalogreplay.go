@@ -378,7 +378,6 @@ func (catalog *Catalog) onReplayUpdateObject(
 		cmd.mvccNode.TxnMVCCNode = &obj.CreateNode
 		cmd.mvccNode.EntryMVCCNode = &obj.EntryMVCCNode
 		obj.ObjectMVCCNode = *cmd.mvccNode.BaseNode
-		obj.remainingRows = &common.FixedSampleIII[int]{}
 		obj.ObjectState = ObjectState_Create_ApplyCommit
 		rel.AddEntryLocked(obj)
 	}
@@ -455,7 +454,6 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		object.EntryMVCCNode = *entryNode
 		object.ObjectMVCCNode = *objNode
 		object.CreateNode = *txnNode
-		object.remainingRows = &common.FixedSampleIII[int]{}
 		object.ObjectState = ObjectState_Create_ApplyCommit
 		return object
 	}

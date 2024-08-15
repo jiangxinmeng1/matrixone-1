@@ -171,7 +171,7 @@ func NewBasicPolicy() Policy {
 
 // impl Policy for Basic
 func (o *basic) OnObject(obj *catalog.ObjectEntry, force bool) {
-	rowsLeftOnObj := obj.GetRemainingRows()
+	rowsLeftOnObj := obj.GetRows()
 	osize := obj.GetOriginSize()
 
 	isCandidate := func() bool {
@@ -238,7 +238,7 @@ func (o *basic) GetConfig(tbl *catalog.TableEntry) any {
 func (o *basic) Revise(cpu, mem int64) ([]*catalog.ObjectEntry, TaskHostKind) {
 	objs := o.objHeap.finish()
 	slices.SortFunc(objs, func(a, b *catalog.ObjectEntry) int {
-		return cmp.Compare(a.GetRemainingRows(), b.GetRemainingRows())
+		return cmp.Compare(a.GetRows(), b.GetRows())
 	})
 
 	isStandalone := common.IsStandaloneBoost.Load()
@@ -247,7 +247,7 @@ func (o *basic) Revise(cpu, mem int64) ([]*catalog.ObjectEntry, TaskHostKind) {
 	dnobjs := o.controlMem(objs, mem)
 	dnobjs = o.optimize(dnobjs)
 
-	dnosize, _, _ := estimateMergeConsume(dnobjs)
+	dnosize, _ := estimateMergeConsume(dnobjs)
 
 	schedDN := func() ([]*catalog.ObjectEntry, TaskHostKind) {
 		if cpu > 85 {
@@ -289,7 +289,7 @@ func (o *basic) optimize(objs []*catalog.ObjectEntry) []*catalog.ObjectEntry {
 	// objs are sorted by remaining rows
 	o.accBuf = o.accBuf[:1]
 	for i, obj := range objs {
-		o.accBuf = append(o.accBuf, o.accBuf[i]+obj.GetRemainingRows())
+		o.accBuf = append(o.accBuf, o.accBuf[i]+obj.GetRows())
 	}
 	acc := o.accBuf
 
@@ -325,15 +325,8 @@ func (o *basic) controlMem(objs []*catalog.ObjectEntry, mem int64) []*catalog.Ob
 	}
 
 	needPopout := func(ss []*catalog.ObjectEntry) bool {
-		_, esize, _ := estimateMergeConsume(ss)
-		if esize > int(2*mem/3) {
-			return true
-		}
-
-		if len(ss) <= 2 {
-			return false
-		}
-		return false
+		_, esize := estimateMergeConsume(ss)
+		return esize > int(2*mem/3)
 	}
 	for needPopout(objs) {
 		objs = objs[:len(objs)-1]

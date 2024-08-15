@@ -320,35 +320,3 @@ var (
 	TxnRangesFastPathObjColumnZMapSelectivityHistogram  = txnRangesSelectivityHistogram.WithLabelValues("fast_path_obj_column_zm_selectivity")
 	TxnRangesFastPathBlkColumnZMapSelectivityHistogram  = txnRangesSelectivityHistogram.WithLabelValues("fast_path_blk_column_zm_selectivity")
 )
-
-var (
-	TxnReaderScannedTotalTombstoneHistogram = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: "mo",
-			Subsystem: "txn",
-			Name:      "reader_scanned_total_tombstone",
-			Help:      "Bucketed histogram of read scanned total tombstone.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2.0, 11),
-		})
-
-	TxnReaderEachBLKLoadedTombstoneHistogram = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: "mo",
-			Subsystem: "txn",
-			Name:      "reader_each_blk_loaded",
-			Help:      "Bucketed histogram of read each blk loaded.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2.0, 11),
-		})
-
-	txnReaderTombstoneSelectivityHistogram = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Namespace: "mo",
-			Subsystem: "txn",
-			Name:      "reader_tombstone_selectivity",
-			Help:      "Bucketed histogram of read tombstone.",
-			Buckets:   prometheus.ExponentialBucketsRange(0.001, 1, 21),
-		}, []string{"type"})
-
-	TxnReaderTombstoneZMSelectivityHistogram = txnReaderTombstoneSelectivityHistogram.WithLabelValues("zm_selectivity")
-	TxnReaderTombstoneBLSelectivityHistogram = txnReaderTombstoneSelectivityHistogram.WithLabelValues("bl_selectivity")
-)

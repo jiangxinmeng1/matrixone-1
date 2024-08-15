@@ -179,12 +179,11 @@ func (m *merger[T]) merge(ctx context.Context) error {
 				m.writer = m.host.PrepareNewWriter()
 			}
 			if m.isTombstone {
-				m.writer.SetDataType(objectio.SchemaTombstone)
 				if _, err := m.writer.WriteBatch(m.buffer); err != nil {
 					return err
 				}
 			} else {
-				m.writer.SetDataType(objectio.SchemaData)
+
 				if _, err := m.writer.WriteBatch(m.buffer); err != nil {
 					return err
 				}
@@ -218,7 +217,6 @@ func (m *merger[T]) merge(ctx context.Context) error {
 			m.writer = m.host.PrepareNewWriter()
 		}
 		if m.isTombstone {
-			m.writer.SetDataType(objectio.SchemaTombstone)
 			if _, err := m.writer.WriteBatch(m.buffer); err != nil {
 				return err
 			}

@@ -17,6 +17,7 @@ package merge
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -172,7 +173,7 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, mobjs []*catalog.O
 	}
 
 	if kind == TaskHostCN {
-		osize, esize, _ := estimateMergeConsume(mobjs)
+		osize, esize := estimateMergeConsume(mobjs)
 		blkCnt := 0
 		for _, obj := range mobjs {
 			blkCnt += obj.BlockCnt()
@@ -240,14 +241,14 @@ func (e *MergeExecutor) ExecuteFor(entry *catalog.TableEntry, mobjs []*catalog.O
 	}
 }
 func (e *MergeExecutor) scheduleMergeObjects(scopes []common.ID, mobjs []*catalog.ObjectEntry, blkCnt int, entry *catalog.TableEntry, isTombstone bool) {
-	osize, esize, _ := estimateMergeConsume(mobjs)
+	osize, esize := estimateMergeConsume(mobjs)
 	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
 		return jobs.NewMergeObjectsTask(ctx, txn, mobjs, e.rt, common.DefaultMaxOsizeObjMB*common.Const1MBytes, isTombstone)
 	}
 	task, err := e.rt.Scheduler.ScheduleMultiScopedTxnTaskWithObserver(nil, tasks.DataCompactionTask, scopes, factory, e)
 	if err != nil {
-		if err != tasks.ErrScheduleScopeConflict {
+		if !errors.Is(err, tasks.ErrScheduleScopeConflict) {
 			logutil.Info(
 				"MergeExecutorError",
 				common.OperationField("schedule-merge-task"),

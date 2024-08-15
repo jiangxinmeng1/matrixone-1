@@ -880,15 +880,15 @@ func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) er
 	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
 		return NewMergeObjectsTask(
-			tasks.WaitableCtx,
-			task.txn,
+			ctx,
+			txn,
 			tombstones,
 			task.rt,
 			common.DefaultMaxOsizeObjMB*common.Const1MBytes,
 			true,
 		)
 	}
-	tombstoneTask, err := task.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory)
+	tombstoneTask, err := task.rt.Scheduler.ScheduleMultiScopedTxnTask(tasks.WaitableCtx, tasks.DataCompactionTask, scopes, factory)
 	if err != nil {
 		return err
 	}

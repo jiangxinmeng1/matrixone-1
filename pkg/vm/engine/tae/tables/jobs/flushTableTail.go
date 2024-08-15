@@ -870,6 +870,9 @@ func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) er
 	for tombstoneIter.Next() {
 		tombstones = append(tombstones, tombstoneIter.GetObject().GetMeta().(*catalog.ObjectEntry))
 	}
+	if len(tombstones) == 0 {
+		return nil
+	}
 	scopes := make([]common.ID, 0, len(tombstones))
 	for _, obj := range tombstones {
 		scopes = append(scopes, *obj.AsCommonID())

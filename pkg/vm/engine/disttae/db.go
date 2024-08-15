@@ -16,7 +16,6 @@ package disttae
 
 import (
 	"context"
-	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"strconv"
 	"strings"
 	"sync"
@@ -329,7 +328,6 @@ func (e *Engine) getOrCreateSnapPart(
 			}
 		}()
 		for _, entry := range entries {
-			logutil.Infof("consume entry: %v", entry.String())
 			if err = consumeEntry(
 				ctx,
 				tbl.primarySeqnum,

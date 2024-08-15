@@ -142,23 +142,6 @@ func (p *Partition) GetDuration() (types.TS, types.TS) {
 	defer p.mu.Unlock()
 	return p.mu.start, p.mu.end
 }
-tid 1,partition 1
-snapshot1 : t5
-snapshot2 : t8
-
-checkpoint1[] : 0-t3, t3-1-t6-0
-
-checkpoint2[] : 0-t9
-
-sanpshot2 read t8
-partition: start 0 end 0
-load checkpoint checkpoint2[]
-partition: start 0 end t9
-
-sanpshot1 read t5
-partition: start 0 end t9
-load checkpoint checkpoint1[]
-partition: start t3 end t6
 
 func (p *Partition) ConsumeSnapCkps(
 	_ context.Context,

@@ -40,11 +40,9 @@ func SpecifiedCheckpoint(snapshot types.TS, files []*MetaFile) ([]*MetaFile, int
 func AllAfterAndGCheckpoint(snapshot types.TS, files []*MetaFile) ([]*MetaFile, int, error) {
 	prev := &MetaFile{}
 	for i, file := range files {
-		logutil.Infof("AllAfterAndGCheckpoint: snapshot: %v, files: %v", snapshot.ToString(), file.GetName())
 		if snapshot.LessEq(&file.end) &&
 			snapshot.Less(&prev.end) &&
 			file.start.IsEmpty() {
-			logutil.Infof("AllAfterAndGCheckpoint: snapshot: %v, files: %v, i: %v", snapshot.ToString(), file.GetName(), i)
 			return files, i - 1, nil
 		}
 		prev = file
@@ -64,7 +62,6 @@ func ListSnapshotCheckpoint(
 	if err != nil {
 		return nil, err
 	}
-	logutil.Infof("ListSnapshotCheckpoint: files: %v", files)
 	if len(files) == 0 {
 		return nil, nil
 	}

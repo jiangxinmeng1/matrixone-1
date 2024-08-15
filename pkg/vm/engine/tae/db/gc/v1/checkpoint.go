@@ -501,9 +501,6 @@ func getAllowedMergeFiles(
 	if len(files) == 0 {
 		return
 	}
-	for i := 0; i <= idx; i++ {
-
-	}
 	idxes = make([]int, 0)
 	for i := 0; i <= idx; i++ {
 		start := files[i].GetStart()

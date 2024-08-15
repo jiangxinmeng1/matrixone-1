@@ -301,9 +301,6 @@ func (e *Engine) getOrCreateSnapPart(
 	if err != nil {
 		return nil, err
 	}
-	for _, ckp := range ckps {
-		logutil.Infof("getOrCreateSnapPart: tableId:%d, ckp:%s", tbl.tableId, ckp.String())
-	}
 	snap.ConsumeSnapCkps(ctx, ckps, func(
 		checkpoint *checkpoint.CheckpointEntry,
 		state *logtailreplay.PartitionStateInProgress) error {

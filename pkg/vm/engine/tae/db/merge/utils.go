@@ -90,7 +90,7 @@ func estimateMergeConsume(mobjs []*catalog.ObjectEntry) (origSize, estSize, comp
 	rows, merged := 0, 0
 	for _, m := range mobjs {
 		rows += m.GetRows()
-		merged += m.GetRemainingRows()
+		merged += m.GetRows()
 		origSize += m.GetOriginSize()
 		compSize += m.GetCompSize()
 	}

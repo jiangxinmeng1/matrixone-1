@@ -171,7 +171,7 @@ func NewBasicPolicy() Policy {
 
 // impl Policy for Basic
 func (o *basic) OnObject(obj *catalog.ObjectEntry, force bool) {
-	rowsLeftOnObj := obj.GetRemainingRows()
+	rowsLeftOnObj := obj.GetRows()
 	osize := obj.GetOriginSize()
 
 	isCandidate := func() bool {
@@ -238,7 +238,7 @@ func (o *basic) GetConfig(tbl *catalog.TableEntry) any {
 func (o *basic) Revise(cpu, mem int64) ([]*catalog.ObjectEntry, TaskHostKind) {
 	objs := o.objHeap.finish()
 	slices.SortFunc(objs, func(a, b *catalog.ObjectEntry) int {
-		return cmp.Compare(a.GetRemainingRows(), b.GetRemainingRows())
+		return cmp.Compare(a.GetRows(), b.GetRows())
 	})
 
 	isStandalone := common.IsStandaloneBoost.Load()
@@ -289,7 +289,7 @@ func (o *basic) optimize(objs []*catalog.ObjectEntry) []*catalog.ObjectEntry {
 	// objs are sorted by remaining rows
 	o.accBuf = o.accBuf[:1]
 	for i, obj := range objs {
-		o.accBuf = append(o.accBuf, o.accBuf[i]+obj.GetRemainingRows())
+		o.accBuf = append(o.accBuf, o.accBuf[i]+obj.GetRows())
 	}
 	acc := o.accBuf
 

@@ -868,7 +868,10 @@ func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) er
 	tombstones := make([]*catalog.ObjectEntry, 0)
 	tombstoneIter := task.rel.MakeObjectItOnSnap(true)
 	for tombstoneIter.Next() {
-		tombstones = append(tombstones, tombstoneIter.GetObject().GetMeta().(*catalog.ObjectEntry))
+		tombstone := tombstoneIter.GetObject().GetMeta().(*catalog.ObjectEntry)
+		if tombstone.IsCommitted() && !tombstone.IsAppendable() {
+			tombstones = append(tombstones, tombstone)
+		}
 	}
 	if len(tombstones) == 0 {
 		return nil

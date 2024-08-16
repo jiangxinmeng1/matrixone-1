@@ -891,14 +891,17 @@ func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) er
 			true,
 		)
 	}
-	tombstoneTask, err := task.rt.Scheduler.ScheduleMultiScopedTxnTask(tasks.WaitableCtx, tasks.DataCompactionTask, scopes, factory)
-	if err != nil {
-		return err
-	}
+	_, err := task.rt.Scheduler.ScheduleMultiScopedTxnTask(tasks.WaitableCtx, tasks.DataCompactionTask, scopes, factory)
+	return err
 
-	ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-	defer cancel()
-	return tombstoneTask.WaitDone(ctx)
+	// TODO
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
+	//defer cancel()
+	//return tombstoneTask.WaitDone(ctx)
 }
 
 func releaseFlushObjTasks(ftask *flushTableTailTask, subtasks []*flushObjTask, err error) {

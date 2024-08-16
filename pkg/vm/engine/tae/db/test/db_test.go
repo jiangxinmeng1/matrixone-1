@@ -4126,18 +4126,19 @@ func TestBlockRead(t *testing.T) {
 			afterSecondDel := tsAlloc.Alloc()
 
 			tae.CompactBlocks(false)
-			objStats := blkEntry.GetLatestNode().ObjectMVCCNode
-			assert.False(t, objStats.IsEmpty())
-
+			_, rel = tae.GetRelation()
+			tombstoneObjectEntry := testutil.GetOneTombstoneMeta(rel)
+			objectEntry := testutil.GetOneBlockMeta(rel)
+			objStats := tombstoneObjectEntry.ObjectMVCCNode
 			testDS := NewTestBlockReadSource(objStats.ObjectLocation())
 			ds := logtail.NewDeltaLocDataSource(ctx, tae.DB.Runtime.Fs.Service, beforeDel, testDS)
 			bid, _ := blkEntry.ID(), blkEntry.ID()
 
 			info := &objectio.BlockInfo{
 				BlockID:    *objectio.NewBlockidWithObjectID(bid, 0),
-				EntryState: true,
+				EntryState: false,
 			}
-			metaloc := objStats.ObjectLocation()
+			metaloc := objectEntry.ObjectLocation()
 			metaloc.SetRows(schema.BlockMaxRows)
 			info.SetMetaLocation(metaloc)
 

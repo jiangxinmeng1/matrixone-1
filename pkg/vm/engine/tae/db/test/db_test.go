@@ -6421,7 +6421,7 @@ func TestSnapshotGC(t *testing.T) {
 	}()
 	for _, data := range bats {
 		wg.Add(2)
-		err = pool.Submit(testutil.AppendClosure(t, data, schema1.Name, db, &wg))
+		err := pool.Submit(testutil.AppendClosure(t, data, schema1.Name, db, &wg))
 		assert.Nil(t, err)
 
 		err = pool.Submit(testutil.AppendClosure(t, data, schema2.Name, db, &wg))

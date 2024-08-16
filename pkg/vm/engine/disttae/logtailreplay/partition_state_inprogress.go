@@ -748,3 +748,7 @@ func (p *PartitionStateInProgress) PKExistInMemBetween(
 	}
 	return false, true
 }
+
+func (p *PartitionStateInProgress) Checkpoints() []string {
+	return p.checkpoints
+}

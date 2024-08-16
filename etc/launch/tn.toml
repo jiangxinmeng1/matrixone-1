@@ -11,3 +11,10 @@ port-base = 19000
 [malloc]
 check-fraction = 65536
 enable-metrics = true
+
+[tn.Ckp]
+flush-interval = "5s"
+min-count = 100
+scan-interval = "5s"
+incremental-interval = "180s"
+global-min-count = 60

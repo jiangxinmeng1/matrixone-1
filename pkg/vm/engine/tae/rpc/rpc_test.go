@@ -480,6 +480,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	objName3 := objectio.BuildObjectNameWithObjectID(objectio.NewObjectid())
 	writer, err = blockio.NewBlockWriterNew(fs, objName3, 0, nil)
 	assert.Nil(t, err)
+	writer.SetDataType(objectio.SchemaTombstone)
 	writer.SetPrimaryKeyWithType(uint16(catalog.TombstonePrimaryKeyIdx), index.HBF,
 		index.ObjectPrefixFn,
 		index.BlockPrefixFn)

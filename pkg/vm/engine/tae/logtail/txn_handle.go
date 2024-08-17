@@ -139,8 +139,8 @@ func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVe
 
 	mybat := containers.NewBatchWithCapacity(3)
 	mybat.AddVector(
-		catalog.AttrRowID,
-		src.GetVectorByName(catalog.AttrRowID).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+		catalog.PhyAddrColumnName,
+		src.GetVectorByName(catalog.PhyAddrColumnName).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
 	)
 	tsType := types.T_TS.ToType()
 	commitVec := b.rt.VectorPool.Small.GetVector(&tsType)
@@ -149,6 +149,10 @@ func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVe
 		commitVec.Append(b.txn.GetPrepareTS(), false)
 	}
 	mybat.AddVector(catalog.AttrCommitTs, commitVec)
+	mybat.AddVector(
+		catalog.AttrRowID,
+		src.GetVectorByName(catalog.AttrRowID).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+	)
 	mybat.AddVector(
 		catalog.AttrPKVal,
 		src.GetVectorByName(catalog.AttrPKVal).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),

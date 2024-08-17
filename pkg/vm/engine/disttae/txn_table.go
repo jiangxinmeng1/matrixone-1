@@ -559,8 +559,79 @@ func (tbl *txnTable) resetSnapshot() {
 	tbl._partState.Store(nil)
 }
 
-// CollectTombstones collects in memory tombstones and tombstone objects.
 func (tbl *txnTable) CollectTombstones(
+	ctx context.Context, txnOffset int,
+) (engine.Tombstoner, error) {
+	tombstone := NewEmptyTombstoneData()
+
+	offset := txnOffset
+	if tbl.db.op.IsSnapOp() {
+		offset = tbl.getTxn().GetSnapshotWriteOffset()
+	}
+
+	//collect in memory
+
+	//collect uncommitted in-memory tombstones from txn.writes
+	tbl.getTxn().ForEachTableWrites(tbl.db.databaseId, tbl.tableId,
+		offset, func(entry Entry) {
+			if entry.typ == INSERT {
+				return
+			}
+			//entry.typ == DELETE
+			if entry.bat.GetVector(0).GetType().Oid == types.T_Rowid {
+				/*
+					CASE:
+					create table t1(a int);
+					begin;
+					truncate t1; //txnDatabase.Truncate will DELETE mo_tables
+					show tables; // t1 must be shown
+				*/
+				//if entry.IsGeneratedByTruncate() {
+				//	return
+				//}
+				//deletes in txn.Write maybe comes from PartitionState.Rows ,
+				// PartitionReader need to skip them.
+				vs := vector.MustFixedCol[types.Rowid](entry.bat.GetVector(0))
+				for _, v := range vs {
+					tombstone.rowids = append(tombstone.rowids, v)
+				}
+			}
+		})
+
+	//collect uncommitted in-memory tombstones belongs to blocks persisted by CN writing S3
+	tbl.getTxn().deletedBlocks.getDeletedRowIDsInProgress(&tombstone.rowids)
+
+	//collect committed in-memory tombstones from partition state.
+	state, err := tbl.getPartitionState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	{
+		ts := tbl.db.op.SnapshotTS()
+		iter := state.NewRowsIter(types.TimestampToTS(ts), nil, true)
+		for iter.Next() {
+			entry := iter.Entry()
+			//bid, o := entry.RowID.Decode()
+			tombstone.rowids = append(tombstone.rowids, entry.RowID)
+		}
+		iter.Close()
+	}
+
+	//collect uncommitted persisted tombstones.
+	if err := tbl.getTxn().getUncommittedS3TombstoneInProgress(&tombstone.files); err != nil {
+		return nil, err
+	}
+
+	tombstone.SortInMemory()
+	//collect committed persisted tombstones from partition state.
+	//state.GetTombstoneDeltaLocs(tombstone.blk2CommitLoc)
+	snapshot := types.TimestampToTS(tbl.db.op.Txn().SnapshotTS)
+	err = state.CollectTombstoneObjects(snapshot, &tombstone.files)
+	return tombstone, err
+}
+
+// CollectTombstones collects in memory tombstones and tombstone objects.
+func (tbl *txnTable) CollectTombstonesOldVersion(
 	ctx context.Context, txnOffset int,
 ) (engine.Tombstoner, error) {
 	tombstone := NewEmptyTombstoneWithDeltaLoc()
@@ -624,7 +695,7 @@ func (tbl *txnTable) CollectTombstones(
 		return nil, err
 	}
 	//collect committed persisted tombstones from partition state.
-	state.GetTombstoneDeltaLocs(tombstone.blk2CommitLoc)
+	//state.GetTombstoneDeltaLocs(tombstone.blk2CommitLoc)
 	return tombstone, nil
 }
 

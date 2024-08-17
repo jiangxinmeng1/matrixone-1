@@ -4092,7 +4092,6 @@ func NewTestBlockReadSource(deltaLoc objectio.Location) logtail.DeltaSource {
 }
 
 func TestBlockRead(t *testing.T) {
-	return
 	blockio.RunPipelineTest(
 		func() {
 			defer testutils.AfterTest(t)()
@@ -4127,18 +4126,19 @@ func TestBlockRead(t *testing.T) {
 			afterSecondDel := tsAlloc.Alloc()
 
 			tae.CompactBlocks(false)
-			objStats := blkEntry.ObjectMVCCNode
-			assert.False(t, objStats.IsEmpty())
-
+			_, rel = tae.GetRelation()
+			tombstoneObjectEntry := testutil.GetOneTombstoneMeta(rel)
+			objectEntry := testutil.GetOneBlockMeta(rel)
+			objStats := tombstoneObjectEntry.ObjectMVCCNode
 			testDS := NewTestBlockReadSource(objStats.ObjectLocation())
 			ds := logtail.NewDeltaLocDataSource(ctx, tae.DB.Runtime.Fs.Service, beforeDel, testDS)
 			bid, _ := blkEntry.ID(), blkEntry.ID()
 
 			info := &objectio.BlockInfo{
 				BlockID:    *objectio.NewBlockidWithObjectID(bid, 0),
-				EntryState: true,
+				EntryState: false,
 			}
-			metaloc := objStats.ObjectLocation()
+			metaloc := objectEntry.ObjectLocation()
 			metaloc.SetRows(schema.BlockMaxRows)
 			info.SetMetaLocation(metaloc)
 
@@ -6057,7 +6057,7 @@ func TestAlterFakePk(t *testing.T) {
 	require.NoError(t, err)
 	tnDelBat := containers.NewNonNullBatchWithSharedMemory(delBat, common.DefaultAllocator)
 	t.Log(tnDelBat.Attrs)
-	require.Equal(t, 3, len(tnDelBat.Vecs)) // 1 fake pk + 1 rowid + 1 committs
+	require.Equal(t, 4, len(tnDelBat.Vecs)) // 1 fake pk + 1 rowid + 1 committs + tombstone rowID
 	for _, v := range tnDelBat.Vecs {
 		require.Equal(t, 2, v.Length())
 	}
@@ -6421,7 +6421,7 @@ func TestSnapshotGC(t *testing.T) {
 	}()
 	for _, data := range bats {
 		wg.Add(2)
-		err = pool.Submit(testutil.AppendClosure(t, data, schema1.Name, db, &wg))
+		err := pool.Submit(testutil.AppendClosure(t, data, schema1.Name, db, &wg))
 		assert.Nil(t, err)
 
 		err = pool.Submit(testutil.AppendClosure(t, data, schema2.Name, db, &wg))
@@ -9146,4 +9146,79 @@ func TestClearPersistTransferTable(t *testing.T) {
 			assert.True(t, errors.Is(err, moerr.GetOkExpectedEOB()))
 		},
 	)
+}
+
+func TestTryDeleteByDeltaloc1(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	rows := 100
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, rows)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	// apply deleteloc fails on ablk
+	txn, _ := tae.StartTxn(nil)
+	v1 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(1)
+	ok, err := tae.TryDeleteByDeltalocWithTxn([]any{v1}, txn)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	tae.MergeBlocks(true)
+	t.Log(tae.Catalog.SimplePPString(3))
+
+	err = txn.Commit(ctx)
+	assert.NoError(t, err)
+
+	tae.CheckRowsByScan(rows-1, true)
+	t.Log(tae.Catalog.SimplePPString(3))
+}
+
+func TestTryDeleteByDeltaloc2(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	rows := 100
+	schema := catalog.MockSchemaAll(2, 1)
+	schema.BlockMaxRows = 10
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, rows)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	// apply deleteloc fails on ablk
+	txn, rel := tae.GetRelation()
+	v1 := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(1)
+	filter := handle.NewEQFilter(v1)
+	id, offset, err := rel.GetByFilter(ctx, filter)
+	assert.NoError(t, err)
+	obj, err := rel.GetMeta().(*catalog.TableEntry).GetObjectByID(id.ObjectID(), false)
+	assert.NoError(t, err)
+	_, blkOffset := id.BlockID.Offsets()
+	deltaLoc, err := testutil.MockCNDeleteInS3(tae.Runtime.Fs, obj.GetObjectData(), blkOffset, schema, txn, []uint32{offset})
+	assert.NoError(t, err)
+
+	tae.MergeBlocks(true)
+	t.Log(tae.Catalog.SimplePPString(3))
+
+	ok, err := rel.TryDeleteByDeltaloc(id, deltaLoc)
+	assert.NoError(t, err)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	err = txn.Commit(ctx)
+	assert.NoError(t, err)
+
+	tae.CheckRowsByScan(rows-1, true)
+	t.Log(tae.Catalog.SimplePPString(3))
 }

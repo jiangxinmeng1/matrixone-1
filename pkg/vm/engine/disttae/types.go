@@ -325,6 +325,17 @@ func (b *deletedBlocks) getDeletedRowIDs(mp map[types.Blockid][]int32) {
 	}
 }
 
+func (b *deletedBlocks) getDeletedRowIDsInProgress(dest *[]types.Rowid) {
+	b.RLock()
+	defer b.RUnlock()
+	for bid, offsets := range b.offsets {
+		for _, offset := range offsets {
+			rowId := types.NewRowid(&bid, uint32(offset))
+			*dest = append(*dest, *rowId)
+		}
+	}
+}
+
 func (b *deletedBlocks) clean() {
 	b.Lock()
 	defer b.Unlock()

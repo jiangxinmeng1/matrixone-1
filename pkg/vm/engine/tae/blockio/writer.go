@@ -20,6 +20,7 @@ import (
 	"math"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -39,6 +40,10 @@ type BlockWriter struct {
 	name           objectio.ObjectName
 	objectStats    []objectio.ObjectStats
 	prefix         []index.PrefixFn
+
+	// schema data
+	// schema tombstone
+	dataType objectio.DataMetaType
 }
 
 func NewBlockWriter(fs fileservice.FileService, name string) (*BlockWriter, error) {
@@ -67,6 +72,10 @@ func NewBlockWriterNew(fs fileservice.FileService, name objectio.ObjectName, sch
 		nameStr:    name.String(),
 		name:       name,
 	}, nil
+}
+
+func (w *BlockWriter) SetDataType(typ objectio.DataMetaType) {
+	w.dataType = typ
 }
 
 func (w *BlockWriter) SetPrimaryKey(idx uint16) {
@@ -114,9 +123,14 @@ func (w *BlockWriter) WriteBatch(batch *batch.Batch) (objectio.BlockObject, erro
 		if i == 0 {
 			w.objMetaBuilder.AddRowCnt(vec.Length())
 		}
-		// if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
-		// 	continue
-		// }
+
+		if w.dataType != objectio.SchemaTombstone {
+			// only skip SchemaData type
+			if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
+				continue
+			}
+		}
+
 		if w.isSetPK && w.pk == uint16(i) {
 			isPK = true
 		}

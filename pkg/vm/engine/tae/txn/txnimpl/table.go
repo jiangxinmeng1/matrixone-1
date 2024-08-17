@@ -176,64 +176,70 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	if tbl.tombstoneTable == nil || tbl.tombstoneTable.tableSpace == nil {
 		return
 	}
-	// transfer deltaloc
 	id := tbl.entry.AsCommonID()
-	for offset, objID := range tbl.tombstoneTable.tableSpace.objs {
-		id.SetObjectID(objID)
-		if err = tbl.store.warChecker.checkOne(
-			id,
-			ts,
-		); err == nil {
-			continue
-		}
-		// if the error is not a r-w conflict. something wrong really happened
-		if !moerr.IsMoErrCode(err, moerr.ErrTxnRWConflict) {
-			return
-		}
-		stats := tbl.tombstoneTable.tableSpace.stats[offset]
-		loc := catalog.BuildLocation(stats, id.BlockID.Sequence(), tbl.dataTable.schema.BlockMaxRows)
-		vectors, closeFunc, err := blockio.LoadColumns2(
-			tbl.store.ctx,
-			[]uint16{0, 1},
-			nil,
-			tbl.store.rt.Fs.Service,
-			loc,
-			fileservice.Policy(0),
-			false,
-			nil,
-		)
-		if err != nil {
-			return err
-		}
-		for i := 0; i < vectors[0].Length(); i++ {
-			rowID := vectors[0].Get(i).(types.Rowid)
-			blkID2, offset := rowID.Decode()
-			if *blkID2.Object() != *id.ObjectID() {
-				panic(fmt.Sprintf("logic err, id.Object %v, rowID %v", id.ObjectID().String(), rowID.String()))
-			}
-			pk := vectors[1].Get(i)
-			// try to transfer the delete node
-			// here are some possible returns
-			// nil: transferred successfully
-			// ErrTxnRWConflict: the target block was also be compacted
-			// ErrTxnWWConflict: w-w error
-			if _, err = tbl.TransferDeleteRows(id, offset, pk, phase, ts); err != nil {
+	// transfer deltaloc
+	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
+		hasConflict := false
+		for blkID := range stats.BlkCnt() {
+			loc := catalog.BuildLocation(stats, uint16(blkID), tbl.dataTable.schema.BlockMaxRows)
+			vectors, closeFunc, err := blockio.LoadColumns2(
+				tbl.store.ctx,
+				[]uint16{0, 1},
+				nil,
+				tbl.store.rt.Fs.Service,
+				loc,
+				fileservice.Policy(0),
+				false,
+				nil,
+			)
+			defer closeFunc()
+			if err != nil {
 				return err
 			}
+			rowID := vectors[0].Get(0).(types.Rowid)
+			blkID, _ := rowID.Decode()
+			id.BlockID = blkID
+			if tbl.store.warChecker.HasConflict(*id.ObjectID()) {
+				// the blk has been transferd
+				continue
+			}
+			if err = tbl.store.warChecker.checkOne(
+				id,
+				ts,
+			); err == nil {
+				continue
+			}
+			// if the error is not a r-w conflict. something wrong really happened
+			if !moerr.IsMoErrCode(err, moerr.ErrTxnRWConflict) {
+				return err
+			}
+			hasConflict = true
+			for i := 0; i < vectors[0].Length(); i++ {
+				rowID := vectors[0].Get(i).(types.Rowid)
+				blkID2, offset := rowID.Decode()
+				if *blkID2.Object() != *id.ObjectID() {
+					panic(fmt.Sprintf("logic err, id.Object %v, rowID %v", id.ObjectID().String(), rowID.String()))
+				}
+				pk := vectors[1].Get(i)
+				// try to transfer the delete node
+				// here are some possible returns
+				// nil: transferred successfully
+				// ErrTxnRWConflict: the target block was also be compacted
+				// ErrTxnWWConflict: w-w error
+				if _, err = tbl.TransferDeleteRows(id, offset, pk, phase, ts); err != nil {
+					return err
+				}
+			}
+			// if offset == len(tbl.tombstoneTable.tableSpace.stats)-1 {
+			// 	tbl.tombstoneTable.tableSpace.stats = tbl.tombstoneTable.tableSpace.stats[:offset]
+			// } else {
+			// 	tbl.tombstoneTable.tableSpace.stats =
+			// 		append(tbl.tombstoneTable.tableSpace.stats[:offset], tbl.tombstoneTable.tableSpace.stats[offset+1:]...)
+			// }
 		}
-		rowID := vectors[0].Get(0).(types.Rowid)
-		blkID2, _ := rowID.Decode()
-		readObjID := tbl.entry.AsCommonID()
-		readObjID.BlockID = blkID2
-		tbl.store.warChecker.Delete(readObjID)
-		closeFunc()
-		if offset == len(tbl.tombstoneTable.tableSpace.stats)-1 {
-			tbl.tombstoneTable.tableSpace.stats = tbl.tombstoneTable.tableSpace.stats[:offset]
-		} else {
-			tbl.tombstoneTable.tableSpace.stats =
-				append(tbl.tombstoneTable.tableSpace.stats[:offset], tbl.tombstoneTable.tableSpace.stats[offset+1:]...)
+		if hasConflict {
+			tbl.store.warChecker.Delete(id)
 		}
-
 	}
 	transferd := &nulls.Nulls{}
 	// transfer in memory deletes
@@ -1414,6 +1420,14 @@ func (tbl *txnTable) TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Locati
 	if tbl.tombstoneTable == nil {
 		tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
 	}
+	obj, err := tbl.store.GetObject(id, false)
+	if err != nil {
+		if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+			return false, nil
+		}
+		return
+	}
+	tbl.store.warChecker.Insert(obj.GetMeta().(*catalog.ObjectEntry))
 	stats := tbl.deltaloc2ObjectStat(deltaloc, tbl.store.rt.Fs.Service)
 	err = tbl.addObjsWithMetaLoc(tbl.store.ctx, stats, true)
 	if err == nil {

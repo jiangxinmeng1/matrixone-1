@@ -149,18 +149,25 @@ func (p *PartitionStateInProgress) GetObject(name objectio.ObjectNameShort) (Obj
 	return ObjectInfo{}, false
 }
 
-// GetTombstoneDeltaLocs TODO: remove
-func (p *PartitionStateInProgress) GetTombstoneDeltaLocs(mp map[types.Blockid]BlockDeltaInfo) (err error) {
-	//iter := p.blockDeltas.Copy().Iter()
-	//defer iter.Release()
-	//
-	//for ok := iter.First(); ok; ok = iter.Next() {
-	//	item := iter.Item()
-	//	mp[item.BlockID] = BlockDeltaInfo{
-	//		Loc: item.DeltaLoc[:],
-	//		Cts: item.CommitTs,
-	//	}
-	//}
+func (p *PartitionStateInProgress) CollectTombstoneObjects(
+	snapshot types.TS,
+	statsSlice *objectio.ObjectStatsSlice,
+) (err error) {
+
+	if p.ApproxTombstoneObjectsNum() == 0 {
+		return
+	}
+
+	iter, err := p.NewObjectsIter(snapshot, true, true)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		item := iter.Entry()
+		(*statsSlice).Append(item.ObjectStats[:])
+	}
 
 	return nil
 }

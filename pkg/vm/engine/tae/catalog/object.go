@@ -76,14 +76,6 @@ func (entry *ObjectEntry) GetSortKeyZonemap() index.ZM {
 	return stats.SortKeyZoneMap()
 }
 
-func (entry *ObjectEntry) SetRemainingRows(rows int) {
-	entry.remainingRows.Append(rows)
-}
-
-func (entry *ObjectEntry) GetRemainingRows() int {
-	return entry.remainingRows.V()
-}
-
 func (entry *ObjectEntry) GetRows() int {
 	stats := entry.GetObjectStats()
 	return int(stats.Rows())
@@ -114,12 +106,11 @@ func (entry *ObjectEntry) Clone() *ObjectEntry {
 		DeleteNode:    entry.DeleteNode,
 		table:         entry.table,
 		ObjectNode: ObjectNode{
-			state:         entry.state,
-			IsLocal:       entry.IsLocal,
-			SortHint:      entry.SortHint,
-			sorted:        entry.sorted,
-			remainingRows: entry.remainingRows,
-			IsTombstone:   entry.IsTombstone,
+			state:       entry.state,
+			IsLocal:     entry.IsLocal,
+			SortHint:    entry.SortHint,
+			sorted:      entry.sorted,
+			IsTombstone: entry.IsTombstone,
 		},
 		objData:     entry.objData,
 		ObjectState: entry.ObjectState,
@@ -240,12 +231,11 @@ func (entry *ObjectEntry) StatsString(zonemapKind common.ZonemapPrintKind) strin
 		}
 	}
 	return fmt.Sprintf(
-		"loaded:%t, oSize:%s, cSzie:%s rows:%d, remainingRows:%d, zm: %s",
+		"loaded:%t, oSize:%s, cSzie:%s rows:%d, zm: %s",
 		entry.GetLoaded(),
 		common.HumanReadableBytes(entry.GetOriginSize()),
 		common.HumanReadableBytes(entry.GetCompSize()),
 		entry.GetRows(),
-		entry.remainingRows.V(),
 		zonemapStr,
 	)
 }
@@ -261,10 +251,9 @@ func NewObjectEntry(
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
-			state:         state,
-			SortHint:      table.GetDB().catalog.NextObject(),
-			remainingRows: &common.FixedSampleIII[int]{},
-			IsTombstone:   isTombstone,
+			state:       state,
+			SortHint:    table.GetDB().catalog.NextObject(),
+			IsTombstone: isTombstone,
 		},
 		EntryMVCCNode: EntryMVCCNode{
 			CreatedAt: txnif.UncommitTS,
@@ -290,10 +279,9 @@ func NewObjectEntryByMetaLocation(
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
-			state:         state,
-			sorted:        state == ES_NotAppendable,
-			SortHint:      table.GetDB().catalog.NextObject(),
-			remainingRows: &common.FixedSampleIII[int]{},
+			state:    state,
+			sorted:   state == ES_NotAppendable,
+			SortHint: table.GetDB().catalog.NextObject(),
 		},
 		EntryMVCCNode: EntryMVCCNode{
 			CreatedAt: end,
@@ -317,10 +305,9 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
-			state:         ES_Appendable,
-			IsLocal:       true,
-			remainingRows: &common.FixedSampleIII[int]{},
-			IsTombstone:   isTombstone,
+			state:       ES_Appendable,
+			IsLocal:     true,
+			IsTombstone: isTombstone,
 		},
 		EntryMVCCNode: EntryMVCCNode{
 			CreatedAt: ts,
@@ -652,10 +639,8 @@ func MockObjEntryWithTbl(tbl *TableEntry, size uint64) *ObjectEntry {
 	objectio.SetObjectStatsRowCnt(stats, uint32(1))
 	ts := types.BuildTS(time.Now().UnixNano(), 0)
 	e := &ObjectEntry{
-		table: tbl,
-		ObjectNode: ObjectNode{
-			remainingRows: &common.FixedSampleIII[int]{},
-		},
+		table:      tbl,
+		ObjectNode: ObjectNode{},
 		EntryMVCCNode: EntryMVCCNode{
 			CreatedAt: ts,
 		},

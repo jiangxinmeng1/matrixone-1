@@ -176,8 +176,9 @@ func TombstoneChangeToLogtailBatch(src *containers.BatchWithVersion) *containers
 		panic(fmt.Sprintf("bad last seqnums %v", src.Seqnums))
 	}
 	bat.AddVector(src.Attrs[0], src.Vecs[0]) // rowid
-	bat.AddVector(src.Attrs[3], src.Vecs[3]) //committs
-	bat.AddVector(src.Attrs[1], src.Vecs[1]) //pk
+	bat.AddVector(src.Attrs[3], src.Vecs[3]) // committs
+	bat.AddVector(src.Attrs[1], src.Vecs[1]) // pk
+	bat.AddVector(src.Attrs[2], src.Vecs[2]) // PhyAddrColumn
 
 	return bat
 }

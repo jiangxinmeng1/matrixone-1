@@ -153,6 +153,10 @@ func (b *TxnLogtailRespBuilder) visitAppendTombstone(src *containers.BatchWithVe
 		catalog.AttrPKVal,
 		src.GetVectorByName(catalog.AttrPKVal).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
 	)
+	mybat.AddVector(
+		catalog.PhyAddrColumnName,
+		src.GetVectorByName(catalog.PhyAddrColumnName).CloneWindowWithPool(0, src.Length(), b.rt.VectorPool.Small),
+	)
 
 	if b.batches[dataDelBatch] == nil {
 		b.batches[dataDelBatch] = mybat

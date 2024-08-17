@@ -1699,6 +1699,22 @@ func MakeColExprForTest(idx int32, typ types.T, colName ...string) *plan.Expr {
 	}
 }
 
+// removeIf removes the elements that pred is true.
+func removeIf[T any](data []T, pred func(t T) bool) []T {
+	if len(data) == 0 {
+		return data
+	}
+	res := 0
+	for i := 0; i < len(data); i++ {
+		if !pred(data[i]) {
+			if res != i {
+				data[res] = data[i]
+			}
+			res++
+		}
+	}
+	return data[:res]
+}
 func MakeFunctionExprForTest(name string, args []*plan.Expr) *plan.Expr {
 	argTypes := make([]types.Type, len(args))
 	for i, arg := range args {

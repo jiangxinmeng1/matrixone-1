@@ -380,7 +380,7 @@ func (h *Handle) HandleCommitMerge(
 	if err != nil {
 		return err
 	}
-	_, err = jobs.HandleMergeEntryInTxn(ctx, txn, txn.String(), req, transferMaps, h.db.Runtime)
+	_, err = jobs.HandleMergeEntryInTxn(ctx, txn, txn.String(), req, transferMaps, h.db.Runtime, false)
 	if err != nil {
 		return
 	}

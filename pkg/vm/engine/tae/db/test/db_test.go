@@ -7824,15 +7824,15 @@ func TestSoftDeleteRollback(t *testing.T) {
 
 	// flush the table
 	txn2, rel := tae.GetRelation()
-	metas := testutil.GetAllBlockMetas(rel)
-	task, err := jobs.NewFlushTableTailTask(nil, txn2, metas, tae.Runtime, types.MaxTs())
+	metas := testutil.GetAllBlockMetas(rel, false)
+	task, err := jobs.NewFlushTableTailTask(nil, txn2, metas, nil, tae.Runtime, types.MaxTs())
 	assert.NoError(t, err)
 	err = task.OnExec(context.Background())
 	assert.NoError(t, err)
 	assert.NoError(t, txn2.Commit(context.Background()))
 
 	txn, rel := tae.GetRelation()
-	it := rel.MakeObjectIt()
+	it := rel.MakeObjectIt(false)
 	var obj *catalog.ObjectEntry
 	for it.Next() {
 		obj = it.GetObject().GetMeta().(*catalog.ObjectEntry)
@@ -7841,7 +7841,7 @@ func TestSoftDeleteRollback(t *testing.T) {
 		}
 	}
 	t.Log(obj.ID().String())
-	require.NoError(t, txn.GetStore().SoftDeleteObject(obj.AsCommonID()))
+	require.NoError(t, txn.GetStore().SoftDeleteObject(false, obj.AsCommonID()))
 	require.NoError(t, txn.Rollback(ctx))
 
 	tae.CheckRowsByScan(50, false)

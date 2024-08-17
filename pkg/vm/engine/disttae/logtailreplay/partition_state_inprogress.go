@@ -146,7 +146,7 @@ func (p *PartitionStateInProgress) HandleDataObjectList(
 			continue
 		}
 
-		objEntry.EntryState = stateCol[idx]
+		objEntry.Appendable = stateCol[idx]
 		objEntry.CreateTime = createTSCol[idx]
 		objEntry.DeleteTime = deleteTSCol[idx]
 		objEntry.CommitTS = commitTSCol[idx]
@@ -171,7 +171,7 @@ func (p *PartitionStateInProgress) HandleDataObjectList(
 				Time:         createTSCol[idx],
 				ShortObjName: *objEntry.ObjectShortName(),
 				IsDelete:     false,
-				IsAppendable: objEntry.EntryState,
+				IsAppendable: objEntry.Appendable,
 			}
 			p.objectIndexByTS.Set(e)
 		}
@@ -189,12 +189,12 @@ func (p *PartitionStateInProgress) HandleDataObjectList(
 				Time:         deleteTSCol[idx],
 				IsDelete:     true,
 				ShortObjName: *objEntry.ObjectShortName(),
-				IsAppendable: objEntry.EntryState,
+				IsAppendable: objEntry.Appendable,
 			}
 			p.objectIndexByTS.Set(e)
 		}
 
-		if objEntry.EntryState && objEntry.DeleteTime.IsEmpty() {
+		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
 			panic("logic error")
 		}
 
@@ -220,7 +220,7 @@ func (p *PartitionStateInProgress) HandleDataObjectList(
 				// if the inserting block is appendable, need to delete the rows for it;
 				// if the inserting block is non-appendable and has delta location, need to delete
 				// the deletes for it.
-				if objEntry.EntryState {
+				if objEntry.Appendable {
 					if entry.Time.LessEq(&trunctPoint) {
 						// delete the row
 						p.rows.Delete(entry)
@@ -314,7 +314,7 @@ func (p *PartitionStateInProgress) HandleTombstoneObjectList(
 			continue
 		}
 
-		objEntry.EntryState = stateCol[idx]
+		objEntry.Appendable = stateCol[idx]
 		objEntry.CreateTime = createTSCol[idx]
 		objEntry.DeleteTime = deleteTSCol[idx]
 		objEntry.CommitTS = commitTSCol[idx]
@@ -343,7 +343,7 @@ func (p *PartitionStateInProgress) HandleTombstoneObjectList(
 
 		p.tombstoneObjets.Set(objEntry)
 
-		if objEntry.EntryState && objEntry.DeleteTime.IsEmpty() {
+		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
 			panic("logic error")
 		}
 

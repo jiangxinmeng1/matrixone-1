@@ -674,12 +674,13 @@ func TestShowDatabasesInRestoreTxn(t *testing.T) {
 	worker.Start()
 	defer worker.Stop()
 
-	it := dbTbl.MakeObjectIt()
+	it := dbTbl.MakeObjectIt(false)
 	it.Next()
 	firstEntry := it.GetObject().GetMeta().(*catalog2.ObjectEntry)
 	task1, err := jobs.NewFlushTableTailTask(
 		tasks.WaitableCtx, txn,
 		[]*catalog2.ObjectEntry{firstEntry},
+		nil,
 		tae.Runtime, txn.GetStartTS())
 	require.NoError(t, err)
 	worker.SendOp(task1)

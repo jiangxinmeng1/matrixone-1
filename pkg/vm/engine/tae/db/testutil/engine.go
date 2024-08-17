@@ -720,7 +720,7 @@ func (e *TestEngine) CheckReadCNCheckpoint() {
 
 func (e *TestEngine) CheckCollectTombstoneInRange() {
 	txn, rel := e.GetRelation()
-	ForEachTombstone(rel, func(obj handle.Object) error {
+	ForEachTombstone(e.T, rel, func(obj handle.Object) error {
 		meta := obj.GetMeta().(*catalog.ObjectEntry)
 		blkCnt := obj.BlkCnt()
 		for i := 0; i < blkCnt; i++ {

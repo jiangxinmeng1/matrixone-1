@@ -16,7 +16,6 @@ package testutil
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 
@@ -220,7 +219,7 @@ func CheckAllColRowsByScan(t *testing.T, rel handle.Relation, expectRows int, ap
 
 func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDelete bool) int {
 	rows := 0
-	ForEachColumnView(rel, colIdx, func(view *containers.Batch) (err error) {
+	ForEachColumnView(t, rel, colIdx, func(view *containers.Batch) (err error) {
 		if applyDelete {
 			view.Compact()
 		}
@@ -231,8 +230,8 @@ func GetColumnRowsByScan(t *testing.T, rel handle.Relation, colIdx int, applyDel
 	return rows
 }
 
-func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers.Batch) error) {
-	ForEachObject(rel, func(blk handle.Object) (err error) {
+func ForEachColumnView(t *testing.T, rel handle.Relation, colIdx int, fn func(view *containers.Batch) error) {
+	ForEachObject(t, rel, func(blk handle.Object) (err error) {
 		blkCnt := blk.GetMeta().(*catalog.ObjectEntry).BlockCnt()
 		for i := 0; i < blkCnt; i++ {
 			var view *containers.Batch
@@ -242,6 +241,7 @@ func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers
 				continue
 			}
 			if err != nil {
+				t.Errorf("blk %v, %v", blk.String(), err)
 				return err
 			}
 			defer view.Close()
@@ -254,34 +254,22 @@ func ForEachColumnView(rel handle.Relation, colIdx int, fn func(view *containers
 	})
 }
 
-func ForEachObject(rel handle.Relation, fn func(obj handle.Object) error) {
-	it := rel.MakeObjectIt(false)
-	var err error
-	for it.Next() {
-		obj := it.GetObject()
-		defer obj.Close()
-		if err = fn(obj); err != nil {
-			if errors.Is(err, handle.ErrIteratorEnd) {
-				return
-			} else {
-				panic(err)
-			}
-		}
-	}
+func ForEachObject(t *testing.T, rel handle.Relation, fn func(obj handle.Object) error) {
+	forEachObject(t, rel, fn, false)
+}
+func ForEachTombstone(t *testing.T, rel handle.Relation, fn func(obj handle.Object) error) {
+	forEachObject(t, rel, fn, true)
 }
 
-func ForEachTombstone(rel handle.Relation, fn func(obj handle.Object) error) {
-	it := rel.MakeObjectIt(true)
+func forEachObject(t *testing.T, rel handle.Relation, fn func(obj handle.Object) error, isTombstone bool) {
+	it := rel.MakeObjectIt(isTombstone)
 	var err error
 	for it.Next() {
 		obj := it.GetObject()
 		defer obj.Close()
 		if err = fn(obj); err != nil {
-			if errors.Is(err, handle.ErrIteratorEnd) {
-				return
-			} else {
-				panic(err)
-			}
+			t.Error(err)
+			t.FailNow()
 		}
 	}
 }

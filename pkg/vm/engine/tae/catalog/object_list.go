@@ -175,8 +175,8 @@ func (l *ObjectList) Update(new, old *ObjectEntry) {
 	if new.IsTombstone != l.isTombstone {
 		panic("logic error")
 	}
-	newTree.Set(new)
 	newTree.Delete(old)
+	newTree.Set(new)
 	ok := l.tree.CompareAndSwap(oldTree, newTree)
 	if !ok {
 		panic("concurrent mutation")

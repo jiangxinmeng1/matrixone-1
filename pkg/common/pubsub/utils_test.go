@@ -154,3 +154,144 @@ func TestJoinAccounts(t *testing.T) {
 		})
 	}
 }
+
+func TestCanPubToAll(t *testing.T) {
+	type args struct {
+		accountName    string
+		pubAllAccounts string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			args: args{
+				accountName:    "acc1",
+				pubAllAccounts: "*",
+			},
+			want: true,
+		},
+		{
+			args: args{
+				accountName:    "acc1",
+				pubAllAccounts: "acc1,acc2",
+			},
+			want: true,
+		},
+		{
+			args: args{
+				accountName:    "acc1",
+				pubAllAccounts: "acc2",
+			},
+			want: false,
+		},
+		{
+			args: args{
+				accountName:    "acc1",
+				pubAllAccounts: "",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CanPubToAll(tt.args.accountName, tt.args.pubAllAccounts); got != tt.want {
+				t.Errorf("CanPubToAll() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemoveTable(t *testing.T) {
+	type args struct {
+		oldTableListStr string
+		tblName         string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			args: args{
+				oldTableListStr: "*",
+				tblName:         "t1",
+			},
+			want: "*",
+		},
+		{
+			args: args{
+				oldTableListStr: "t1,t2,t3",
+				tblName:         "t1",
+			},
+			want: "t2,t3",
+		},
+		{
+			args: args{
+				oldTableListStr: "t1,t3,t2",
+				tblName:         "t1",
+			},
+			want: "t2,t3",
+		},
+		{
+			args: args{
+				oldTableListStr: "t1",
+				tblName:         "t1",
+			},
+			want: "",
+		},
+		{
+			args: args{
+				oldTableListStr: "t2",
+				tblName:         "t1",
+			},
+			want: "t2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RemoveTable(tt.args.oldTableListStr, tt.args.tblName); got != tt.want {
+				t.Errorf("RemoveTable() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestJoinAccountIds(t *testing.T) {
+	type args struct {
+		accIds []int32
+	}
+	tests := []struct {
+		name  string
+		args  args
+		wantS string
+	}{
+		{
+			args: args{
+				accIds: []int32{},
+			},
+			wantS: "",
+		},
+		{
+			args: args{
+				accIds: []int32{1},
+			},
+			wantS: "1",
+		},
+
+		{
+			args: args{
+				accIds: []int32{1, 2, 3},
+			},
+			wantS: "1,2,3",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if gotS := JoinAccountIds(tt.args.accIds); gotS != tt.wantS {
+				t.Errorf("JoinAccountIds() = %v, want %v", gotS, tt.wantS)
+			}
+		})
+	}
+}

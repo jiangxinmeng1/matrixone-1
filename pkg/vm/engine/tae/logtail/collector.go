@@ -417,15 +417,15 @@ func (d *dirtyCollector) tryCompactTree(
 		tbl.Stats.RUnlock()
 
 		if x := ctx.Value(TempFKey{}); x != nil && TempF.Check(tbl.ID) {
-			logutil.Infof("temp filter skip table %v-%v", tbl.ID, tbl.GetLastestSchemaLocked().Name)
+			logutil.Infof("temp filter skip table %v-%v", tbl.ID, tbl.GetLastestSchemaLocked(false).Name)
 			tree.Shrink(id)
 			continue
 		}
 
 		for id, dirtyObj := range dirtyTable.Objs {
-			if obj, err = tbl.GetObjectByID(dirtyObj.ID); err != nil {
+			if obj, err = tbl.GetObjectByID(dirtyObj.ID, false); err != nil {
 				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
-					dirtyTable.Shrink(id)
+					dirtyTable.Shrink(id, false)
 					err = nil
 					continue
 				}
@@ -438,26 +438,31 @@ func (d *dirtyCollector) tryCompactTree(
 				continue
 			}
 			if calibration == 0 {
-				// TODO: may be put it to post replay process
-				// FIXME
-				if obj.HasPersistedData() {
-					obj.GetObjectData().TryUpgrade()
-				}
-				dirtyTable.Shrink(id)
+				dirtyTable.Shrink(id, false)
 				continue
 			}
-			if !obj.IsAppendable() {
-				newFrom := from
-				if lastFlush.Greater(&newFrom) {
-					newFrom = lastFlush
-				}
-				// sometimes, delchain is no cleared after flushing table tail.
-				// the reason is still unknown, but here bumping the check from ts to lastFlush is correct anyway.
-				found, _ := obj.GetObjectData().HasDeleteIntentsPreparedIn(newFrom, to)
-				if !found {
-					dirtyTable.Shrink(id)
+			if err = interceptor.OnObject(obj); err != nil {
+				return
+			}
+		}
+		for id, dirtyObj := range dirtyTable.Tombstones {
+			if obj, err = tbl.GetObjectByID(dirtyObj.ID, true); err != nil {
+				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+					dirtyTable.Shrink(id, true)
+					err = nil
 					continue
 				}
+				return
+			}
+			var calibration int
+			calibration, err = obj.GetObjectData().RunCalibration()
+			if err != nil {
+				logutil.Warnf("get object rows failed, obj %v, err: %v", obj.ID().String(), err)
+				continue
+			}
+			if calibration == 0 {
+				dirtyTable.Shrink(id, true)
+				continue
 			}
 			if err = interceptor.OnObject(obj); err != nil {
 				return

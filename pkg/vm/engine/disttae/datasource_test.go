@@ -31,6 +31,19 @@ func TestTombstoneData1(t *testing.T) {
 	location2 := objectio.NewRandomLocation(2, 2222)
 	location3 := objectio.NewRandomLocation(3, 3333)
 
+	var stats1, stats2, stats3 objectio.ObjectStats
+	objectio.SetObjectStatsLocation(&stats1, location1)
+	objectio.SetObjectStatsLocation(&stats2, location2)
+	objectio.SetObjectStatsLocation(&stats3, location3)
+
+	objectio.SetObjectStatsBlkCnt(&stats1, 1)
+	objectio.SetObjectStatsBlkCnt(&stats2, 1)
+	objectio.SetObjectStatsBlkCnt(&stats3, 1)
+
+	objectio.SetObjectStatsRowCnt(&stats1, location1.Rows())
+	objectio.SetObjectStatsRowCnt(&stats3, location3.Rows())
+	objectio.SetObjectStatsRowCnt(&stats2, location2.Rows())
+
 	obj1 := objectio.NewObjectid()
 	obj2 := objectio.NewObjectid()
 	blk1_0 := objectio.NewBlockidWithObjectID(obj1, 0)
@@ -50,7 +63,7 @@ func TestTombstoneData1(t *testing.T) {
 	tombstones1 := NewEmptyTombstoneData()
 	err := tombstones1.AppendInMemory(rowids...)
 	require.Nil(t, err)
-	err = tombstones1.AppendFiles(location1, location2)
+	err = tombstones1.AppendFiles(stats1, stats2)
 	require.Nil(t, err)
 
 	tombstones1.SortInMemory()
@@ -69,7 +82,7 @@ func TestTombstoneData1(t *testing.T) {
 	}
 	err = tombstones2.AppendInMemory(rowids...)
 	require.Nil(t, err)
-	err = tombstones2.AppendFiles(location3)
+	err = tombstones2.AppendFiles(stats3)
 	require.Nil(t, err)
 	tombstones2.SortInMemory()
 	last = tombstones2.rowids[0]

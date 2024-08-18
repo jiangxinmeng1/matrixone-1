@@ -131,6 +131,18 @@ func LoadColumnsData2(
 	return
 }
 
+func LoadTombstoneColumns(
+	ctx context.Context,
+	cols []uint16,
+	typs []types.Type,
+	fs fileservice.FileService,
+	location objectio.Location,
+	m *mpool.MPool,
+	policy fileservice.Policy,
+) (bat *batch.Batch, release func(), err error) {
+	return LoadColumnsData(ctx, objectio.SchemaTombstone, cols, typs, fs, location, m, policy)
+}
+
 func LoadColumns(
 	ctx context.Context,
 	cols []uint16,
@@ -141,17 +153,6 @@ func LoadColumns(
 	policy fileservice.Policy,
 ) (bat *batch.Batch, release func(), err error) {
 	return LoadColumnsData(ctx, objectio.SchemaData, cols, typs, fs, location, m, policy)
-}
-
-func LoadTombstoneColumns(
-	ctx context.Context,
-	cols []uint16,
-	typs []types.Type,
-	fs fileservice.FileService,
-	location objectio.Location,
-	m *mpool.MPool,
-) (bat *batch.Batch, release func(), err error) {
-	return LoadColumnsData(ctx, objectio.SchemaTombstone, cols, typs, fs, location, m, fileservice.Policy(0))
 }
 
 // LoadColumns2 load columns data from file service for TN
@@ -167,20 +168,6 @@ func LoadColumns2(
 	vPool *containers.VectorPool,
 ) (vectors []containers.Vector, release func(), err error) {
 	return LoadColumnsData2(ctx, objectio.SchemaData, cols, typs, fs, location, policy, needCopy, vPool)
-}
-
-// LoadTombstoneColumns2 load tombstone data from file service for TN
-// need to copy data from vPool to avoid releasing cache
-func LoadTombstoneColumns2(
-	ctx context.Context,
-	cols []uint16,
-	typs []types.Type,
-	fs fileservice.FileService,
-	location objectio.Location,
-	needCopy bool,
-	vPool *containers.VectorPool,
-) (vectors []containers.Vector, release func(), err error) {
-	return LoadColumnsData2(ctx, objectio.SchemaTombstone, cols, typs, fs, location, fileservice.Policy(0), needCopy, vPool)
 }
 
 func LoadOneBlock(

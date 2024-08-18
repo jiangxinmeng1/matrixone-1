@@ -630,15 +630,11 @@ type Tombstoner interface {
 	// to the rowsOffset
 	ApplyPersistedTombstones(
 		ctx context.Context,
+		fs fileservice.FileService,
+		snapshot types.TS,
 		bid types.Blockid,
 		rowsOffset []int64,
-		mask *nulls.Nulls,
-		apply func(
-			ctx2 context.Context,
-			loc objectio.Location,
-			cts types.TS,
-			rowsOffset []int64,
-			deleted *nulls.Nulls) (left []int64, err error),
+		deletedMask *nulls.Nulls,
 	) (left []int64, err error)
 
 	// a.merge(b) => a = a U b

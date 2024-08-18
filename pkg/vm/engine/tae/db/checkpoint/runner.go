@@ -570,7 +570,7 @@ func (r *runner) saveCheckpoint(start, end types.TS, ckpLSN, truncateLSN uint64)
 }
 
 func (r *runner) doIncrementalCheckpoint(entry *CheckpointEntry) (fields []zap.Field, err error) {
-	factory := logtail.IncrementalCheckpointDataFactory(r.rt.SID(), entry.start, entry.end, true, false)
+	factory := logtail.IncrementalCheckpointDataFactory(r.rt.SID(), entry.start, entry.end, true)
 	data, err := factory(r.catalog)
 	if err != nil {
 		return
@@ -870,27 +870,42 @@ func (r *runner) onWaitWaitableItems(items ...any) {
 func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.TableTree, endTs types.TS) error {
 	metas := make([]*catalog.ObjectEntry, 0, 10)
 	for _, obj := range tree.Objs {
-		object, err := table.GetObjectByID(obj.ID)
+		object, err := table.GetObjectByID(obj.ID, false)
 		if err != nil {
 			panic(err)
 		}
 		metas = append(metas, object)
+	}
+	tombstoneMetas := make([]*catalog.ObjectEntry, 0, 10)
+	for _, obj := range tree.Tombstones {
+		object, err := table.GetObjectByID(obj.ID, true)
+		if err != nil {
+			panic(err)
+		}
+		tombstoneMetas = append(tombstoneMetas, object)
 	}
 
 	// freeze all append
 	scopes := make([]common.ID, 0, len(metas))
 	for _, meta := range metas {
 		if !meta.GetObjectData().PrepareCompact() {
-			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked().Name, meta.ID().String())
+			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID().String())
+			return moerr.GetOkExpectedEOB()
+		}
+		scopes = append(scopes, *meta.AsCommonID())
+	}
+	for _, meta := range tombstoneMetas {
+		if !meta.GetObjectData().PrepareCompact() {
+			logutil.Infof("[FlushTabletail] %d-%s / %s false prepareCompact ", table.ID, table.GetLastestSchemaLocked(false).Name, meta.ID().String())
 			return moerr.GetOkExpectedEOB()
 		}
 		scopes = append(scopes, *meta.AsCommonID())
 	}
 
-	factory := jobs.FlushTableTailTaskFactory(metas, r.rt, endTs)
+	factory := jobs.FlushTableTailTaskFactory(metas, tombstoneMetas, r.rt, endTs)
 	if _, err := r.rt.Scheduler.ScheduleMultiScopedTxnTask(nil, tasks.DataCompactionTask, scopes, factory); err != nil {
 		if err != tasks.ErrScheduleScopeConflict {
-			logutil.Infof("[FlushTabletail] %d-%s %v", table.ID, table.GetLastestSchemaLocked().Name, err)
+			logutil.Infof("[FlushTabletail] %d-%s %v", table.ID, table.GetLastestSchemaLocked(false).Name, err)
 		}
 		return moerr.GetOkExpectedEOB()
 	}
@@ -899,13 +914,20 @@ func (r *runner) fireFlushTabletail(table *catalog.TableEntry, tree *model.Table
 
 func (r *runner) EstimateTableMemSize(table *catalog.TableEntry, tree *model.TableTree) (asize int, dsize int) {
 	for _, obj := range tree.Objs {
-		object, err := table.GetObjectByID(obj.ID)
+		object, err := table.GetObjectByID(obj.ID, false)
 		if err != nil {
 			panic(err)
 		}
-		a, d := object.GetObjectData().EstimateMemSize()
+		a, _ := object.GetObjectData().EstimateMemSize()
 		asize += a
-		dsize += d
+	}
+	for _, obj := range tree.Tombstones {
+		object, err := table.GetObjectByID(obj.ID, true)
+		if err != nil {
+			panic(err)
+		}
+		a, _ := object.GetObjectData().EstimateMemSize()
+		dsize += a
 	}
 	return
 }
@@ -972,7 +994,7 @@ func (r *runner) tryCompactTree(entry *logtail.DirtyTreeEntry, force bool) {
 		defer stats.Unlock()
 
 		if force {
-			logutil.Infof("[flushtabletail] force flush %v-%s", table.ID, table.GetLastestSchemaLocked().Name)
+			logutil.Infof("[flushtabletail] force flush %v-%s", table.ID, table.GetLastestSchemaLocked(false).Name)
 			if err := r.fireFlushTabletail(table, dirtyTree, endTs); err == nil {
 				stats.ResetDeadlineWithLock()
 			}
@@ -1013,7 +1035,7 @@ func (r *runner) tryCompactTree(entry *logtail.DirtyTreeEntry, force bool) {
 		// debug log, delete later
 		if !stats.LastFlush.IsEmpty() && asize+dsize > 2*1000*1024 {
 			logutil.Infof("[flushtabletail] %v(%v) %v dels  FlushCountDown %v, flushReady %v",
-				table.GetLastestSchemaLocked().Name,
+				table.GetLastestSchemaLocked(false).Name,
 				common.HumanReadableBytes(asize+dsize),
 				common.HumanReadableBytes(dsize),
 				time.Until(stats.FlushDeadline),

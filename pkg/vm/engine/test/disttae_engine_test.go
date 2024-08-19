@@ -48,7 +48,6 @@ import (
 )
 
 func Test_InsertRows(t *testing.T) {
-	t.Skip("need fix me")
 	catalog.SetupDefines("")
 
 	var (
@@ -536,7 +535,6 @@ func TestAlterTableBasic(t *testing.T) {
 }
 
 func TestColumnsTransfer(t *testing.T) {
-	t.Skip("todo")
 	opts := config.WithLongScanAndCKPOpts(nil)
 	dir := testutil.MakeDefaultTestPath("partition_state", t)
 	opts.Fs = objectio.TmpNewSharedFileservice(context.Background(), dir)
@@ -661,7 +659,7 @@ func TestInProgressTransfer(t *testing.T) {
 		userDB, _ := tnFlushTxn.GetDatabaseByID(did)
 		userTbl, _ := userDB.GetRelationByID(tid)
 
-		it := userTbl.MakeObjectIt()
+		it := userTbl.MakeObjectIt(false)
 		it.Next()
 		firstEntry := it.GetObject().GetMeta().(*catalog2.ObjectEntry)
 		firstEntry.GetObjectData().FreezeAppend()
@@ -669,6 +667,7 @@ func TestInProgressTransfer(t *testing.T) {
 		task1, err := jobs.NewFlushTableTailTask(
 			tasks.WaitableCtx, tnFlushTxn,
 			[]*catalog2.ObjectEntry{firstEntry},
+			nil,
 			tae.Runtime, tnFlushTxn.GetStartTS())
 		require.NoError(t, err)
 		worker.SendOp(task1)
@@ -700,7 +699,7 @@ func TestInProgressTransfer(t *testing.T) {
 		tnFlushTxn2, _ := tae.StartTxn(nil)
 		userDB, _ := tnFlushTxn2.GetDatabaseByID(did)
 		userTbl, _ := userDB.GetRelationByID(tid)
-		it := userTbl.MakeObjectIt()
+		it := userTbl.MakeObjectIt(false)
 		var entry *catalog2.ObjectEntry
 		for it.Next() {
 			entry = it.GetObject().GetMeta().(*catalog2.ObjectEntry)
@@ -711,6 +710,7 @@ func TestInProgressTransfer(t *testing.T) {
 		task1, err := jobs.NewFlushTableTailTask(
 			tasks.WaitableCtx, tnFlushTxn2,
 			[]*catalog2.ObjectEntry{entry},
+			nil,
 			tae.Runtime, tnFlushTxn2.GetStartTS())
 		require.NoError(t, err)
 		worker.SendOp(task1)
@@ -729,7 +729,6 @@ func TestInProgressTransfer(t *testing.T) {
 }
 
 func TestCacheGC(t *testing.T) {
-	t.Skip("need fix me")
 	opts := config.WithLongScanAndCKPOpts(nil)
 	p := testutil.InitEnginePack(testutil.TestOptions{TaeEngineOptions: opts}, t)
 	defer p.Close()

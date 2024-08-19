@@ -169,6 +169,49 @@ func TestTombstoneData1(t *testing.T) {
 	require.Equal(t, 4, deleted.Count())
 }
 
+func TestRelationDataV2_MarshalAndUnMarshal(t *testing.T) {
+	location := objectio.NewRandomLocation(0, 0)
+	objID := location.ObjectId()
+	metaLoc := objectio.ObjectLocation(location)
+	cts := types.BuildTSForTest(1, 1)
+
+	relData := NewEmptyBlockListRelationData()
+	blkNum := 10
+	for i := 0; i < blkNum; i++ {
+		blkID := types.NewBlockidWithObjectID(&objID, uint16(blkNum))
+		blkInfo := objectio.BlockInfo{
+			BlockID:      *blkID,
+			Appendable:   true,
+			Sorted:       false,
+			MetaLoc:      metaLoc,
+			CommitTs:     *cts,
+			PartitionNum: int16(i),
+		}
+		relData.AppendBlockInfo(blkInfo)
+	}
+
+	tombstone := NewEmptyTombstoneData()
+	for i := 0; i < 3; i++ {
+		rowid := types.RandomRowid()
+		tombstone.AppendInMemory(rowid)
+	}
+	var stats1, stats2 objectio.ObjectStats
+	location1 := objectio.NewRandomLocation(1, 1111)
+	location2 := objectio.NewRandomLocation(2, 1111)
+
+	objectio.SetObjectStatsLocation(&stats1, location1)
+	objectio.SetObjectStatsLocation(&stats2, location2)
+	tombstone.AppendFiles(stats1, stats2)
+	relData.AttachTombstones(tombstone)
+
+	buf, err := relData.MarshalBinary()
+	require.NoError(t, err)
+
+	newRelData, err := UnmarshalRelationData(buf)
+	require.NoError(t, err)
+	require.Equal(t, relData.String(), newRelData.String())
+}
+
 func TestRelationDataV1_MarshalAndUnMarshal(t *testing.T) {
 
 	location := objectio.NewRandomLocation(0, 0)

@@ -1278,14 +1278,12 @@ func GetTombstonesByBlockId(
 		totalScanned int
 	)
 
-	bidZM := index.BuildZM(types.T_binary, bid[:])
-
 	onTombstone := func(obj logtailreplay.ObjectEntry) (bool, error) {
 		totalScanned++
 
 		if !obj.ZMIsEmpty() {
 			objZM := obj.SortKeyZoneMap()
-			if skip := !objZM.PrefixEq(bidZM); skip {
+			if skip := !objZM.PrefixEq(bid[:]); skip {
 				zmBreak++
 				return true, nil
 			}

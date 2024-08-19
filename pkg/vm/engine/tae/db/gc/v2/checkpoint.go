@@ -27,6 +27,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 	"go.uber.org/zap"
 	"sort"
 	"strings"
@@ -794,6 +795,10 @@ func (c *checkpointCleaner) CheckGC() error {
 		return moerr.NewInternalErrorNoCtx("GC has not yet run")
 	}
 	gCkp := c.GetMaxCompared()
+	testutils.WaitExpect(10000, func() bool {
+		gCkp = c.GetMaxCompared()
+		return gCkp != nil
+	})
 	if gCkp == nil {
 		gCkp = c.ckpClient.MaxGlobalCheckpoint()
 		if gCkp == nil {

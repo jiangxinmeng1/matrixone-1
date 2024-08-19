@@ -435,8 +435,8 @@ func (t *GCTable) Compare(table *GCTable) bool {
 }
 
 func (t *GCTable) compareObjects(objects, compareObjects map[string]*ObjectEntry) bool {
-	for name, entry := range objects {
-		object := compareObjects[name]
+	for name, entry := range compareObjects {
+		object := objects[name]
 		if object == nil {
 			logutil.Infof("object %s is nil, create %v, drop %v", name, entry.createTS.ToString(), entry.dropTS.ToString())
 			return false

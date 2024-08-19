@@ -15,6 +15,8 @@
 package deletion
 
 import (
+	"sort"
+
 	"github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/common/reuse"
@@ -210,27 +212,37 @@ func (ctr *container) flush(proc *process.Process) (uint32, error) {
 	resSize := uint32(0)
 	for pidx, blockId_rowIdBatch := range ctr.partitionId_blockId_rowIdBatch {
 		s3writer := &colexec.S3Writer{}
-		s3writer.SetSortIdx(-1)
+		s3writer.SetSortIdx(0)
 		_, err = s3writer.GenerateWriter(proc)
 		if err != nil {
 			return 0, err
 		}
 		blkids := make([]types.Blockid, 0, len(blockId_rowIdBatch))
-		for blkid, bat := range blockId_rowIdBatch {
-			//Don't flush rowids belong to uncommitted cn block and raw data batch in txn's workspace.
+
+		for blkid, _ := range blockId_rowIdBatch {
 			if ctr.blockId_type[blkid] != RawRowIdBatch {
 				continue
 			}
+			blkids = append(blkids, blkid)
+		}
+
+		sort.Slice(blkids, func(i, j int) bool {
+			return blkids[i].Less(blkids[j])
+		})
+
+		for _, blkid := range blkids {
+			bat := blockId_rowIdBatch[blkid]
+
 			err = s3writer.WriteBlock(bat, objectio.SchemaTombstone)
 			if err != nil {
 				return 0, err
 			}
 			resSize += uint32(bat.Size())
-			blkids = append(blkids, blkid)
 			bat.CleanOnlyData()
 			ctr.pool.put(bat)
 			delete(blockId_rowIdBatch, blkid)
 		}
+
 		blkInfos, _, err := s3writer.WriteEndBlocks(proc)
 		if err != nil {
 			return 0, err

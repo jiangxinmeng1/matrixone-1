@@ -829,7 +829,8 @@ func (ls *LocalDataSource) ApplyTombstones(
 		rowsOffset = ls.applyPStateInMemDeletes(bid, rowsOffset, nil)
 	}
 	if ls.tombstonePolicy&engine.Policy_SkipCommittedS3 == 0 {
-		rowsOffset, err = ls.applyPStatePersistedDeltaLocation(bid, rowsOffset, nil)
+		rowsOffset, err = ls.applyPStateTombstoneObjects(bid, rowsOffset, nil)
+		//rowsOffset, err = ls.applyPStatePersistedDeltaLocation(bid, rowsOffset, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1113,9 +1114,9 @@ func (ls *LocalDataSource) applyPStateTombstoneObjects(
 	deletedRows *nulls.Nulls,
 ) ([]int64, error) {
 
-	if ls.rc.SkipPStateDeletes {
-		return offsets, nil
-	}
+	//if ls.rc.SkipPStateDeletes {
+	//	return offsets, nil
+	//}
 
 	if ls.pState.ApproxTombstoneObjectsNum() == 0 {
 		return offsets, nil

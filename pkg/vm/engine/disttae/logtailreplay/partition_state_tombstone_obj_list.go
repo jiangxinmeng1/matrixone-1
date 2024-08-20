@@ -161,7 +161,7 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 		var objEntry ObjectEntry_V2
 
 		objEntry.ObjectStats = objectio.ObjectStats(statsVec.GetBytesAt(idx))
-		objEntry.EntryState = stateCol[idx]
+		objEntry.Appendable = stateCol[idx]
 		objEntry.CreateTime = createTSCol[idx]
 		objEntry.DeleteTime = deleteTSCol[idx]
 		objEntry.CommitTS = commitTSCol[idx]
@@ -182,7 +182,7 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 			}
 		}
 		if objEntry.Size() == 0 {
-			if !objEntry.EntryState {
+			if !objEntry.Appendable {
 				panic(fmt.Sprintf("logic err, objectStats is empty %v", objEntry.String()))
 			}
 			objEntry.InMemory = true
@@ -195,7 +195,7 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 				Time:         createTSCol[idx],
 				ShortObjName: *objEntry.ObjectShortName(),
 				IsDelete:     !deleteTSCol[idx].IsEmpty(),
-				IsAppendable: objEntry.EntryState,
+				IsAppendable: objEntry.Appendable,
 			}
 			p.objectIndexByTS.Set(e)
 		}
@@ -207,7 +207,7 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 
 		p.dataObjects.Set(objEntry)
 
-		if objEntry.EntryState && objEntry.DeleteTime.IsEmpty() {
+		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
 			panic("logic error")
 		}
 	}
@@ -259,7 +259,7 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 		var objEntry ObjectEntry_V2
 
 		objEntry.ObjectStats = objectio.ObjectStats(statsVec.GetBytesAt(idx))
-		objEntry.EntryState = stateCol[idx]
+		objEntry.Appendable = stateCol[idx]
 		objEntry.CreateTime = createTSCol[idx]
 		objEntry.DeleteTime = deleteTSCol[idx]
 		objEntry.CommitTS = commitTSCol[idx]
@@ -281,7 +281,7 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 			}
 		}
 		if objEntry.Size() == 0 {
-			if !objEntry.EntryState {
+			if !objEntry.Appendable {
 				panic(fmt.Sprintf("logic err, objectStats is empty %v", objEntry.String()))
 			}
 			objEntry.InMemory = true
@@ -298,7 +298,7 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 
 		p.tombstoneObjets.Set(objEntry)
 
-		if objEntry.EntryState && objEntry.DeleteTime.IsEmpty() {
+		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
 			panic("logic error")
 		}
 
@@ -837,6 +837,28 @@ func (p *PartitionStateWithTombstoneObject) GetTombstoneDeltaLocs(mp map[types.B
 	// 		Cts: item.CommitTs,
 	// 	}
 	// }
+
+	return nil
+}
+func (p *PartitionStateWithTombstoneObject) CollectTombstoneObjects(
+	snapshot types.TS,
+	statsSlice *objectio.ObjectStatsSlice,
+) (err error) {
+
+	if p.ApproxTombstoneObjectsNum() == 0 {
+		return
+	}
+
+	iter, err := p.NewObjectsIter(snapshot, true, true)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		item := iter.Entry()
+		(*statsSlice).Append(item.ObjectStats[:])
+	}
 
 	return nil
 }

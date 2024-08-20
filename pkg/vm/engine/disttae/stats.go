@@ -54,7 +54,7 @@ type updateStatsRequest struct {
 	// tableDef is the main table definition.
 	tableDef *plan2.TableDef
 
-	partitionState  *logtailreplay.PartitionStateInProgress
+	partitionState  *logtailreplay.PartitionStateWithTombstoneObject
 	fs              fileservice.FileService
 	ts              types.TS
 	approxObjectNum int64
@@ -62,7 +62,7 @@ type updateStatsRequest struct {
 
 func newUpdateStatsRequest(
 	tableDef *plan2.TableDef,
-	partitionState *logtailreplay.PartitionStateInProgress,
+	partitionState *logtailreplay.PartitionStateWithTombstoneObject,
 	fs fileservice.FileService,
 	ts types.TS,
 	approxObjectNum int64,

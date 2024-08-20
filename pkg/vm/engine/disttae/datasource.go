@@ -265,7 +265,7 @@ func (rs *RemoteDataSource) SetFilterZM(_ objectio.ZoneMap) {
 
 type LocalDataSource struct {
 	rangeSlice objectio.BlockInfoSlice
-	pState     *logtailreplay.PartitionStateInProgress
+	pState     *logtailreplay.PartitionStateWithTombstoneObject
 
 	memPKFilter *MemPKFilter
 	pStateRows  struct {

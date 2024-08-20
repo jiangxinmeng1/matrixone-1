@@ -183,7 +183,7 @@ func (de *TestDisttaeEngine) waitLogtail(ctx context.Context) error {
 	return nil
 }
 
-func (de *TestDisttaeEngine) analyzeDataObjects(state *logtailreplay.PartitionStateInProgress,
+func (de *TestDisttaeEngine) analyzeDataObjects(state *logtailreplay.PartitionStateWithTombstoneObject,
 	stats *PartitionStateStats, ts types.TS) (err error) {
 
 	iter, err := state.NewObjectsIter(ts, false, false)
@@ -210,7 +210,7 @@ func (de *TestDisttaeEngine) analyzeDataObjects(state *logtailreplay.PartitionSt
 }
 
 func (de *TestDisttaeEngine) analyzeInmemRows(
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	stats *PartitionStateStats,
 	ts types.TS,
 ) (err error) {
@@ -239,7 +239,7 @@ func (de *TestDisttaeEngine) analyzeInmemRows(
 }
 
 func (de *TestDisttaeEngine) analyzeCheckpoint(
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	stats *PartitionStateStats,
 	ts types.TS,
 ) (err error) {
@@ -258,7 +258,7 @@ func (de *TestDisttaeEngine) analyzeCheckpoint(
 }
 
 func (de *TestDisttaeEngine) analyzeTombstone(
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	stats *PartitionStateStats,
 	ts types.TS,
 ) (outErr error) {
@@ -338,7 +338,7 @@ func (de *TestDisttaeEngine) GetPartitionStateStats(
 	}
 
 	var (
-		state *logtailreplay.PartitionStateInProgress
+		state *logtailreplay.PartitionStateWithTombstoneObject
 	)
 
 	ts := types.TimestampToTS(de.Now())

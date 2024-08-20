@@ -33,7 +33,7 @@ func consumeEntry(
 	primarySeqnum int,
 	engine *Engine,
 	cache *cache.CatalogCache,
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	e *api.Entry,
 ) error {
 	start := time.Now()

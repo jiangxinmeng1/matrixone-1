@@ -300,6 +300,7 @@ func (n *AppendMVCCHandle) AddAppendNodeLocked(
 		an = n.appends.GetUpdateNodeLocked()
 		created = false
 		an.SetMaxRow(maxRow)
+
 	}
 	return
 }

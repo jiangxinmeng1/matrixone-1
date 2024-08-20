@@ -34,7 +34,7 @@ type MemPKFilter struct {
 	isValid bool
 	TS      types.TS
 
-	SpecFactory func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec
+	SpecFactory func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2
 }
 
 func newMemPKFilter(
@@ -247,8 +247,8 @@ func (f *MemPKFilter) tryConstructPrimaryKeyIndexIter(ts timestamp.Timestamp) {
 	switch f.op {
 	case function.EQUAL, function.PREFIX_EQ:
 		//spec = logtailreplay.Prefix(f.packed[0])
-		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec {
-			return logtailreplay.Prefix(f.packed[0])
+		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2 {
+			return logtailreplay.Prefix_V2(f.packed[0])
 		}
 
 	case function.IN, function.PREFIX_IN:
@@ -257,20 +257,20 @@ func (f *MemPKFilter) tryConstructPrimaryKeyIndexIter(ts timestamp.Timestamp) {
 		// 	return
 		// }
 		//spec = logtailreplay.InKind(f.packed, f.op)
-		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec {
-			return logtailreplay.InKind(f.packed, f.op)
+		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2 {
+			return logtailreplay.InKind_V2(f.packed, f.op)
 		}
 
 	case function.LESS_EQUAL, function.LESS_THAN:
 		//spec = logtailreplay.LessKind(f.packed[0], f.op == function.LESS_EQUAL)
-		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec {
-			return logtailreplay.LessKind(f.packed[0], f.op == function.LESS_EQUAL)
+		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2 {
+			return logtailreplay.LessKind_V2(f.packed[0], f.op == function.LESS_EQUAL)
 		}
 
 	case function.GREAT_EQUAL, function.GREAT_THAN:
 		//spec = logtailreplay.GreatKind(f.packed[0], f.op == function.GREAT_EQUAL)
-		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec {
-			return logtailreplay.GreatKind(f.packed[0], f.op == function.GREAT_EQUAL)
+		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2 {
+			return logtailreplay.GreatKind_V2(f.packed[0], f.op == function.GREAT_EQUAL)
 		}
 
 	case function.BETWEEN, rangeLeftOpen, rangeRightOpen, rangeBothOpen, function.PREFIX_BETWEEN:
@@ -289,8 +289,8 @@ func (f *MemPKFilter) tryConstructPrimaryKeyIndexIter(ts timestamp.Timestamp) {
 		}
 
 		//spec = logtailreplay.BetweenKind(f.packed[0], f.packed[1], kind)
-		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec {
-			return logtailreplay.BetweenKind(f.packed[0], f.packed[1], kind)
+		f.SpecFactory = func(f *MemPKFilter) logtailreplay.PrimaryKeyMatchSpec_V2 {
+			return logtailreplay.BetweenKind_V2(f.packed[0], f.packed[1], kind)
 		}
 	}
 

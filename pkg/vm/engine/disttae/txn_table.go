@@ -220,7 +220,7 @@ func (tbl *txnTable) Size(ctx context.Context, columnName string) (uint64, error
 }
 
 func ForeachVisibleDataObject(
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	ts types.TS,
 	fn func(obj logtailreplay.ObjectEntry) error,
 	executor ConcurrentExecutor,
@@ -263,7 +263,7 @@ func (tbl *txnTable) ApproxObjectsNum(ctx context.Context) int {
 func (tbl *txnTable) MaxAndMinValues(ctx context.Context) ([][2]any, []uint8, error) {
 	var (
 		err  error
-		part *logtailreplay.PartitionStateInProgress
+		part *logtailreplay.PartitionStateWithTombstoneObject
 	)
 	if part, err = tbl.getPartitionState(ctx); err != nil {
 		return nil, nil, err
@@ -451,7 +451,7 @@ func (tbl *txnTable) GetColumMetadataScanInfo(ctx context.Context, name string) 
 	return infoList, nil
 }
 
-func (tbl *txnTable) GetDirtyPersistedBlks(state *logtailreplay.PartitionStateInProgress) []types.Blockid {
+func (tbl *txnTable) GetDirtyPersistedBlks(state *logtailreplay.PartitionStateWithTombstoneObject) []types.Blockid {
 	tbl.getTxn().blockId_tn_delete_metaLoc_batch.RLock()
 	defer tbl.getTxn().blockId_tn_delete_metaLoc_batch.RUnlock()
 
@@ -504,7 +504,7 @@ func (tbl *txnTable) LoadDeletesForBlock(bid types.Blockid, offsets *[]int64) (e
 
 // LoadDeletesForMemBlocksIn loads deletes for memory blocks whose data resides in PartitionState.rows
 func (tbl *txnTable) LoadDeletesForMemBlocksIn(
-	state *logtailreplay.PartitionStateInProgress,
+	state *logtailreplay.PartitionStateWithTombstoneObject,
 	deletesRowId map[types.Rowid]uint8) error {
 
 	tbl.getTxn().blockId_tn_delete_metaLoc_batch.RLock()
@@ -728,7 +728,7 @@ func (tbl *txnTable) doRanges(
 	}()
 
 	// get the table's snapshot
-	var part *logtailreplay.PartitionStateInProgress
+	var part *logtailreplay.PartitionStateWithTombstoneObject
 	if part, err = tbl.getPartitionState(ctx); err != nil {
 		return
 	}
@@ -776,7 +776,7 @@ var slowPathCounter atomic.Int64
 // notice that only clean blocks can be distributed into remote CNs.
 func (tbl *txnTable) rangesOnePart(
 	ctx context.Context,
-	state *logtailreplay.PartitionStateInProgress, // snapshot state of this transaction
+	state *logtailreplay.PartitionStateWithTombstoneObject, // snapshot state of this transaction
 	tableDef *plan.TableDef, // table definition (schema)
 	exprs []*plan.Expr, // filter expression
 	outBlocks *objectio.BlockInfoSlice, // output marshaled block list after filtering
@@ -1878,7 +1878,7 @@ func (tbl *txnTable) BuildReaders(
 
 func (tbl *txnTable) getPartitionState(
 	ctx context.Context,
-) (*logtailreplay.PartitionStateInProgress, error) {
+) (*logtailreplay.PartitionStateWithTombstoneObject, error) {
 	if !tbl.db.op.IsSnapOp() {
 		if tbl._partState.Load() == nil {
 			ps, err := tbl.tryToSubscribe(ctx)
@@ -1907,7 +1907,7 @@ func (tbl *txnTable) getPartitionState(
 	return tbl._partState.Load(), nil
 }
 
-func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.PartitionStateInProgress, err error) {
+func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.PartitionStateWithTombstoneObject, err error) {
 	defer func() {
 		if err == nil {
 			tbl.getTxn().engine.globalStats.notifyLogtailUpdate(tbl.tableId)
@@ -1923,7 +1923,7 @@ func (tbl *txnTable) tryToSubscribe(ctx context.Context) (ps *logtailreplay.Part
 }
 
 func (tbl *txnTable) PKPersistedBetween(
-	p *logtailreplay.PartitionStateInProgress,
+	p *logtailreplay.PartitionStateWithTombstoneObject,
 	from types.TS,
 	to types.TS,
 	keys *vector.Vector,

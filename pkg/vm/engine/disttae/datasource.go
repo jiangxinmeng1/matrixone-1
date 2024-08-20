@@ -269,7 +269,7 @@ type LocalDataSource struct {
 
 	memPKFilter *MemPKFilter
 	pStateRows  struct {
-		insIter logtailreplay.RowsIter
+		insIter logtailreplay.RowsIter_V2
 	}
 
 	table     *txnTable
@@ -1057,7 +1057,7 @@ func (ls *LocalDataSource) applyPStateInMemDeletes(
 		return offsets
 	}
 
-	var delIter logtailreplay.RowsIter
+	var delIter logtailreplay.RowsIter_V2
 
 	if ls.memPKFilter == nil || ls.memPKFilter.SpecFactory == nil {
 		delIter = ls.pState.NewRowsIter(ls.snapshotTS, &bid, true)

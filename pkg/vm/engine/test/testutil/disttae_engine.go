@@ -219,7 +219,9 @@ func (de *TestDisttaeEngine) analyzeInmemRows(
 	iter := state.NewRowsIter(ts, nil, false)
 	for iter.Next() {
 		stats.InmemRows.VisibleCnt++
-		distinct[iter.Entry().BlockID] = struct{}{}
+		rowID := iter.Entry().RowID
+		blkID := rowID.BorrowBlockID()
+		distinct[*blkID] = struct{}{}
 	}
 
 	stats.InmemRows.VisibleDistinctBlockCnt += len(distinct)
@@ -230,7 +232,9 @@ func (de *TestDisttaeEngine) analyzeInmemRows(
 	distinct = make(map[objectio.Blockid]struct{})
 	iter = state.NewRowsIter(ts, nil, true)
 	for iter.Next() {
-		distinct[iter.Entry().BlockID] = struct{}{}
+		rowID := iter.Entry().RowID
+		blkID := rowID.BorrowBlockID()
+		distinct[*blkID] = struct{}{}
 		stats.InmemRows.InvisibleCnt++
 	}
 	stats.InmemRows.InvisibleDistinctBlockCnt += len(distinct)

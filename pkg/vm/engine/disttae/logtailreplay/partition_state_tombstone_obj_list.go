@@ -479,9 +479,16 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsInsert(
 		objID := blockID.Object()
 		objName := objectio.BuildObjectNameWithObjectID(objID)
 		objectio.SetObjectStatsObjectName(&objEntry.ObjectStats, objName)
-		obj, exist := p.tombstoneObjets.Get(objEntry)
+		obj, exist := p.dataObjects.Get(objEntry)
 		if !exist {
-			panic(fmt.Sprintf("logic err, obj %v doesn't exist", objID.String()))
+			// In system tables and lazy load, rows are inserted before objects are created.
+			logutil.Warnf(fmt.Sprintf("create obj %v in handle rows insert", objID.String()))
+			obj = objEntry
+			p.dataObjects.Set(obj)
+			opts := btree.Options{
+				Degree: 64,
+			}
+			obj.Rows = btree.NewBTreeGOptions((RowEntry).Less, opts)
 		}
 		pivot := RowEntry{
 			BlockID: blockID,

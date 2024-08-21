@@ -212,6 +212,10 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 			}
 		}
 		if objEntry.Size() == 0 {
+			_, ok := p.dataObjects.Get(objEntry)
+			if ok {
+				continue
+			}
 			if !objEntry.Appendable {
 				panic(fmt.Sprintf("logic err, objectStats is empty %v", objEntry.String()))
 			}
@@ -228,6 +232,14 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 				IsAppendable: objEntry.Appendable,
 			}
 			p.objectIndexByTS.Set(e)
+			if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
+				panic(fmt.Sprintf("logic error obj %v", objEntry.String()))
+			}
+			if objEntry.Appendable {
+				objEntry.InMemory = true
+				p.dataObjects.Delete(objEntry)
+				objEntry.InMemory = false
+			}
 		}
 
 		//prefetch the object meta
@@ -237,9 +249,6 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 
 		p.dataObjects.Set(objEntry)
 
-		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
-			panic("logic error")
-		}
 	}
 	perfcounter.Update(ctx, func(c *perfcounter.CounterSet) {
 		c.DistTAE.Logtail.ActiveRows.Add(-numDeleted)
@@ -311,6 +320,10 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 			}
 		}
 		if objEntry.Size() == 0 {
+			_, ok := p.tombstoneObjets.Get(objEntry)
+			if ok {
+				continue
+			}
 			if !objEntry.Appendable {
 				panic(fmt.Sprintf("logic err, objectStats is empty %v", objEntry.String()))
 			}
@@ -319,6 +332,15 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 				Degree: 64,
 			}
 			objEntry.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
+		} else {
+			if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
+				panic(fmt.Sprintf("logic error obj %v", objEntry.String()))
+			}
+			if objEntry.Appendable {
+				objEntry.InMemory = true
+				p.tombstoneObjets.Delete(objEntry)
+				objEntry.InMemory = false
+			}
 		}
 
 		//prefetch the object meta
@@ -327,10 +349,6 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 		}
 
 		p.tombstoneObjets.Set(objEntry)
-
-		if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
-			panic("logic error")
-		}
 
 		// for appendable object, gc rows when delete object
 		// TODO(ghs) how do the tombstone object GC rows?
@@ -388,13 +406,13 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsDelete(
 		obj, exist := p.tombstoneObjets.Get(objEntry)
 		if !exist {
 			// In system tables and lazy load, rows are inserted before objects are created.
-			logutil.Warnf(fmt.Sprintf("create obj %v in handle rows insert", phyAddrObjID.String()))
+			// logutil.Warnf(fmt.Sprintf("create obj %v in handle rows insert", phyAddrObjID.String()))
 			obj = objEntry
-			p.dataObjects.Set(obj)
 			opts := btree.Options{
 				Degree: 64,
 			}
 			obj.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
+			p.tombstoneObjets.Set(obj)
 		}
 
 		entry := RowEntry_V2{
@@ -461,13 +479,13 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsInsert(
 		obj, exist := p.dataObjects.Get(objEntry)
 		if !exist {
 			// In system tables and lazy load, rows are inserted before objects are created.
-			logutil.Warnf(fmt.Sprintf("create obj %v in handle rows insert", objID.String()))
+			// logutil.Warnf(fmt.Sprintf("create obj %v in handle rows insert", objID.String()))
 			obj = objEntry
-			p.dataObjects.Set(obj)
 			opts := btree.Options{
 				Degree: 64,
 			}
 			obj.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
+			p.dataObjects.Set(obj)
 		}
 		entry := RowEntry_V2{
 			RowID:             rowID,

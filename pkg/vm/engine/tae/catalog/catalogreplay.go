@@ -485,9 +485,19 @@ func (catalog *Catalog) onReplayCheckpointObject(
 				objid.String(), rel.fullName, rel.ID, entryNode.CreatedAt.ToString(),
 				entryNode.DeletedAt.ToString(), txnNode.End.ToString())
 		} else {
-			panic(fmt.Sprintf("logic error: obj %v, tbl %v-%d create %v, delete %v, end %v",
-				objid.String(), rel.fullName, rel.ID, entryNode.CreatedAt.ToString(),
-				entryNode.DeletedAt.ToString(), txnNode.End.ToString()))
+			if !entryNode.DeletedAt.IsEmpty() {
+				panic(fmt.Sprintf("logic error: obj %v, tbl %v-%d create %v, delete %v, end %v",
+					objid.String(), rel.fullName, rel.ID, entryNode.CreatedAt.ToString(),
+					entryNode.DeletedAt.ToString(), txnNode.End.ToString()))
+			}
+		}
+	}
+	if obj == nil {
+		obj, err = rel.GetObjectByID(objid, isTombstone)
+		if err != nil {
+			panic(fmt.Sprintf("obj %v(%v), [%v %v %v] not existed, table:\n%v", objid.String(),
+				entryNode.String(), isTombstone, objNode.String(),
+				txnNode.String(), rel.StringWithLevel(3)))
 		}
 	}
 	if obj.objData == nil {

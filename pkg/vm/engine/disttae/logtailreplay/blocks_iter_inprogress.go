@@ -104,18 +104,17 @@ func (p *PartitionStateInProgress) GetChangedObjsBetween(
 }
 
 func (p *PartitionStateInProgress) GetBockDeltaLoc(bid types.Blockid) (objectio.ObjectLocation, types.TS, bool) {
-	//iter := p.blockDeltas.Copy().Iter()
-	//defer iter.Release()
-	//
-	//pivot := BlockDeltaEntry{
-	//	BlockID: bid,
-	//}
-	//if ok := iter.Seek(pivot); ok {
-	//	e := iter.Item()
-	//	if e.BlockID.Compare(bid) == 0 {
-	//		return e.DeltaLoc, e.CommitTs, true
-	//	}
-	//}
+	iter := p.tombstoneObjets.Copy().Iter()
+	defer iter.Release()
+
+	pivot := ObjectEntry{}
+	objectio.SetObjectStatsShortName(&pivot.ObjectStats, objectio.ShortName(&bid))
+	if ok := iter.Seek(pivot); ok {
+		e := iter.Item()
+		if bytes.Equal(e.ObjectShortName()[:], objectio.ShortName(&bid)[:]) {
+			return objectio.ObjectLocation(e.ObjectLocation()), e.CommitTS, true
+		}
+	}
 	return objectio.ObjectLocation{}, types.TS{}, false
 }
 

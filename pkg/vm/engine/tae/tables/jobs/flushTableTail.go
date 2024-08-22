@@ -403,9 +403,8 @@ func (task *flushTableTailTask) Execute(ctx context.Context) (err error) {
 
 	phaseDesc = "1-merging persisted tombstones"
 	inst = time.Now()
-	if err = task.mergePersistedTombstones(ctx); err != nil {
-		return
-	}
+	// ignore error
+	_ = task.mergePersistedTombstones(ctx)
 	statWaitTombstoneMerge := time.Since(inst)
 
 	/////////////////////
@@ -873,35 +872,25 @@ func (task *flushTableTailTask) mergePersistedTombstones(ctx context.Context) er
 			tombstones = append(tombstones, tombstone)
 		}
 	}
-	if len(tombstones) == 0 {
+	if len(tombstones) < 2 {
 		return nil
 	}
 	scopes := make([]common.ID, 0, len(tombstones))
 	for _, obj := range tombstones {
 		scopes = append(scopes, *obj.AsCommonID())
 	}
-	factory := func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
-		txn.GetMemo().IsFlushOrMerge = true
-		return NewMergeObjectsTask(
-			ctx,
-			txn,
-			tombstones,
-			task.rt,
-			common.DefaultMaxOsizeObjMB*common.Const1MBytes,
-			true,
-		)
+	tombstoneTask, err := NewMergeObjectsTask(
+		tasks.WaitableCtx,
+		task.txn,
+		tombstones,
+		task.rt,
+		common.DefaultMaxOsizeObjMB*common.Const1MBytes,
+		true,
+	)
+	if err != nil {
+		return err
 	}
-	_, err := task.rt.Scheduler.ScheduleMultiScopedTxnTask(tasks.WaitableCtx, tasks.DataCompactionTask, scopes, factory)
-	return err
-
-	// TODO
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//ctx, cancel := context.WithTimeout(ctx, 6*time.Minute)
-	//defer cancel()
-	//return tombstoneTask.WaitDone(ctx)
+	return tombstoneTask.Execute(ctx)
 }
 
 func releaseFlushObjTasks(ftask *flushTableTailTask, subtasks []*flushObjTask, err error) {

@@ -108,11 +108,18 @@ func (o ObjectEntry_V2) Less(than ObjectEntry_V2) bool {
 	if o.InMemory && !than.InMemory {
 		return true
 	}
-	return bytes.Compare((*o.ObjectShortName())[:], (*than.ObjectShortName())[:]) < 0
+	if !o.InMemory && than.InMemory {
+		return false
+	}
+	return bytes.Compare(o.GetID()[:], than.GetID()[:]) < 0
 }
 
 func (o ObjectEntry_V2) IsEmpty() bool {
 	return o.Size() == 0
+}
+
+func (o ObjectEntry_V2) GetID() *objectio.ObjectId {
+	return o.ObjectName().ObjectId()
 }
 
 func (o *ObjectEntry_V2) Visible(ts types.TS) bool {
@@ -196,7 +203,7 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 		objEntry.DeleteTime = deleteTSCol[idx]
 		objEntry.CommitTS = commitTSCol[idx]
 		objEntry.Sorted = sortedCol[idx]
-		old, exist := p.tombstoneObjets.Get(objEntry)
+		old, exist := p.dataObjects.Get(objEntry)
 		if exist {
 			// why check the deleteTime here? consider this situation:
 			// 		1. insert on an object, then these insert operations recorded into a CKP.
@@ -225,8 +232,12 @@ func (p *PartitionStateWithTombstoneObject) HandleDataObjectList(
 			}
 			objEntry.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
 		} else {
+			time := createTSCol[idx]
+			if !deleteTSCol[idx].IsEmpty() {
+				time = deleteTSCol[idx]
+			}
 			e := ObjectIndexByTSEntry{
-				Time:         createTSCol[idx],
+				Time:         time,
 				ShortObjName: *objEntry.ObjectShortName(),
 				IsDelete:     !deleteTSCol[idx].IsEmpty(),
 				IsAppendable: objEntry.Appendable,

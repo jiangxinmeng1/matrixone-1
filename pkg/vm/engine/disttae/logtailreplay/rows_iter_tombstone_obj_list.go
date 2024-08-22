@@ -49,29 +49,36 @@ type rowsIter_V2 struct {
 	rowFirstCalled bool
 }
 
-// var _ RowsIter = new(rowsIter_V2)
-func (p *rowsIter_V2) nextWithOutCheckBlockID() bool {
-
-	nextObject := func() (ok bool) {
+func (p *rowsIter_V2) nextObjectWithoutBlockID() (ok bool) {
+	var obj ObjectEntry_V2
+	if !p.objFirstCalled {
+		p.rowIter.Release()
+	}
+	for {
 		if p.objFirstCalled {
+			ok = p.objIter.Next()
+		} else {
 			ok = p.objIter.First()
 			p.objFirstCalled = true
-		} else {
-			p.rowIter.Release()
-			ok = p.objIter.Next()
 		}
 		if !ok {
 			return false
 		}
-		obj := p.objIter.Item()
-		if !obj.InMemory {
-			return false
+		obj = p.objIter.Item()
+		if obj.InMemory {
+			break
 		}
-		p.rowIter = obj.Rows.Iter()
-		p.rows = obj.Rows
-		p.rowFirstCalled = false
-		return true
 	}
+	p.rowIter = obj.Rows.Iter()
+	p.rows = obj.Rows
+	p.rowFirstCalled = false
+	return true
+}
+
+// var _ RowsIter = new(rowsIter_V2)
+func (p *rowsIter_V2) nextWithoutCheckBlockID() bool {
+
+	nextObject := p.nextObjectWithoutBlockID
 	nextRow := func() (ok bool) {
 		if p.rowFirstCalled {
 			ok = p.rowIter.First()
@@ -82,7 +89,7 @@ func (p *rowsIter_V2) nextWithOutCheckBlockID() bool {
 		return
 	}
 
-	if !p.objFirstCalled && nextRow() {
+	if p.objFirstCalled &&nextRow() {
 		return true
 	}
 	for nextObject() {
@@ -135,7 +142,7 @@ func (p *rowsIter_V2) Next() bool {
 		if p.checkBlockID {
 			ok = p.nextWithCheckBlockID()
 		} else {
-			ok = p.nextWithOutCheckBlockID()
+			ok = p.nextWithoutCheckBlockID()
 		}
 		if !ok {
 			return false
@@ -184,9 +191,25 @@ type primaryKeyIter_V2 struct {
 var _ RowsIter_V2 = new(primaryKeyIter_V2)
 
 func (p *primaryKeyIter_V2) Next() bool {
-	if !p.rowsIter_V2.Next() {
-		return false
+
+	if !p.objFirstCalled || !p.spec.Move(p) {
+		ok := p.nextObjectWithoutBlockID()
+		if !ok {
+			return false
+		}
+		for {
+			if p.spec.Move(p) {
+				p.curRow = p.rowsIter_V2.Entry()
+				return true
+			} else {
+				ok = p.nextObjectWithoutBlockID()
+				if !ok {
+					return false
+				}
+			}
+		}
 	}
+
 	p.curRow = p.rowsIter_V2.Entry()
 	return true
 }
@@ -242,10 +265,8 @@ type primaryKeyDelIter_V2 struct {
 var _ RowsIter_V2 = new(primaryKeyDelIter_V2)
 
 func (p *primaryKeyDelIter_V2) Next() bool {
-	for p.rowsIter_V2.Next() {
-		row := p.rowsIter_V2.Entry()
-		if types.PrefixCompare(row.RowID[:], p.bid[:]) == 0 {
-			p.curRow = p.rowsIter_V2.Entry()
+	for p.primaryKeyIter_V2.Next() {
+		if types.PrefixCompare(p.curRow.RowID[:], p.bid[:]) == 0 {
 			return true
 		}
 	}

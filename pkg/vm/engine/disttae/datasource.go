@@ -1185,27 +1185,27 @@ func (ls *LocalDataSource) batchPrefetch(seqNums []uint16) {
 	//	}
 	//}
 	// prefetch tombstone object
-	if ls.rc.batchPrefetchCursor == 0 {
-		iter, err := ls.pState.NewObjectsIter(ls.snapshotTS, true, true)
-		if err != nil {
-			logutil.Errorf("pefetch tombstone object: %s", err.Error())
-			return
-		}
-
-		for iter.Next() {
-			ForeachBlkInObjStatsList(false, nil, func(blk objectio.BlockInfo, blkMeta objectio.BlockObject) bool {
-				loc := blk.MetaLoc
-				if err = blockio.Prefetch(
-					ls.table.proc.Load().GetService(), []uint16{0, 1, 2},
-					[]uint16{objectio.Location(loc[:]).ID()}, ls.fs, objectio.Location(loc[:])); err != nil {
-					logutil.Errorf("prefetch block delta location: %s", err.Error())
-				}
-				return true
-			}, iter.Entry().ObjectStats)
-		}
-
-		iter.Close()
-	}
+	//if ls.rc.batchPrefetchCursor == 0 {
+	//	iter, err := ls.pState.NewObjectsIter(ls.snapshotTS, true, true)
+	//	if err != nil {
+	//		logutil.Errorf("pefetch tombstone object: %s", err.Error())
+	//		return
+	//	}
+	//
+	//	for iter.Next() {
+	//		ForeachBlkInObjStatsList(false, nil, func(blk objectio.BlockInfo, blkMeta objectio.BlockObject) bool {
+	//			loc := blk.MetaLoc
+	//			if err = blockio.Prefetch(
+	//				ls.table.proc.Load().GetService(), []uint16{0, 1, 2},
+	//				[]uint16{objectio.Location(loc[:]).ID()}, ls.fs, objectio.Location(loc[:])); err != nil {
+	//				logutil.Errorf("prefetch block delta location: %s", err.Error())
+	//			}
+	//			return true
+	//		}, iter.Entry().ObjectStats)
+	//	}
+	//
+	//	iter.Close()
+	//}
 
 	ls.table.getTxn().blockId_tn_delete_metaLoc_batch.RLock()
 	defer ls.table.getTxn().blockId_tn_delete_metaLoc_batch.RUnlock()

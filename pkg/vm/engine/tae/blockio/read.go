@@ -89,7 +89,7 @@ func ReadDataByFilter(
 			return deleteMask.Contains(uint64(i))
 		})
 	}
-	sels, err = ds.ApplyTombstones(ctx, info.BlockID, sels)
+	sels, err = ds.ApplyTombstones(ctx, info.BlockID, sels, engine.Policy_CheckAll)
 	if err != nil {
 		return
 	}

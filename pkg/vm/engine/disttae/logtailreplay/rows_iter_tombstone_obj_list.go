@@ -37,85 +37,112 @@ func (p *PartitionStateWithTombstoneObject) NewRowsIter(ts types.TS, blockID *ty
 
 type rowsIter_V2 struct {
 	ts           types.TS
-	objIter      btree.IterG[ObjectEntry_V2]
-	iter         btree.IterG[RowEntry_V2]
-	firstCalled  bool
 	lastRowID    types.Rowid
 	checkBlockID bool
 	blockID      types.Blockid
 	iterDeleted  bool
+
+	objIter        btree.IterG[ObjectEntry_V2]
+	rowIter        btree.IterG[RowEntry_V2]
+	rows           *btree.BTreeG[RowEntry_V2]
+	objFirstCalled bool
+	rowFirstCalled bool
 }
 
 // var _ RowsIter = new(rowsIter_V2)
+func (p *rowsIter_V2) nextWithOutCheckBlockID() bool {
+
+	nextObject := func() (ok bool) {
+		if p.objFirstCalled {
+			ok = p.objIter.First()
+			p.objFirstCalled = true
+		} else {
+			p.rowIter.Release()
+			ok = p.objIter.Next()
+		}
+		if !ok {
+			return false
+		}
+		obj := p.objIter.Item()
+		if !obj.InMemory {
+			return false
+		}
+		p.rowIter = obj.Rows.Iter()
+		p.rows = obj.Rows
+		p.rowFirstCalled = false
+		return true
+	}
+	nextRow := func() (ok bool) {
+		if p.rowFirstCalled {
+			ok = p.rowIter.First()
+			p.rowFirstCalled = true
+		} else {
+			ok = p.rowIter.Next()
+		}
+		return
+	}
+
+	if !p.objFirstCalled && nextRow() {
+		return true
+	}
+	for nextObject() {
+		if nextRow() {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *rowsIter_V2) nextWithCheckBlockID() bool {
+
+	if p.objFirstCalled {
+		pivot := ObjectEntry_V2{
+			InMemory: true,
+		}
+		objectID := p.blockID.Object()
+		objName := objectio.BuildObjectNameWithObjectID(objectID)
+		objectio.SetObjectStatsObjectName(&pivot.ObjectStats, objName)
+		p.objIter.Seek(pivot)
+		if !p.objIter.Seek(pivot) {
+			return false
+		}
+		p.objFirstCalled = true
+
+		obj := p.objIter.Item()
+		if !obj.InMemory {
+			return false
+		}
+		if types.PrefixCompare(p.blockID[:], obj.ObjectStats.ObjectName().ObjectId()[:]) != 0 {
+			return false
+		}
+		p.rowIter = obj.Rows.Iter()
+		p.rows = obj.Rows
+		p.rowFirstCalled = false
+	}
+	for p.rowIter.Next() {
+		row := p.rowIter.Item()
+		if types.PrefixCompare(row.RowID[:], p.blockID[:]) == 0 {
+			return true
+		}
+	}
+	return false
+}
 
 func (p *rowsIter_V2) Next() bool {
 	for {
 
-		if !p.firstCalled {
-			if p.checkBlockID {
-				pivot := ObjectEntry_V2{
-					InMemory: true,
-				}
-				objectID := p.blockID.Object()
-				objName := objectio.BuildObjectNameWithObjectID(objectID)
-				objectio.SetObjectStatsObjectName(&pivot.ObjectStats, objName)
-				p.objIter.Seek(pivot)
-				if !p.objIter.Seek(pivot) {
-					return false
-				}
-				p.iter = p.objIter.Item().Rows.Iter()
-			} else {
-				if !p.objIter.First() {
-					return false
-				}
-				obj := p.objIter.Item()
-				if !obj.InMemory {
-					return false
-				}
-				p.iter = obj.Rows.Iter()
-				if !p.iter.First() {
-					for p.objIter.Next() {
-						p.iter = p.objIter.Item().Rows.Iter()
-						if p.iter.First() {
-							break
-						}
-						p.iter.Release()
-					}
-					return false
-				}
-			}
-			p.firstCalled = true
+		var ok bool
+		if p.checkBlockID {
+			ok = p.nextWithCheckBlockID()
 		} else {
-			if !p.iter.Next() {
-				if p.checkBlockID {
-					return false
-				} else {
-					valid := false
-					for p.objIter.Next() {
-						obj := p.objIter.Item()
-						if !obj.InMemory {
-							return false
-						}
-						p.iter = obj.Rows.Iter()
-						if p.iter.First() {
-							valid = true
-							break
-						}
-						p.iter.Release()
-					}
-					if !valid {
-						return false
-					}
-				}
-			}
+			ok = p.nextWithOutCheckBlockID()
 		}
-
-		entry := p.iter.Item()
-
-		if p.checkBlockID && *entry.RowID.BorrowBlockID() != p.blockID {
-			// no more
+		if !ok {
 			return false
 		}
+
+		entry := p.rowIter.Item()
+
 		if entry.Time.Greater(&p.ts) {
 			// not visible
 			continue
@@ -127,11 +154,11 @@ func (p *rowsIter_V2) Next() bool {
 }
 
 func (p *rowsIter_V2) Entry() RowEntry_V2 {
-	return p.iter.Item()
+	return p.rowIter.Item()
 }
 
 func (p *rowsIter_V2) Close() error {
-	p.iter.Release()
+	p.rowIter.Release()
 	p.objIter.Release()
 	return nil
 }
@@ -141,58 +168,27 @@ func (p *PartitionStateWithTombstoneObject) NewPrimaryKeyIter(
 	spec PrimaryKeyMatchSpec_V2,
 ) *primaryKeyIter_V2 {
 	return &primaryKeyIter_V2{
-		ts:   ts,
-		spec: spec,
-		objs: p.dataObjects.Copy().Iter(),
+		ts:          ts,
+		spec:        spec,
+		rowsIter_V2: *p.NewRowsIter(ts, nil, false),
 	}
 }
 
 type primaryKeyIter_V2 struct {
-	ts                 types.TS
-	spec               PrimaryKeyMatchSpec_V2
-	objs               btree.IterG[ObjectEntry_V2]
-	rows               *btree.BTreeG[RowEntry_V2]
-	rowsIter           btree.IterG[RowEntry_V2]
-	rowIterFirstCalled bool
-	curRow             RowEntry_V2
+	ts   types.TS
+	spec PrimaryKeyMatchSpec_V2
+	rowsIter_V2
+	curRow RowEntry_V2
 }
 
 var _ RowsIter_V2 = new(primaryKeyIter_V2)
 
 func (p *primaryKeyIter_V2) Next() bool {
-	for p.objs.Next() {
-		obj := p.objs.Item()
-		if !obj.InMemory {
-			break
-		}
-		p.rows = obj.Rows
-		p.rowsIter = obj.Rows.Iter()
-		p.rowIterFirstCalled = false
-		for {
-			if !p.spec.Move(p) {
-				break
-			}
-
-			var valid bool
-			for ok := true; ok; ok = p.rowsIter.Next() {
-				row := p.rowsIter.Item()
-				if row.Time.Greater(&p.ts) {
-					// not visible
-					continue
-				}
-				valid = true
-				p.curRow = row
-				break
-			}
-			p.rowsIter.Release()
-
-			if valid {
-				return true
-			}
-
-		}
+	if !p.rowsIter_V2.Next() {
+		return false
 	}
-	return false
+	p.curRow = p.rowsIter_V2.Entry()
+	return true
 }
 
 func (p *primaryKeyIter_V2) Entry() RowEntry_V2 {
@@ -200,7 +196,7 @@ func (p *primaryKeyIter_V2) Entry() RowEntry_V2 {
 }
 
 func (p *primaryKeyIter_V2) Close() error {
-	p.objs.Release()
+	p.rowsIter_V2.Close()
 	return nil
 }
 
@@ -246,31 +242,11 @@ type primaryKeyDelIter_V2 struct {
 var _ RowsIter_V2 = new(primaryKeyDelIter_V2)
 
 func (p *primaryKeyDelIter_V2) Next() bool {
-	for p.objs.Next() {
-		obj := p.objs.Item()
-		p.rowsIter = obj.Rows.Iter()
-		for {
-			if !p.spec.Move(&p.primaryKeyIter_V2) {
-				return false
-			}
-
-			var valid bool
-			for ok := true; ok; ok = p.rowsIter.Next() {
-				row := p.rowsIter.Item()
-				if row.Time.Greater(&p.ts) {
-					// not visible
-					continue
-				}
-				valid = true
-				p.curRow = row
-				break
-			}
-			p.rowsIter.Release()
-
-			if valid {
-				return true
-			}
-
+	for p.rowsIter_V2.Next() {
+		row := p.rowsIter_V2.Entry()
+		if types.PrefixCompare(row.RowID[:], p.bid[:]) == 0 {
+			p.curRow = p.rowsIter_V2.Entry()
+			return true
 		}
 	}
 	return false
@@ -287,20 +263,20 @@ func Exact_V2(key []byte) PrimaryKeyMatchSpec_V2 {
 		Name: "Exact",
 		Move: func(p *primaryKeyIter_V2) bool {
 			var ok bool
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
-				ok = p.rowsIter.Seek(RowEntry_V2{
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowIter.Seek(RowEntry_V2{
 					PrimaryIndexBytes: key,
 				})
 			} else {
-				ok = p.rowsIter.Next()
+				ok = p.rowIter.Next()
 			}
 
 			if !ok {
 				return false
 			}
 
-			item := p.rowsIter.Item()
+			item := p.rowIter.Item()
 			return bytes.Equal(item.PrimaryIndexBytes, key)
 		},
 	}
@@ -311,20 +287,20 @@ func Prefix_V2(prefix []byte) PrimaryKeyMatchSpec_V2 {
 		Name: "Prefix",
 		Move: func(p *primaryKeyIter_V2) bool {
 			var ok bool
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
-				ok = p.rowsIter.Seek(RowEntry_V2{
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowIter.Seek(RowEntry_V2{
 					PrimaryIndexBytes: prefix,
 				})
 			} else {
-				ok = p.rowsIter.Next()
+				ok = p.rowIter.Next()
 			}
 
 			if !ok {
 				return false
 			}
 
-			item := p.rowsIter.Item()
+			item := p.rowIter.Item()
 			return bytes.HasPrefix(item.PrimaryIndexBytes, prefix)
 		},
 	}
@@ -384,20 +360,20 @@ func BetweenKind_V2(lb, ub []byte, kind int) PrimaryKeyMatchSpec_V2 {
 		Name: "Between Kind",
 		Move: func(p *primaryKeyIter_V2) bool {
 			var ok bool
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
-				if ok = p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb}); ok {
-					ok = seek2First(&p.rowsIter)
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				if ok = p.rowIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb}); ok {
+					ok = seek2First(&p.rowIter)
 				}
 			} else {
-				ok = p.rowsIter.Next()
+				ok = p.rowIter.Next()
 			}
 
 			if !ok {
 				return false
 			}
 
-			item := p.rowsIter.Item()
+			item := p.rowIter.Item()
 			return validCheck(item.PrimaryIndexBytes)
 		},
 	}
@@ -406,22 +382,22 @@ func LessKind_V2(ub []byte, closed bool) PrimaryKeyMatchSpec_V2 {
 	return PrimaryKeyMatchSpec_V2{
 		Move: func(p *primaryKeyIter_V2) bool {
 			var ok bool
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
-				ok = p.rowsIter.First()
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowIter.First()
 				return ok
 			}
 
-			ok = p.rowsIter.Next()
+			ok = p.rowIter.Next()
 			if !ok {
 				return false
 			}
 
 			if closed {
-				return bytes.Compare(p.rowsIter.Item().PrimaryIndexBytes, ub) <= 0
+				return bytes.Compare(p.rowIter.Item().PrimaryIndexBytes, ub) <= 0
 			}
 
-			return bytes.Compare(p.rowsIter.Item().PrimaryIndexBytes, ub) < 0
+			return bytes.Compare(p.rowIter.Item().PrimaryIndexBytes, ub) < 0
 		},
 	}
 }
@@ -432,17 +408,17 @@ func GreatKind_V2(lb []byte, closed bool) PrimaryKeyMatchSpec_V2 {
 	return PrimaryKeyMatchSpec_V2{
 		Move: func(p *primaryKeyIter_V2) bool {
 			var ok bool
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
-				ok = p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb})
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb})
 
-				for ok && !closed && bytes.Equal(p.rowsIter.Item().PrimaryIndexBytes, lb) {
-					ok = p.rowsIter.Next()
+				for ok && !closed && bytes.Equal(p.rowIter.Item().PrimaryIndexBytes, lb) {
+					ok = p.rowIter.Next()
 				}
 				return ok
 			}
 
-			return p.rowsIter.Next()
+			return p.rowIter.Next()
 		},
 	}
 }
@@ -492,8 +468,8 @@ func InKind_V2(encodes [][]byte, kind int) PrimaryKeyMatchSpec_V2 {
 	return PrimaryKeyMatchSpec_V2{
 		Name: "InKind",
 		Move: func(p *primaryKeyIter_V2) (ret bool) {
-			if !p.rowIterFirstCalled {
-				p.rowIterFirstCalled = true
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
 				// each seek may visit height items
 				// we choose to scan all if the seek is more expensive
 				if len(encodes)*p.rows.Height() > p.rows.Len() {
@@ -518,22 +494,22 @@ func InKind_V2(encodes [][]byte, kind int) PrimaryKeyMatchSpec_V2 {
 						// out of vec
 						return false
 					}
-					if !p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: encoded}) {
+					if !p.rowIter.Seek(RowEntry_V2{PrimaryIndexBytes: encoded}) {
 						return false
 					}
-					if match(p.rowsIter.Item().PrimaryIndexBytes, encoded) {
+					if match(p.rowIter.Item().PrimaryIndexBytes, encoded) {
 						currentPhase = scan
 						return true
 					}
 
 				case scan:
-					if !p.rowsIter.Next() {
+					if !p.rowIter.Next() {
 						return false
 					}
-					if match(p.rowsIter.Item().PrimaryIndexBytes, encoded) {
+					if match(p.rowIter.Item().PrimaryIndexBytes, encoded) {
 						return true
 					}
-					p.rowsIter.Prev()
+					p.rowIter.Prev()
 					currentPhase = judge
 				}
 			}

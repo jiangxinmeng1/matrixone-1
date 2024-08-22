@@ -772,9 +772,9 @@ func (p *PartitionStateWithTombstoneObject) NewPrimaryKeyDelIter(
 ) *primaryKeyDelIter_V2 {
 	return &primaryKeyDelIter_V2{
 		primaryKeyIter_V2: primaryKeyIter_V2{
-			ts:   ts,
-			spec: spec,
-			objs: p.tombstoneObjets.Copy().Iter(),
+			ts:          ts,
+			spec:        spec,
+			rowsIter_V2: *p.NewRowsIter(ts, nil, true),
 		},
 		bid: bid,
 	}

@@ -39,7 +39,7 @@ type PartitionStateWithTombstoneObject struct {
 	service string
 
 	dataObjects     *btree.BTreeG[ObjectEntry_V2]
-	tombstoneObjets *btree.BTreeG[ObjectEntry_V2]
+	tombstoneObjets *btree.BTreeG[TombstoneEntry_V2]
 
 	// also modify the Copy method if adding fields
 	tid uint64
@@ -69,40 +69,6 @@ type ObjectEntry_V2 struct {
 	ObjectInfo
 	Rows *btree.BTreeG[RowEntry_V2]
 }
-type RowEntry_V2 struct {
-	PrimaryIndexBytes []byte
-	RowID             types.Rowid
-	Time              types.TS
-
-	Batch  *batch.Batch
-	Offset int64
-}
-
-func (r RowEntry_V2) Less(than RowEntry_V2) bool {
-	// asc
-	cmp := bytes.Compare(r.PrimaryIndexBytes[:], than.PrimaryIndexBytes[:])
-	if cmp < 0 {
-		return true
-	}
-	if cmp > 0 {
-		return false
-	}
-	// asc
-	if r.RowID.Less(than.RowID) {
-		return true
-	}
-	if than.RowID.Less(r.RowID) {
-		return false
-	}
-	// desc
-	if than.Time.Less(&r.Time) {
-		return true
-	}
-	if r.Time.Less(&than.Time) {
-		return false
-	}
-	return false
-}
 
 func (o ObjectEntry_V2) Less(than ObjectEntry_V2) bool {
 	if o.InMemory && !than.InMemory {
@@ -129,6 +95,127 @@ func (o *ObjectEntry_V2) Visible(ts types.TS) bool {
 
 func (o ObjectEntry_V2) Location() objectio.Location {
 	return o.ObjectLocation()
+}
+
+type TombstoneEntry_V2 struct {
+	InMemory bool
+	ObjectInfo
+	Rows     *btree.BTreeG[RowEntry_V2]
+	RowIndex *btree.BTreeG[RowIDIndexEntry]
+}
+
+func (o TombstoneEntry_V2) Less(than TombstoneEntry_V2) bool {
+	if o.InMemory && !than.InMemory {
+		return true
+	}
+	if !o.InMemory && than.InMemory {
+		return false
+	}
+	return bytes.Compare(o.GetID()[:], than.GetID()[:]) < 0
+}
+
+func (o TombstoneEntry_V2) IsEmpty() bool {
+	return o.Size() == 0
+}
+
+func (o TombstoneEntry_V2) GetID() *objectio.ObjectId {
+	return o.ObjectName().ObjectId()
+}
+
+func (o *TombstoneEntry_V2) Visible(ts types.TS) bool {
+	return o.CreateTime.LessEq(&ts) &&
+		(o.DeleteTime.IsEmpty() || ts.Less(&o.DeleteTime))
+}
+
+func (o TombstoneEntry_V2) Location() objectio.Location {
+	return o.ObjectLocation()
+}
+
+type RowIDIndexEntry struct {
+	RowID             types.Rowid
+	PrimaryIndexBytes []byte
+	Time              types.TS
+
+	Batch  *batch.Batch
+	Offset int64
+}
+
+func (r RowIDIndexEntry) GetRowID() types.Rowid{
+	return r.RowID
+}
+func (r RowIDIndexEntry) GetBatch() *batch.Batch{
+	return r.Batch
+}
+func (r RowIDIndexEntry) GetOffset() int64{
+	return r.Offset
+}
+func (r RowIDIndexEntry) Less(than RowIDIndexEntry) bool {
+	// asc
+	if r.RowID.Less(than.RowID) {
+		return true
+	}
+	if than.RowID.Less(r.RowID) {
+		return false
+	}
+	// asc
+	cmp := bytes.Compare(r.PrimaryIndexBytes[:], than.PrimaryIndexBytes[:])
+	if cmp < 0 {
+		return true
+	}
+	if cmp > 0 {
+		return false
+	}
+	// desc
+	if than.Time.Less(&r.Time) {
+		return true
+	}
+	if r.Time.Less(&than.Time) {
+		return false
+	}
+	return false
+}
+
+type RowEntry_V2 struct {
+	PrimaryIndexBytes []byte
+	RowID             types.Rowid
+	Time              types.TS
+
+	Batch  *batch.Batch
+	Offset int64
+}
+func (r RowEntry_V2) GetRowID() types.Rowid{
+	return r.RowID
+}
+func (r RowEntry_V2) GetBatch() *batch.Batch{
+	return r.Batch
+}
+func (r RowEntry_V2) GetOffset() int64{
+	return r.Offset
+}
+func (r RowEntry_V2) Less(than RowEntry_V2) bool {
+	// asc
+	cmp := bytes.Compare(r.PrimaryIndexBytes[:], than.PrimaryIndexBytes[:])
+	if cmp < 0 {
+		return true
+	}
+	if cmp > 0 {
+		return false
+	}
+	// asc
+	if r.RowID.Less(than.RowID) {
+		return true
+	}
+	if than.RowID.Less(r.RowID) {
+		return false
+	}
+	// desc
+	if than.Time.Less(&r.Time) {
+		return true
+	}
+	if r.Time.Less(&than.Time) {
+		return false
+	}
+	return false
 }
 
 func (p *PartitionStateWithTombstoneObject) HandleLogtailEntryInProgress(
@@ -306,7 +393,7 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 			p.shared.lastFlushTimestamp = t
 		}
 		p.shared.Unlock()
-		var objEntry ObjectEntry_V2
+		var objEntry TombstoneEntry_V2
 
 		objEntry.ObjectStats = objectio.ObjectStats(statsVec.GetBytesAt(idx))
 		objEntry.Appendable = stateCol[idx]
@@ -343,6 +430,7 @@ func (p *PartitionStateWithTombstoneObject) HandleTombstoneObjectList(
 				Degree: 64,
 			}
 			objEntry.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
+			objEntry.RowIndex = btree.NewBTreeGOptions((RowIDIndexEntry).Less, opts)
 		} else {
 			if objEntry.Appendable && objEntry.DeleteTime.IsEmpty() {
 				panic(fmt.Sprintf("logic error obj %v", objEntry.String()))
@@ -408,7 +496,7 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsDelete(
 	numDeletes := int64(0)
 	for i, rowID := range rowIDVector {
 		phyAddrBlockID := phyAddrVector[i].CloneBlockID()
-		objEntry := ObjectEntry_V2{
+		objEntry := TombstoneEntry_V2{
 			InMemory: true,
 		}
 		phyAddrObjID := phyAddrBlockID.Object()
@@ -423,6 +511,7 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsDelete(
 				Degree: 64,
 			}
 			obj.Rows = btree.NewBTreeGOptions((RowEntry_V2).Less, opts)
+			obj.RowIndex = btree.NewBTreeGOptions((RowIDIndexEntry).Less, opts)
 			p.tombstoneObjets.Set(obj)
 		}
 
@@ -439,6 +528,20 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsDelete(
 			entry.Offset = int64(i)
 		}
 		obj.Rows.Set(entry)
+
+		entry2 := RowIDIndexEntry{
+			RowID:             rowID,
+			PrimaryIndexBytes: primaryKeys[i],
+			Time:              timeVector[i],
+		}
+		// if i < len(primaryKeys) {
+		// 	entry.PrimaryIndexBytes = primaryKeys[i]
+		// }
+		if !p.noData {
+			entry.Batch = batch
+			entry.Offset = int64(i)
+		}
+		obj.RowIndex.Set(entry2)
 
 	}
 
@@ -584,7 +687,7 @@ func NewPartitionStateWithTombstoneObject(
 		tid:             tid,
 		noData:          noData,
 		dataObjects:     btree.NewBTreeGOptions((ObjectEntry_V2).Less, opts),
-		tombstoneObjets: btree.NewBTreeGOptions((ObjectEntry_V2).Less, opts),
+		tombstoneObjets: btree.NewBTreeGOptions((TombstoneEntry_V2).Less, opts),
 		objectIndexByTS: btree.NewBTreeGOptions((ObjectIndexByTSEntry).Less, opts),
 		shared:          new(sharedStates),
 	}
@@ -755,20 +858,42 @@ func (p *PartitionStateWithTombstoneObject) NewObjectsIter(
 	ts types.TS,
 	onlyVisible bool,
 	visitTombstone bool) (ObjectsIter, error) {
+	if visitTombstone {
+		return p.newTombstoneObjectsIter(ts, onlyVisible)
+	} else {
+		return p.newDataObjectsIter(ts, onlyVisible)
+	}
+}
+func (p *PartitionStateWithTombstoneObject) newDataObjectsIter(
+	ts types.TS,
+	onlyVisible bool) (ObjectsIter, error) {
 
 	if ts.Less(&p.minTS) {
 		msg := fmt.Sprintf("(%s<%s)", ts.ToString(), p.minTS.ToString())
 		return nil, moerr.NewTxnStaleNoCtx(msg)
 	}
 
-	var iter btree.IterG[ObjectEntry_V2]
-	if visitTombstone {
-		iter = p.tombstoneObjets.Copy().Iter()
-	} else {
-		iter = p.dataObjects.Copy().Iter()
-	}
+	iter := p.dataObjects.Copy().Iter()
 
 	ret := &objectsIter_V2{
+		onlyVisible: onlyVisible,
+		ts:          ts,
+		iter:        iter,
+	}
+	return ret, nil
+}
+func (p *PartitionStateWithTombstoneObject) newTombstoneObjectsIter(
+	ts types.TS,
+	onlyVisible bool) (ObjectsIter, error) {
+
+	if ts.Less(&p.minTS) {
+		msg := fmt.Sprintf("(%s<%s)", ts.ToString(), p.minTS.ToString())
+		return nil, moerr.NewTxnStaleNoCtx(msg)
+	}
+
+	iter := p.tombstoneObjets.Copy().Iter()
+
+	ret := &tombstoneObjectsIter_V2{
 		onlyVisible: onlyVisible,
 		ts:          ts,
 		iter:        iter,
@@ -782,11 +907,9 @@ func (p *PartitionStateWithTombstoneObject) NewPrimaryKeyDelIter(
 	bid types.Blockid,
 ) *primaryKeyDelIter_V2 {
 	return &primaryKeyDelIter_V2{
-		primaryKeyIter_V2: primaryKeyIter_V2{
-			ts:          ts,
-			spec:        spec,
-			rowsIter_V2: *p.NewRowsIter(ts, nil, true),
-		},
+		ts: ts,
+		spec: spec,
+		objectsIter: p.tombstoneObjets.Iter(),
 		bid: bid,
 	}
 }

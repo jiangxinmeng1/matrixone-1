@@ -47,7 +47,7 @@ func BenchmarkPartitionStateConcurrentWriteAndIter(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			state := partition.state.Load()
-			iter := state.NewRowsIter(types.BuildTS(0, 0), nil, false)
+			iter := state.NewRowsIter(types.BuildTS(0, 0), nil)
 			iter.Close()
 		}
 	})

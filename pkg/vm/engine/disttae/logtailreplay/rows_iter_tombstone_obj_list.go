@@ -3,6 +3,7 @@ package logtailreplay
 import (
 	"bytes"
 
+	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -10,23 +11,145 @@ import (
 	"github.com/tidwall/btree"
 )
 
+type RowEntryInterface interface{
+	GetRowID() types.Rowid
+	GetBatch() *batch.Batch
+	GetOffset() int64
+}
+
 type RowsIter_V2 interface {
 	Next() bool
 	Close() error
-	Entry() RowEntry_V2
+	Entry() RowEntryInterface
 }
 
-func (p *PartitionStateWithTombstoneObject) NewRowsIter(ts types.TS, blockID *types.Blockid, iterDeleted bool) *rowsIter_V2 {
-	var iter btree.IterG[ObjectEntry_V2]
-	if iterDeleted {
-		iter = p.tombstoneObjets.Iter()
-	} else {
-		iter = p.dataObjects.Iter()
+var _ RowsIter_V2 = new(tombstoneRowsIter_V2)
+
+func (p *PartitionStateWithTombstoneObject) NewTombstoneRowsIter(ts types.TS, blockID *types.Blockid) *tombstoneRowsIter_V2 {
+	iter := p.tombstoneObjets.Copy().Iter()
+	ret := &tombstoneRowsIter_V2{
+		ts:      ts,
+		objIter: iter,
 	}
+	if blockID != nil {
+		ret.checkBlockID = true
+		ret.blockID = *blockID
+	}
+	return ret
+}
+
+type tombstoneRowsIter_V2 struct {
+	ts           types.TS
+	lastRowID    types.Rowid
+	checkBlockID bool
+	blockID      types.Blockid
+
+	objIter        btree.IterG[TombstoneEntry_V2]
+	rowIter        btree.IterG[RowIDIndexEntry]
+	objFirstCalled bool
+	rowFirstCalled bool
+}
+
+func (p *tombstoneRowsIter_V2) nextObject() (ok bool) {
+	var obj TombstoneEntry_V2
+	if !p.objFirstCalled {
+		p.rowIter.Release()
+	}
+	for {
+		if p.objFirstCalled {
+			ok = p.objIter.Next()
+		} else {
+			ok = p.objIter.First()
+			p.objFirstCalled = true
+		}
+		if !ok {
+			return false
+		}
+		obj = p.objIter.Item()
+		if obj.InMemory {
+			break
+		}
+	}
+	p.rowIter = obj.RowIndex.Iter()
+	p.rowFirstCalled = false
+	return true
+}
+
+// var _ RowsIter = new(rowsIter_V2)
+func (p *tombstoneRowsIter_V2) next() bool {
+	nextRow := func() (ok bool) {
+		if p.rowFirstCalled {
+			if p.checkBlockID {
+				rowid := types.NewRowid(&p.blockID, 0)
+				pivot := RowIDIndexEntry{
+					RowID: *rowid,
+				}
+				ok = p.rowIter.Seek(pivot)
+				if !ok {
+					return false
+				}
+				entry := p.rowIter.Item()
+				if types.PrefixCompare(entry.RowID[:], p.blockID[:]) != 0 {
+					return false
+				}
+			}
+			ok = p.rowIter.First()
+			p.rowFirstCalled = true
+		} else {
+			ok = p.rowIter.Next()
+			entry := p.rowIter.Item()
+			if types.PrefixCompare(entry.RowID[:], p.blockID[:]) != 0 {
+				return false
+			}
+		}
+		return
+	}
+
+	if p.objFirstCalled && nextRow() {
+		return true
+	}
+	for p.nextObject() {
+		if nextRow() {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *tombstoneRowsIter_V2) Next() bool {
+	for {
+		ok := p.next()
+		if !ok {
+			return false
+		}
+
+		entry := p.rowIter.Item()
+
+		if entry.Time.Greater(&p.ts) {
+			// not visible
+			continue
+		}
+
+		p.lastRowID = entry.RowID
+		return true
+	}
+}
+
+func (p *tombstoneRowsIter_V2) Entry() RowEntryInterface {
+	return p.rowIter.Item()
+}
+
+func (p *tombstoneRowsIter_V2) Close() error {
+	p.rowIter.Release()
+	p.objIter.Release()
+	return nil
+}
+
+func (p *PartitionStateWithTombstoneObject) NewRowsIter(ts types.TS, blockID *types.Blockid) *rowsIter_V2 {
+	iter := p.dataObjects.Iter()
 	ret := &rowsIter_V2{
-		ts:          ts,
-		objIter:     iter,
-		iterDeleted: iterDeleted,
+		ts:      ts,
+		objIter: iter,
 	}
 	if blockID != nil {
 		ret.checkBlockID = true
@@ -40,7 +163,6 @@ type rowsIter_V2 struct {
 	lastRowID    types.Rowid
 	checkBlockID bool
 	blockID      types.Blockid
-	iterDeleted  bool
 
 	objIter        btree.IterG[ObjectEntry_V2]
 	rowIter        btree.IterG[RowEntry_V2]
@@ -89,7 +211,7 @@ func (p *rowsIter_V2) nextWithoutCheckBlockID() bool {
 		return
 	}
 
-	if p.objFirstCalled &&nextRow() {
+	if p.objFirstCalled && nextRow() {
 		return true
 	}
 	for nextObject() {
@@ -160,7 +282,7 @@ func (p *rowsIter_V2) Next() bool {
 	}
 }
 
-func (p *rowsIter_V2) Entry() RowEntry_V2 {
+func (p *rowsIter_V2) Entry() RowEntryInterface {
 	return p.rowIter.Item()
 }
 
@@ -177,7 +299,7 @@ func (p *PartitionStateWithTombstoneObject) NewPrimaryKeyIter(
 	return &primaryKeyIter_V2{
 		ts:          ts,
 		spec:        spec,
-		rowsIter_V2: *p.NewRowsIter(ts, nil, false),
+		rowsIter_V2: *p.NewRowsIter(ts, nil),
 	}
 }
 
@@ -185,7 +307,7 @@ type primaryKeyIter_V2 struct {
 	ts   types.TS
 	spec PrimaryKeyMatchSpec_V2
 	rowsIter_V2
-	curRow RowEntry_V2
+	curRow RowEntryInterface
 }
 
 var _ RowsIter_V2 = new(primaryKeyIter_V2)
@@ -214,7 +336,7 @@ func (p *primaryKeyIter_V2) Next() bool {
 	return true
 }
 
-func (p *primaryKeyIter_V2) Entry() RowEntry_V2 {
+func (p *primaryKeyIter_V2) Entry() RowEntryInterface {
 	return p.curRow
 }
 
@@ -257,25 +379,117 @@ func (b *objectsIter_V2) Close() error {
 	return nil
 }
 
+type tombstoneObjectsIter_V2 struct {
+	onlyVisible bool
+	ts          types.TS
+	iter        btree.IterG[TombstoneEntry_V2]
+}
+
+var _ ObjectsIter = new(tombstoneObjectsIter_V2)
+
+func (b *tombstoneObjectsIter_V2) Next() bool {
+	for b.iter.Next() {
+		entry := b.iter.Item()
+		if entry.InMemory {
+			continue
+		}
+		if b.onlyVisible && !entry.Visible(b.ts) {
+			// not visible
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (b *tombstoneObjectsIter_V2) Entry() ObjectEntry {
+	return ObjectEntry{
+		ObjectInfo: b.iter.Item().ObjectInfo,
+	}
+}
+
+func (b *tombstoneObjectsIter_V2) Close() error {
+	b.iter.Release()
+	return nil
+}
+
 type primaryKeyDelIter_V2 struct {
-	primaryKeyIter_V2
-	bid types.Blockid
+	ts             types.TS
+	spec           PrimaryKeyMatchSpec_V2
+	curRow         RowEntry_V2
+	objectsIter    btree.IterG[TombstoneEntry_V2]
+	rowsIter       btree.IterG[RowEntry_V2]
+	rows           *btree.BTreeG[RowEntry_V2]
+	objFirstCalled bool
+	rowFirstCalled bool
+	checkBlockID   bool
+	bid            types.Blockid
 }
 
 var _ RowsIter_V2 = new(primaryKeyDelIter_V2)
-
-func (p *primaryKeyDelIter_V2) Next() bool {
-	for p.primaryKeyIter_V2.Next() {
-		if types.PrefixCompare(p.curRow.RowID[:], p.bid[:]) == 0 {
-			return true
+func (p *primaryKeyDelIter_V2) nextObjectWithoutBlockID() (ok bool) {
+	var obj TombstoneEntry_V2
+	if !p.objFirstCalled {
+		p.rowsIter.Release()
+	}
+	for {
+		if p.objFirstCalled {
+			ok = p.objectsIter.Next()
+		} else {
+			ok = p.objectsIter.First()
+			p.objFirstCalled = true
+		}
+		if !ok {
+			return false
+		}
+		obj = p.objectsIter.Item()
+		if obj.InMemory {
+			break
 		}
 	}
-	return false
+	p.rowsIter = obj.Rows.Iter()
+	p.rows = obj.Rows
+	p.rowFirstCalled = false
+	return true
+}
+
+func (p *primaryKeyDelIter_V2) Next() bool {
+	if !p.objFirstCalled || !p.spec.MoveTombstone(p) {
+		ok := p.nextObjectWithoutBlockID()
+		if !ok {
+			return false
+		}
+		for {
+			if p.spec.MoveTombstone(p) {
+				p.curRow = p.rowsIter.Item()
+				return true
+			} else {
+				ok = p.nextObjectWithoutBlockID()
+				if !ok {
+					return false
+				}
+			}
+		}
+	}
+
+	p.curRow = p.rowsIter.Item()
+	return true
+}
+
+func (p *primaryKeyDelIter_V2) Entry() RowEntryInterface {
+	return p.rowsIter.Item()
+}
+
+func (p *primaryKeyDelIter_V2) Close() error {
+	p.objectsIter.Release()
+	p.rowsIter.Release()
+	return nil
 }
 
 type PrimaryKeyMatchSpec_V2 struct {
 	// Move moves to the target
 	Move func(p *primaryKeyIter_V2) bool
+	MoveTombstone func(p *primaryKeyDelIter_V2) bool
 	Name string
 }
 
@@ -300,6 +514,24 @@ func Exact_V2(key []byte) PrimaryKeyMatchSpec_V2 {
 			item := p.rowIter.Item()
 			return bytes.Equal(item.PrimaryIndexBytes, key)
 		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) bool {
+			var ok bool
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowsIter.Seek(RowEntry_V2{
+					PrimaryIndexBytes: key,
+				})
+			} else {
+				ok = p.rowsIter.Next()
+			}
+
+			if !ok {
+				return false
+			}
+
+			item := p.rowsIter.Item()
+			return bytes.Equal(item.PrimaryIndexBytes, key)
+		},
 	}
 }
 
@@ -322,6 +554,24 @@ func Prefix_V2(prefix []byte) PrimaryKeyMatchSpec_V2 {
 			}
 
 			item := p.rowIter.Item()
+			return bytes.HasPrefix(item.PrimaryIndexBytes, prefix)
+		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) bool {
+			var ok bool
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowsIter.Seek(RowEntry_V2{
+					PrimaryIndexBytes: prefix,
+				})
+			} else {
+				ok = p.rowsIter.Next()
+			}
+
+			if !ok {
+				return false
+			}
+
+			item := p.rowsIter.Item()
 			return bytes.HasPrefix(item.PrimaryIndexBytes, prefix)
 		},
 	}
@@ -397,6 +647,24 @@ func BetweenKind_V2(lb, ub []byte, kind int) PrimaryKeyMatchSpec_V2 {
 			item := p.rowIter.Item()
 			return validCheck(item.PrimaryIndexBytes)
 		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) bool {
+			var ok bool
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				if ok = p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb}); ok {
+					ok = seek2First(&p.rowsIter)
+				}
+			} else {
+				ok = p.rowsIter.Next()
+			}
+
+			if !ok {
+				return false
+			}
+
+			item := p.rowsIter.Item()
+			return validCheck(item.PrimaryIndexBytes)
+		},
 	}
 }
 func LessKind_V2(ub []byte, closed bool) PrimaryKeyMatchSpec_V2 {
@@ -420,6 +688,25 @@ func LessKind_V2(ub []byte, closed bool) PrimaryKeyMatchSpec_V2 {
 
 			return bytes.Compare(p.rowIter.Item().PrimaryIndexBytes, ub) < 0
 		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) bool {
+			var ok bool
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowsIter.First()
+				return ok
+			}
+
+			ok = p.rowsIter.Next()
+			if !ok {
+				return false
+			}
+
+			if closed {
+				return bytes.Compare(p.rowsIter.Item().PrimaryIndexBytes, ub) <= 0
+			}
+
+			return bytes.Compare(p.rowsIter.Item().PrimaryIndexBytes, ub) < 0
+		},
 	}
 }
 
@@ -440,6 +727,20 @@ func GreatKind_V2(lb []byte, closed bool) PrimaryKeyMatchSpec_V2 {
 			}
 
 			return p.rowIter.Next()
+		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) bool {
+			var ok bool
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				ok = p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: lb})
+
+				for ok && !closed && bytes.Equal(p.rowsIter.Item().PrimaryIndexBytes, lb) {
+					ok = p.rowsIter.Next()
+				}
+				return ok
+			}
+
+			return p.rowsIter.Next()
 		},
 	}
 }
@@ -531,6 +832,53 @@ func InKind_V2(encodes [][]byte, kind int) PrimaryKeyMatchSpec_V2 {
 						return true
 					}
 					p.rowIter.Prev()
+					currentPhase = judge
+				}
+			}
+		},
+		MoveTombstone: func(p *primaryKeyDelIter_V2) (ret bool) {
+			if !p.rowFirstCalled {
+				p.rowFirstCalled = true
+				// each seek may visit height items
+				// we choose to scan all if the seek is more expensive
+				if len(encodes)*p.rows.Height() > p.rows.Len() {
+					iterateAll = true
+				}
+			}
+
+			for {
+				switch currentPhase {
+				case judge:
+					if iterateAll {
+						if !updateEncoded() {
+							return false
+						}
+						currentPhase = scan
+					} else {
+						currentPhase = seek
+					}
+
+				case seek:
+					if !updateEncoded() {
+						// out of vec
+						return false
+					}
+					if !p.rowsIter.Seek(RowEntry_V2{PrimaryIndexBytes: encoded}) {
+						return false
+					}
+					if match(p.rowsIter.Item().PrimaryIndexBytes, encoded) {
+						currentPhase = scan
+						return true
+					}
+
+				case scan:
+					if !p.rowsIter.Next() {
+						return false
+					}
+					if match(p.rowsIter.Item().PrimaryIndexBytes, encoded) {
+						return true
+					}
+					p.rowsIter.Prev()
 					currentPhase = judge
 				}
 			}

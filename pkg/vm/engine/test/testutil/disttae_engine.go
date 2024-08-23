@@ -216,10 +216,10 @@ func (de *TestDisttaeEngine) analyzeInmemRows(
 ) (err error) {
 
 	distinct := make(map[objectio.Blockid]struct{})
-	iter := state.NewRowsIter(ts, nil, false)
+	iter := state.NewRowsIter(ts, nil)
 	for iter.Next() {
 		stats.InmemRows.VisibleCnt++
-		rowID := iter.Entry().RowID
+		rowID := iter.Entry().GetRowID()
 		blkID := rowID.BorrowBlockID()
 		distinct[*blkID] = struct{}{}
 	}
@@ -230,9 +230,9 @@ func (de *TestDisttaeEngine) analyzeInmemRows(
 	}
 
 	distinct = make(map[objectio.Blockid]struct{})
-	iter = state.NewRowsIter(ts, nil, true)
+	iter2 := state.NewTombstoneRowsIter(ts, nil)
 	for iter.Next() {
-		rowID := iter.Entry().RowID
+		rowID := iter2.Entry().GetRowID()
 		blkID := rowID.BorrowBlockID()
 		distinct[*blkID] = struct{}{}
 		stats.InmemRows.InvisibleCnt++

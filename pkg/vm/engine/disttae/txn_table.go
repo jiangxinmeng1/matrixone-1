@@ -186,17 +186,17 @@ func (tbl *txnTable) Size(ctx context.Context, columnName string) (uint64, error
 			}
 		})
 
-	iter := part.NewRowsIter(ts, nil, false)
+	iter := part.NewRowsIter(ts, nil)
 	defer func() { _ = iter.Close() }()
 	for iter.Next() {
 		entry := iter.Entry()
-		if _, ok := deletes[entry.RowID]; ok {
+		if _, ok := deletes[entry.GetRowID()]; ok {
 			continue
 		}
 
-		for i, s := range entry.Batch.Attrs {
+		for i, s := range entry.GetBatch().Attrs {
 			if _, ok := neededCols[s]; ok {
-				szInPart += uint64(entry.Batch.Vecs[i].Size() / entry.Batch.Vecs[i].Length())
+				szInPart += uint64(entry.GetBatch().Vecs[i].Size() / entry.GetBatch().Vecs[i].Length())
 			}
 		}
 	}
@@ -604,11 +604,11 @@ func (tbl *txnTable) CollectTombstones(
 	}
 	{
 		ts := tbl.db.op.SnapshotTS()
-		iter := state.NewRowsIter(types.TimestampToTS(ts), nil, true)
+		iter := state.NewTombstoneRowsIter(types.TimestampToTS(ts), nil)
 		for iter.Next() {
 			entry := iter.Entry()
 			//bid, o := entry.RowID.Decode()
-			tombstone.rowids = append(tombstone.rowids, entry.RowID)
+			tombstone.rowids = append(tombstone.rowids, entry.GetRowID())
 		}
 		iter.Close()
 	}
@@ -2454,11 +2454,11 @@ func (tbl *txnTable) getCommittedRows(
 	if err != nil {
 		return 0, err
 	}
-	iter := partition.NewRowsIter(ts, nil, false)
+	iter := partition.NewRowsIter(ts, nil)
 	defer func() { _ = iter.Close() }()
 	for iter.Next() {
 		entry := iter.Entry()
-		if _, ok := deletes[entry.RowID]; ok {
+		if _, ok := deletes[entry.GetRowID()]; ok {
 			continue
 		}
 		rows++

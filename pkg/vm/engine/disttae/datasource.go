@@ -690,7 +690,7 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 
 	if ls.pStateRows.insIter == nil {
 		if ls.memPKFilter.SpecFactory == nil {
-			ls.pStateRows.insIter = ls.pState.NewRowsIter(ls.snapshotTS, nil, false)
+			ls.pStateRows.insIter = ls.pState.NewRowsIter(ls.snapshotTS, nil)
 		} else {
 			ls.pStateRows.insIter = ls.pState.NewPrimaryKeyIter(
 				ls.memPKFilter.TS, ls.memPKFilter.SpecFactory(ls.memPKFilter))
@@ -699,7 +699,7 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 
 	for appendedRows < int(options.DefaultBlockMaxRows) && ls.pStateRows.insIter.Next() {
 		entry := ls.pStateRows.insIter.Entry()
-		b, o := entry.RowID.Decode()
+		b, o := entry.GetRowID().Decode()
 
 		sel, err = ls.ApplyTombstones(ls.ctx, b, []int64{int64(o)})
 		if err != nil {
@@ -714,15 +714,15 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 			if name == catalog.Row_ID {
 				if err = vector.AppendFixed(
 					bat.Vecs[i],
-					entry.RowID,
+					entry.GetRowID(),
 					false,
 					mp); err != nil {
 					return err
 				}
 			} else {
 				idx := 2 /*rowid and commits*/ + seqNums[i]
-				if int(idx) >= len(entry.Batch.Vecs) /*add column*/ ||
-					entry.Batch.Attrs[idx] == "" /*drop column*/ {
+				if int(idx) >= len(entry.GetBatch().Vecs) /*add column*/ ||
+					entry.GetBatch().Attrs[idx] == "" /*drop column*/ {
 					err = vector.AppendAny(
 						bat.Vecs[i],
 						nil,
@@ -731,8 +731,8 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 				} else {
 					err = appendFunctions[i](
 						bat.Vecs[i],
-						entry.Batch.Vecs[int(2+seqNums[i])],
-						entry.Offset,
+						entry.GetBatch().Vecs[int(2+seqNums[i])],
+						entry.GetOffset(),
 					)
 				}
 				if err != nil {
@@ -1060,7 +1060,7 @@ func (ls *LocalDataSource) applyPStateInMemDeletes(
 	var delIter logtailreplay.RowsIter_V2
 
 	if ls.memPKFilter == nil || ls.memPKFilter.SpecFactory == nil {
-		delIter = ls.pState.NewRowsIter(ls.snapshotTS, &bid, true)
+		delIter = ls.pState.NewTombstoneRowsIter(ls.snapshotTS, &bid)
 	} else {
 		delIter = ls.pState.NewPrimaryKeyDelIter(
 			ls.memPKFilter.TS,
@@ -1070,7 +1070,7 @@ func (ls *LocalDataSource) applyPStateInMemDeletes(
 	leftRows = offsets
 
 	for delIter.Next() {
-		_, o := delIter.Entry().RowID.Decode()
+		_, o := delIter.Entry().GetRowID().Decode()
 		leftRows = fastApplyDeletedRows(leftRows, deletedRows, o)
 		if leftRows != nil && len(leftRows) == 0 {
 			break

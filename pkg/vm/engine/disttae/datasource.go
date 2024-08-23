@@ -850,6 +850,10 @@ func (ls *LocalDataSource) ApplyTombstones(
 	dynamicPolicy engine.TombstoneApplyPolicy,
 ) ([]int64, error) {
 
+	if len(rowsOffset) == 0 {
+		return nil, nil
+	}
+
 	slices.SortFunc(rowsOffset, func(a, b int64) int {
 		return int(a - b)
 	})
@@ -860,6 +864,9 @@ func (ls *LocalDataSource) ApplyTombstones(
 		dynamicPolicy&engine.Policy_SkipUncommitedInMemory == 0 {
 		rowsOffset = ls.applyWorkspaceEntryDeletes(bid, rowsOffset, nil)
 	}
+	if len(rowsOffset) == 0 {
+		return nil, nil
+	}
 	if ls.tombstonePolicy&engine.Policy_SkipUncommitedS3 == 0 &&
 		dynamicPolicy&engine.Policy_SkipUncommitedS3 == 0 {
 		rowsOffset, err = ls.applyWorkspaceFlushedS3Deletes(bid, rowsOffset, nil)
@@ -867,14 +874,23 @@ func (ls *LocalDataSource) ApplyTombstones(
 			return nil, err
 		}
 	}
+	if len(rowsOffset) == 0 {
+		return nil, nil
+	}
 
 	if ls.tombstonePolicy&engine.Policy_SkipUncommitedInMemory == 0 &&
 		dynamicPolicy&engine.Policy_SkipUncommitedInMemory == 0 {
 		rowsOffset = ls.applyWorkspaceRawRowIdDeletes(bid, rowsOffset, nil)
 	}
+	if len(rowsOffset) == 0 {
+		return nil, nil
+	}
 	if ls.tombstonePolicy&engine.Policy_SkipCommittedInMemory == 0 &&
 		dynamicPolicy&engine.Policy_SkipCommittedInMemory == 0 {
 		rowsOffset = ls.applyPStateInMemDeletes(bid, rowsOffset, nil)
+	}
+	if len(rowsOffset) == 0 {
+		return nil, nil
 	}
 	if ls.tombstonePolicy&engine.Policy_SkipCommittedS3 == 0 &&
 		dynamicPolicy&engine.Policy_SkipCommittedS3 == 0 {
@@ -1288,12 +1304,6 @@ func GetTombstonesByBlockId(
 ) (err error) {
 
 	var (
-		exist    bool
-		bf       objectio.BloomFilter
-		bfIndex  index.StaticFilter
-		mask     *nulls.Nulls
-		location objectio.Location
-
 		totalBlk     int
 		zmBreak      int
 		blBreak      int
@@ -1311,32 +1321,45 @@ func GetTombstonesByBlockId(
 			}
 		}
 
-		if bf, err = objectio.FastLoadBF(
-			ctx, obj.Location(), false, fs); err != nil {
+		var objMeta objectio.ObjectMeta
+
+		location := obj.Location()
+
+		if objMeta, err = objectio.FastLoadObjectMeta(
+			ctx, &location, false, fs,
+		); err != nil {
 			return false, err
 		}
+		dataMeta := objMeta.MustDataMeta()
 
-		totalBlk += int(obj.BlkCnt())
-		for idx := 0; idx < int(obj.BlkCnt()); idx++ {
-			buf := bf.GetBloomFilter(uint32(idx))
-			bfIndex = index.NewEmptyBloomFilterWithType(index.HBF)
-			if err = index.DecodeBloomFilter(bfIndex, buf); err != nil {
-				return false, err
-			}
+		blkCnt := int(dataMeta.BlockCount())
+		totalBlk += blkCnt
 
-			if exist, err = bfIndex.PrefixMayContainsKey(
-				bid[:], index.PrefixFnID_Block, 2); err != nil {
-				return false, err
-			} else if !exist {
-				blBreak++
+		startIdx := sort.Search(blkCnt, func(i int) bool {
+			return dataMeta.GetBlockMeta(uint32(i)).MustGetColumn(0).ZoneMap().AnyGEByValue(bid[:])
+		})
+
+		for pos := startIdx; pos < blkCnt; pos++ {
+			blkMeta := dataMeta.GetBlockMeta(uint32(pos))
+			columnZonemap := blkMeta.MustGetColumn(0).ZoneMap()
+			// block id is the prefix of the rowid and zonemap is min-max of rowid
+			// !PrefixEq means there is no rowid of this block in this zonemap, so skip
+			if !columnZonemap.PrefixEq(bid[:]) {
+				if columnZonemap.PrefixGT(bid[:]) {
+					// all zone maps are sorted by the rowid
+					// if the block id is less than the prefix of the min rowid, skip the rest blocks
+					break
+				}
 				continue
 			}
-
 			loaded++
-			location = catalog2.BuildLocation(obj.ObjectStats, uint16(idx), options.DefaultBlockMaxRows)
+			tombstoneLoc := catalog2.BuildLocation(obj.ObjectStats, uint16(pos), options.DefaultBlockMaxRows)
+
+			var mask *nulls.Nulls
 
 			if mask, err = loadBlockDeletesByLocation(
-				ctx, fs, bid, location, snapshot); err != nil {
+				ctx, fs, bid, tombstoneLoc, snapshot,
+			); err != nil {
 				return false, err
 			}
 

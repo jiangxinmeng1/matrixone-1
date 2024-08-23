@@ -142,7 +142,7 @@ func BlockDataReadNoCopy(
 	}
 
 	// merge deletes from tombstones
-	deleteMask.Merge(tombstones)
+	deleteMask.Or(tombstones)
 
 	// build rowid column if needed
 	if rowidPos >= 0 {
@@ -356,7 +356,7 @@ func BlockDataReadInner(
 	}
 
 	// merge deletes from tombstones
-	deleteMask.Merge(tombstones)
+	deleteMask.Or(tombstones)
 
 	// Note: it always goes here if no filter or the block is not sorted
 
@@ -598,14 +598,14 @@ func EvalDeleteRowsByTimestamp(
 
 	start, end := FindIntervalForBlock(rowids, blockid)
 
-	for i := start; i < end; i++ {
-		//abort := vector.GetFixedAt[bool](aborts, i)
+	for i := end - 1; i >= start; i-- {
 		if tss[i].Greater(&ts) {
 			continue
 		}
 		row := rowids[i].GetRowOffset()
 		rows.Add(uint64(row))
 	}
+
 	return
 }
 

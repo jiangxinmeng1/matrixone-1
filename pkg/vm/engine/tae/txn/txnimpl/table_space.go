@@ -456,7 +456,7 @@ func (space *tableSpace) HybridScan(
 	if (*bat).Deletes == nil {
 		(*bat).Deletes = &nulls.Nulls{}
 	}
-	(*bat).Deletes.Merge(space.node.data.Deletes)
+	(*bat).Deletes.Or(space.node.data.Deletes)
 }
 
 func (space *tableSpace) Prefetch(obj *catalog.ObjectEntry, idxes []uint16) error {

@@ -1037,7 +1037,7 @@ func applyDeletesWithinDeltaLocations(
 			})
 
 		} else if deletedRows != nil {
-			deletedRows.Merge(mask)
+			deletedRows.Or(mask)
 		}
 	}
 
@@ -1363,7 +1363,7 @@ func GetTombstonesByBlockId(
 				return false, err
 			}
 
-			deleteMask.Merge(mask)
+			deleteMask.Or(mask)
 		}
 		return true, nil
 	}

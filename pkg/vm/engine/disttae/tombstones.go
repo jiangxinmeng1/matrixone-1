@@ -622,7 +622,7 @@ func (tomb *tombstoneDataWithDeltaLoc) ApplyPersistedTombstones(
 				return false
 			})
 		} else if deletedMask != nil {
-			deletedMask.Merge(deletes)
+			deletedMask.Or(deletes)
 		}
 
 		return

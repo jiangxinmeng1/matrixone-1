@@ -260,7 +260,9 @@ func (p *PartitionStateInProgress) dataObject(start, end types.TS, isTombstone b
 		entry := iter.Item()
 		if entry.Appendable {
 			if entry.Appendable {
-				fillInObjectBatch(&bat, &entry, mp)
+				if checkTS(start, end, entry.DeleteTime) {
+					fillInObjectBatch(&bat, &entry, mp)
+				}
 			}
 		} else {
 			if checkTS(start, end, entry.CreateTime) && isCreatedByCN(&entry) {

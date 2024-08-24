@@ -833,6 +833,7 @@ func (data *CNCheckpointData) ReadFromData(
 					return
 				}
 			}
+
 		}
 	}
 

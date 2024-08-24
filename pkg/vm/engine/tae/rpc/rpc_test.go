@@ -1844,7 +1844,7 @@ func TestApplyDeltaloc(t *testing.T) {
 
 	txn0, err = h.db.StartTxn(nil)
 	assert.NoError(t, err)
-	task, err := jobs.NewFlushTableTailTask(nil, txn0, metas, nil, h.db.Runtime, txn0.GetStartTS())
+	task, err := jobs.NewFlushTableTailTask(nil, txn0, metas, nil, h.db.Runtime)
 	assert.NoError(t, err)
 	err = task.OnExec(context.Background())
 	assert.NoError(t, err)

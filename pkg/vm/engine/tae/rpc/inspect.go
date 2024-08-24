@@ -720,7 +720,6 @@ func (c *infoArg) Run() error {
 	b := &bytes.Buffer{}
 	if c.tbl != nil {
 		b.WriteString(fmt.Sprintf("last_merge: %v\n", c.tbl.Stats.GetLastMerge().String()))
-		b.WriteString(fmt.Sprintf("last_flush: %v\n", c.tbl.Stats.GetLastFlush().ToString()))
 	}
 	if c.obj != nil {
 		b.WriteRune('\n')

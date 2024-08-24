@@ -500,7 +500,7 @@ func TestFlushAblkMerge(t *testing.T) {
 		}
 		start := time.Now()
 		{
-			task, err := jobs.NewFlushTableTailTask(nil, txn, blks, tombstones, db.Runtime, types.MaxTs())
+			task, err := jobs.NewFlushTableTailTask(nil, txn, blks, tombstones, db.Runtime)
 			assert.Nil(t, err)
 			err = task.OnExec(context.Background())
 			assert.Nil(t, err)

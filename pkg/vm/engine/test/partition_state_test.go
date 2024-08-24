@@ -685,7 +685,7 @@ func Test_Bug_DupEntryWhenGCInMemTombstones(t *testing.T) {
 
 		task1, err := jobs.NewFlushTableTailTask(
 			tasks.WaitableCtx, tnTxnop, nil,
-			[]*catalog.ObjectEntry{tombstone}, p.T.GetDB().Runtime, tnTxnop.GetStartTS())
+			[]*catalog.ObjectEntry{tombstone}, p.T.GetDB().Runtime)
 
 		require.NoError(t, err)
 		worker.SendOp(task1)

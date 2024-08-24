@@ -186,8 +186,7 @@ func (d *dirtyCollector) Run(lag time.Duration) {
 func (d *dirtyCollector) ScanInRangePruned(from, to types.TS) (
 	tree *DirtyTreeEntry) {
 	tree, _ = d.ScanInRange(from, to)
-	ctx := context.WithValue(context.Background(), TempFKey{}, 42)
-	if err := d.tryCompactTree(ctx, d.interceptor, tree.tree, from, to); err != nil {
+	if err := d.tryCompactTree(context.Background(), d.interceptor, tree.tree); err != nil {
 		panic(err)
 	}
 	return
@@ -352,7 +351,7 @@ func (d *dirtyCollector) cleanupStorage() {
 			toDeletes = append(toDeletes, entry)
 			return true
 		}
-		if err := d.tryCompactTree(context.Background(), d.interceptor, entry.tree, entry.start, entry.end); err != nil {
+		if err := d.tryCompactTree(context.Background(), d.interceptor, entry.tree); err != nil {
 			logutil.Warnf("error: interceptor on dirty tree: %v", err)
 		}
 		if entry.tree.IsEmpty() {
@@ -373,15 +372,21 @@ func (d *dirtyCollector) cleanupStorage() {
 	}
 }
 
-// iter the tree and call interceptor to process block. flushed block, empty obj and table will be removed from the tree
+// iter the tree and call interceptor to process block.
+// Those entries that will be removed from the tree:
+// 1. not found db
+// 2. not found table
+// 3. empty table
+// 4. dropped aobject
+// 5. nobject
+// Or, put it in a more concise way, **not dropped aobjects** will be kept in the tree.
 func (d *dirtyCollector) tryCompactTree(
 	ctx context.Context,
 	interceptor DirtyEntryInterceptor,
-	tree *model.Tree, from, to types.TS) (err error) {
+	tree *model.Tree) (err error) {
 	var (
 		db  *catalog.DBEntry
 		tbl *catalog.TableEntry
-		obj *catalog.ObjectEntry
 	)
 	for id, dirtyTable := range tree.Tables {
 		// remove empty tables
@@ -407,64 +412,39 @@ func (d *dirtyCollector) tryCompactTree(
 			break
 		}
 
-		tbl.Stats.RLock()
-		lastFlush := tbl.Stats.LastFlush
-		if lastFlush.GreaterEq(&to) {
-			tree.Shrink(id)
-			tbl.Stats.RUnlock()
-			continue
-		}
-		tbl.Stats.RUnlock()
-
 		if x := ctx.Value(TempFKey{}); x != nil && TempF.Check(tbl.ID) {
 			logutil.Infof("temp filter skip table %v-%v", tbl.ID, tbl.GetLastestSchemaLocked(false).Name)
 			tree.Shrink(id)
 			continue
 		}
 
-		for id, dirtyObj := range dirtyTable.Objs {
-			if obj, err = tbl.GetObjectByID(dirtyObj.ID, false); err != nil {
-				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
-					dirtyTable.Shrink(id, false)
-					err = nil
-					continue
-				}
-				return
-			}
-			var calibration int
-			calibration, err = obj.GetObjectData().RunCalibration()
+		checkAndTrimObject := func(id types.Objectid, isTombstone bool) error {
+			obj, err := tbl.GetObjectByID(&id, isTombstone)
 			if err != nil {
-				logutil.Warnf("get object rows failed, obj %v, err: %v", obj.ID().String(), err)
-				continue
+				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
+					dirtyTable.Shrink(id, isTombstone)
+					return nil
+				}
+				return err
 			}
-			if calibration == 0 {
-				dirtyTable.Shrink(id, false)
-				continue
+			// keep only non-dropped aobjects
+			if !(obj.IsAppendable() && !obj.HasDropCommitted()) {
+				dirtyTable.Shrink(id, isTombstone)
+				return nil
 			}
-			if err = interceptor.OnObject(obj); err != nil {
+			if err := interceptor.OnObject(obj); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		for id := range dirtyTable.Objs {
+			if err = checkAndTrimObject(id, false); err != nil {
 				return
 			}
 		}
-		for id, dirtyObj := range dirtyTable.Tombstones {
-			if obj, err = tbl.GetObjectByID(dirtyObj.ID, true); err != nil {
-				if moerr.IsMoErrCode(err, moerr.OkExpectedEOB) {
-					dirtyTable.Shrink(id, true)
-					err = nil
-					continue
-				}
-				return
-			}
-			var calibration int
-			calibration, err = obj.GetObjectData().RunCalibration()
-			if err != nil {
-				logutil.Warnf("get object rows failed, obj %v, err: %v", obj.ID().String(), err)
-				continue
-			}
-			if calibration == 0 {
-				dirtyTable.Shrink(id, true)
-				continue
-			}
-			if err = interceptor.OnObject(obj); err != nil {
+		for id := range dirtyTable.Tombstones {
+			if err = checkAndTrimObject(id, true); err != nil {
 				return
 			}
 		}

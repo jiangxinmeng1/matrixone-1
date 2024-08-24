@@ -52,19 +52,18 @@ type TestFlushBailoutPos1 struct{}
 type TestFlushBailoutPos2 struct{}
 
 var FlushTableTailTaskFactory = func(
-	metas, tombstones []*catalog.ObjectEntry, rt *dbutils.Runtime, endTs types.TS, /* end of dirty range*/
+	metas, tombstones []*catalog.ObjectEntry, rt *dbutils.Runtime,
 ) tasks.TxnTaskFactory {
 	return func(ctx *tasks.Context, txn txnif.AsyncTxn) (tasks.Task, error) {
 		txn.GetMemo().IsFlushOrMerge = true
-		return NewFlushTableTailTask(ctx, txn, metas, tombstones, rt, endTs)
+		return NewFlushTableTailTask(ctx, txn, metas, tombstones, rt)
 	}
 }
 
 type flushTableTailTask struct {
 	*tasks.BaseTask
-	txn        txnif.AsyncTxn
-	rt         *dbutils.Runtime
-	dirtyEndTs types.TS
+	txn txnif.AsyncTxn
+	rt  *dbutils.Runtime
 
 	scopes          []common.ID
 	schema          *catalog.Schema
@@ -139,12 +138,10 @@ func NewFlushTableTailTask(
 	objs []*catalog.ObjectEntry,
 	tombStones []*catalog.ObjectEntry,
 	rt *dbutils.Runtime,
-	dirtyEndTs types.TS,
 ) (task *flushTableTailTask, err error) {
 	task = &flushTableTailTask{
-		txn:        txn,
-		rt:         rt,
-		dirtyEndTs: dirtyEndTs,
+		txn: txn,
+		rt:  rt,
 	}
 
 	var meta *catalog.ObjectEntry
@@ -197,14 +194,6 @@ func NewFlushTableTailTask(
 		}
 		task.aObjMetas = append(task.aObjMetas, obj)
 		task.aObjHandles = append(task.aObjHandles, hdl)
-		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
-			logutil.Info(
-				"[FLUSH-NEED-RETRY]",
-				zap.String("task", task.Name()),
-				common.AnyField("obj", obj.ID().String()),
-			)
-			return nil, txnif.ErrTxnNeedRetry
-		}
 	}
 
 	task.tombstoneSchema = rel.Schema(true).(*catalog.Schema)
@@ -231,10 +220,6 @@ func NewFlushTableTailTask(
 		}
 		task.aTombstoneMetas = append(task.aTombstoneMetas, obj)
 		task.aTombstoneHandles = append(task.aTombstoneHandles, hdl)
-		if obj.GetObjectData().CheckFlushTaskRetry(txn.GetStartTS()) {
-			logutil.Infof("[FlushTabletail] obj %v needs retry", obj.ID().String())
-			return nil, txnif.ErrTxnNeedRetry
-		}
 	}
 
 	task.doTransfer = !strings.Contains(task.schema.Comment, pkgcatalog.MO_COMMENT_NO_DEL_HINT)
@@ -270,7 +255,6 @@ func (task *flushTableTailTask) Name() string {
 }
 
 func (task *flushTableTailTask) MarshalLogObject(enc zapcore.ObjectEncoder) (err error) {
-	enc.AddString("endTs", task.dirtyEndTs.ToString())
 	objs := ""
 	for _, obj := range task.aObjMetas {
 		objs = fmt.Sprintf("%s%s,", objs, obj.ID().ShortStringEx())

@@ -138,15 +138,6 @@ func (obj *object) Contains(
 	)
 }
 
-func (obj *object) RunCalibration() (score int, err error) {
-	score, _ = obj.estimateRawScore()
-	return
-}
-
-func (obj *object) estimateRawScore() (score int, dropped bool) {
-	return 0, obj.meta.Load().HasDropCommitted()
-}
-
 func (obj *object) EstimateMemSize() (int, int) {
 	return 0, 0
 }

@@ -141,7 +141,7 @@ func TestCheckpoint2(t *testing.T) {
 		assert.Nil(t, err)
 		blk := testutil.GetOneObject(rel)
 		meta = blk.GetMeta().(*catalog.ObjectEntry)
-		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{meta}, nil, tae.Runtime, txn.GetStartTS())
+		task, err := jobs.NewFlushTableTailTask(tasks.WaitableCtx, txn, []*catalog.ObjectEntry{meta}, nil, tae.Runtime)
 		assert.Nil(t, err)
 		err = tae.Runtime.Scheduler.Schedule(task)
 		assert.Nil(t, err)

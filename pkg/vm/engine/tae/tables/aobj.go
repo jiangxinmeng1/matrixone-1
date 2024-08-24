@@ -299,43 +299,6 @@ func (obj *aobject) Contains(
 	}
 }
 
-func (obj *aobject) estimateRawScore() (score int, dropped bool, err error) {
-	meta := obj.meta.Load()
-	if meta.HasDropCommitted() {
-		dropped = true
-		return
-	}
-	atLeastOneCommitted := meta.ObjectState >= catalog.ObjectState_Create_ApplyCommit
-	if !atLeastOneCommitted {
-		score = 1
-		return
-	}
-
-	rows, err := obj.Rows()
-	if rows == int(obj.meta.Load().GetSchema().BlockMaxRows) {
-		score = 100
-		return
-	}
-
-	if rows == 0 {
-		score = 0
-	} else {
-		score = 1
-	}
-
-	if score > 0 {
-		if _, terminated := obj.meta.Load().GetTerminationTS(); terminated {
-			score = 100
-		}
-	}
-	return
-}
-
-func (obj *aobject) RunCalibration() (score int, err error) {
-	score, _, err = obj.estimateRawScore()
-	return
-}
-
 func (obj *aobject) OnReplayAppend(node txnif.AppendNode) (err error) {
 	an := node.(*updates.AppendNode)
 	obj.appendMVCC.OnReplayAppendNode(an)

@@ -30,10 +30,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 )
 
-type CheckpointUnit interface {
-	RunCalibration() (int, error)
-}
-
 type ObjectAppender interface {
 	GetID() *common.ID
 	GetMeta() any
@@ -60,7 +56,6 @@ type ObjectReplayer interface {
 }
 
 type Object interface {
-	CheckpointUnit
 	ObjectReplayer
 
 	GetRowsOnReplay() uint64

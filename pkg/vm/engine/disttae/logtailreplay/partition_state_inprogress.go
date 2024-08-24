@@ -133,17 +133,17 @@ func (p *PartitionStateInProgress) GetData(start, end types.TS, mp *mpool.MPool)
 }
 func fillInObjectBatch(bat **batch.Batch, entry *ObjectEntry, mp *mpool.MPool) {
 	if *bat == nil {
-		bat := batch.NewWithSize(4)
-		bat.SetAttributes([]string{
+		(*bat) = batch.NewWithSize(4)
+		(*bat).SetAttributes([]string{
 			taeCatalog.ObjectAttr_ObjectStats,
 			taeCatalog.EntryNode_CreateAt,
 			taeCatalog.EntryNode_DeleteAt,
 			taeCatalog.AttrCommitTs,
 		})
-		bat.Vecs[0] = vector.NewVec(types.T_varchar.ToType())
-		bat.Vecs[1] = vector.NewVec(types.T_TS.ToType())
-		bat.Vecs[2] = vector.NewVec(types.T_TS.ToType())
-		bat.Vecs[3] = vector.NewVec(types.T_TS.ToType())
+		(*bat).Vecs[0] = vector.NewVec(types.T_varchar.ToType())
+		(*bat).Vecs[1] = vector.NewVec(types.T_TS.ToType())
+		(*bat).Vecs[2] = vector.NewVec(types.T_TS.ToType())
+		(*bat).Vecs[3] = vector.NewVec(types.T_TS.ToType())
 	}
 	vector.AppendBytes((*bat).Vecs[0], entry.ObjectStats[:], false, mp)
 	vector.AppendFixed((*bat).Vecs[1], entry.CreateTime, false, mp)
@@ -153,14 +153,11 @@ func fillInObjectBatch(bat **batch.Batch, entry *ObjectEntry, mp *mpool.MPool) {
 
 func (p *PartitionStateInProgress) fillInInsertBatch(bat **batch.Batch, entry *RowEntry, mp *mpool.MPool) {
 	if *bat == nil {
-		bat := batch.NewWithSize(0)
-		bat.Attrs = append(bat.Attrs, entry.Batch.Attrs...)
+		(*bat) = batch.NewWithSize(0)
+		(*bat).Attrs = append((*bat).Attrs, entry.Batch.Attrs...)
 		for _, vec := range entry.Batch.Vecs {
-			if vec.GetType().Oid == types.T_Rowid || vec.GetType().Oid == types.T_TS {
-				continue
-			}
 			newVec := vector.NewVec(*vec.GetType())
-			bat.Vecs = append(bat.Vecs, newVec)
+			(*bat).Vecs = append((*bat).Vecs, newVec)
 		}
 	}
 	for i, vec := range entry.Batch.Vecs {
@@ -229,15 +226,15 @@ func (p *PartitionStateInProgress) fillInInsertBatch(bat **batch.Batch, entry *R
 }
 func fillInDeleteBatch(bat **batch.Batch, entry *RowEntry, mp *mpool.MPool) {
 	if *bat == nil {
-		bat := batch.NewWithSize(3)
-		bat.SetAttributes([]string{
+		(*bat) = batch.NewWithSize(3)
+		(*bat).SetAttributes([]string{
 			taeCatalog.AttrRowID,
 			taeCatalog.AttrPKVal,
 			taeCatalog.AttrCommitTs,
 		})
-		bat.Vecs[0] = vector.NewVec(types.T_Rowid.ToType())
-		bat.Vecs[1] = vector.NewVec(types.T_varchar.ToType())
-		bat.Vecs[2] = vector.NewVec(types.T_TS.ToType())
+		(*bat).Vecs[0] = vector.NewVec(types.T_Rowid.ToType())
+		(*bat).Vecs[1] = vector.NewVec(types.T_varchar.ToType())
+		(*bat).Vecs[2] = vector.NewVec(types.T_TS.ToType())
 	}
 	vector.AppendFixed((*bat).Vecs[0], entry.RowID, false, mp)
 	vector.AppendFixed((*bat).Vecs[1], entry.PrimaryIndexBytes, false, mp)

@@ -231,7 +231,6 @@ func (p *TailHandler) dataObject(isTombstone bool, mp *mpool.MPool) (ret *TailBa
 	} else {
 		iter = p.dataObjects
 	}
-	defer iter.Release()
 	for iter.Next() {
 		entry := iter.Item()
 		if entry.Appendable {
@@ -267,7 +266,6 @@ func (p *TailHandler) dataObject(isTombstone bool, mp *mpool.MPool) (ret *TailBa
 
 func (p *TailHandler) getData(mp *mpool.MPool, tombstone bool) (tail *TailBatch) {
 	var bat *batch.Batch
-	defer p.rows.Release()
 	for p.rows.Next() {
 		entry := p.rows.Item()
 		if checkTS(p.start, p.end, entry.Time) {

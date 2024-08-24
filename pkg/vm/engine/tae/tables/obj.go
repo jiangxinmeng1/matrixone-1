@@ -83,6 +83,7 @@ func (obj *object) GetDuplicatedRows(
 	keysZM index.ZM,
 	precommit bool,
 	checkWWConflict bool,
+	_ bool, /*skipCommittedBeforeTxnForAblk*/
 	rowIDs containers.Vector,
 	mp *mpool.MPool,
 ) (err error) {
@@ -98,11 +99,11 @@ func (obj *object) GetDuplicatedRows(
 	return obj.persistedGetDuplicatedRows(
 		ctx,
 		txn,
-		precommit,
+		false, /*skipCommittedBeforeTxnForAblk*/
 		keys,
 		keysZM,
 		rowIDs,
-		false,
+		false, /*is ablk*/
 		0,
 		mp,
 	)

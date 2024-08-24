@@ -133,7 +133,7 @@ func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vec
 
 func parseAGetDuplicateRowIDsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid, maxRow uint32,
-	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader,
+	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, skipCommittedBeforeTxnForAblk bool,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -150,6 +150,9 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 	}
 	if args[5] != nil {
 		txn = args[5].(txnif.TxnReader)
+	}
+	if args[6] != nil {
+		skipCommittedBeforeTxnForAblk = args[6].(bool)
 	}
 	return
 }
@@ -256,7 +259,7 @@ func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, b
 }
 
 func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, blkID, maxRow, scanFn, txn := parseAGetDuplicateRowIDsArgs(args...)
+	vec, rowIDs, blkID, maxRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if !rowIDs.IsNull(rowOffset) {
 			return nil
@@ -295,6 +298,9 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 				if commitTS.Greater(&startTS) {
 					return txnif.ErrTxnWWConflict
 				}
+				if skip && commitTS.Less(&startTS) {
+					return nil
+				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
 				rowIDs.Update(rowOffset, *rowID, false)
 				return nil
@@ -304,7 +310,7 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 
 func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, blkID, maxVisibleRow, scanFn, txn := parseAGetDuplicateRowIDsArgs(args...)
+		vec, rowIDs, blkID, maxVisibleRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if !rowIDs.IsNull(rowOffset) {
 				return nil
@@ -341,6 +347,9 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 					startTS := txn.GetStartTS()
 					if commitTS.Greater(&startTS) {
 						return txnif.ErrTxnWWConflict
+					}
+					if skip && commitTS.Less(&startTS) {
+						return nil
 					}
 					rowID := objectio.NewRowid(blkID, uint32(row))
 					rowIDs.Update(rowOffset, *rowID, false)

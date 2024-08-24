@@ -252,7 +252,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	rowIDs containers.Vector,
 	blkOffset uint16,
 	isAblk bool,
-	isCommitting bool,
+	skipCommittedBeforeTxnForAblk bool,
 	maxVisibleRow uint32,
 	mp *mpool.MPool,
 ) (err error) {
@@ -274,7 +274,7 @@ func (blk *baseObject) getDuplicateRowsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, getRowIDAlkFunctions, view.Vecs[0], rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, getRowIDAlkFunctions, view.Vecs[0], rowIDs, blkID, maxVisibleRow, blk.LoadPersistedCommitTS, txn, skipCommittedBeforeTxnForAblk,
 		)
 	} else {
 		dedupFn = containers.MakeForeachVectorOp(
@@ -325,7 +325,7 @@ func (blk *baseObject) containsWithLoad(
 func (blk *baseObject) persistedGetDuplicatedRows(
 	ctx context.Context,
 	txn txnif.TxnReader,
-	isCommitting bool,
+	skipCommittedBeforeTxnForAblk bool,
 	keys containers.Vector,
 	keysZM index.ZM,
 	rowIDs containers.Vector,
@@ -354,7 +354,7 @@ func (blk *baseObject) persistedGetDuplicatedRows(
 		if err == nil || !moerr.IsMoErrCode(err, moerr.OkExpectedPossibleDup) {
 			continue
 		}
-		err = blk.getDuplicateRowsWithLoad(ctx, txn, keys, sels, rowIDs, uint16(i), isAblk, isCommitting, maxVisibleRow, mp)
+		err = blk.getDuplicateRowsWithLoad(ctx, txn, keys, sels, rowIDs, uint16(i), isAblk, skipCommittedBeforeTxnForAblk, maxVisibleRow, mp)
 		if err != nil {
 			return err
 		}

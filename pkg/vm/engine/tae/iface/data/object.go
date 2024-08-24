@@ -96,6 +96,7 @@ type Object interface {
 		keysZM index.ZM,
 		precommit bool,
 		checkWWConflict bool,
+		skipCommittedBeforeTxnForAblk bool,
 		rowIDs containers.Vector,
 		mp *mpool.MPool,
 	) (err error)

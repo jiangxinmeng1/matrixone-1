@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"go.uber.org/zap"
 
 	"github.com/RoaringBitmap/roaring"
 
@@ -845,6 +846,12 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	for i := 0; i < rowIDs.Length(); i++ {
 		colName := tbl.getBaseTable(isTombstone).schema.GetPrimaryKey().Name
 		if !rowIDs.IsNull(i) {
+			logutil.Error("Append Duplicate",
+				zap.String("table", tbl.dataTable.schema.Name),
+				zap.Bool("isTombstone", isTombstone),
+				zap.String("pk", keys.PPString(keys.Length())),
+				zap.String("rowids", rowIDs.PPString(rowIDs.Length())),
+			)
 			entry := common.TypeStringValue(*keys.GetType(), keys.Get(i), false)
 			return moerr.NewDuplicateEntryNoCtx(entry, colName)
 		}
@@ -852,7 +859,6 @@ func (tbl *txnTable) DedupSnapByPK(ctx context.Context, keys containers.Vector, 
 	return
 }
 func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, dedupAfterSnapshotTS, isCommitting bool) (err error) {
-	maxObjectHint := uint64(0)
 	pkType := rowIDs.GetType()
 	keysZM := index.NewZM(pkType.Oid, pkType.Scale)
 	if err = index.BatchUpdateZM(keysZM, rowIDs.GetDownstreamVector()); err != nil {
@@ -862,10 +868,6 @@ func (tbl *txnTable) findDeletes(ctx context.Context, rowIDs containers.Vector, 
 	it := tbl.entry.MakeTombstoneObjectIt()
 	for it.Next() {
 		obj := it.Item()
-		ObjectHint := obj.SortHint
-		if ObjectHint > maxObjectHint {
-			maxObjectHint = ObjectHint
-		}
 		objData := obj.GetObjectData()
 		if objData == nil {
 			panic(fmt.Sprintf("logic error, object %v", obj.StringWithLevel(3)))

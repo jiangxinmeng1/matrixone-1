@@ -202,6 +202,7 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 			nil,
 			false,
 			checkWW,
+			dedupAfterSnapshotTS,
 			rowIDs,
 			common.WorkspaceAllocator,
 		)
@@ -255,6 +256,7 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 			nil,
 			true,
 			true,
+			false,
 			rowIDs,
 			common.WorkspaceAllocator,
 		)

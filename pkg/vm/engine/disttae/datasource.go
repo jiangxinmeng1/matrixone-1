@@ -702,6 +702,8 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 		b, o := entry.GetRowID().Decode()
 
 		sel, err = ls.ApplyTombstones(ls.ctx, b, []int64{int64(o)})
+		rowID:= entry.GetRowID()
+		logutil.Infof("lalala row %v, sel %v",rowID.String(),sel)
 		if err != nil {
 			return err
 		}
@@ -827,9 +829,11 @@ func (ls *LocalDataSource) ApplyTombstones(
 	}
 	if ls.tombstonePolicy&engine.Policy_SkipCommittedInMemory == 0 {
 		rowsOffset = ls.applyPStateInMemDeletes(bid, rowsOffset, nil)
+		logutil.Infof("lalala rows offset %v",rowsOffset)
 	}
 	if ls.tombstonePolicy&engine.Policy_SkipCommittedS3 == 0 {
 		rowsOffset, err = ls.applyPStateTombstoneObjects(bid, rowsOffset, nil)
+		logutil.Infof("lalala rows offset %v",rowsOffset)
 		//rowsOffset, err = ls.applyPStatePersistedDeltaLocation(bid, rowsOffset, nil)
 		if err != nil {
 			return nil, err
@@ -1061,15 +1065,19 @@ func (ls *LocalDataSource) applyPStateInMemDeletes(
 
 	if ls.memPKFilter == nil || ls.memPKFilter.SpecFactory == nil {
 		delIter = ls.pState.NewTombstoneRowsIter(ls.snapshotTS, &bid)
+		logutil.Infof("lalala del iter")
 	} else {
 		delIter = ls.pState.NewPrimaryKeyDelIter(
 			ls.memPKFilter.TS,
 			ls.memPKFilter.SpecFactory(ls.memPKFilter), bid)
+			logutil.Infof("lalala pk iter")
 	}
 
 	leftRows = offsets
 
 	for delIter.Next() {
+		rid:=delIter.Entry().GetRowID()
+		logutil.Infof("lalala bid %v, rowid %v",bid.String(),rid.String())
 		_, o := delIter.Entry().GetRowID().Decode()
 		leftRows = fastApplyDeletedRows(leftRows, deletedRows, o)
 		if leftRows != nil && len(leftRows) == 0 {

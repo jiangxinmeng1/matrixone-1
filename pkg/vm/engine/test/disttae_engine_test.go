@@ -27,6 +27,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/defines"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/pb/timestamp"
@@ -684,13 +685,16 @@ func TestInProgressTransfer(t *testing.T) {
 		}
 
 		require.NoError(t, tnFlushTxn.Commit(p.Ctx))
+		logutil.Infof("txn %v %v", tnFlushTxn.GetCommitTS().ToString(), tae.Catalog.SimplePPString(3))
 	}
 
 	{
 		// trigger first transfer, read the memory delete and also find the the pk in memroy
 		time.Sleep(200 * time.Millisecond)
 		ctx := context.WithValue(p.Ctx, disttae.UT_ForceTransCheck{}, 42)
+		logutil.Infof("*********************transfer****************************")
 		require.NoError(t, toTransferTxn1.GetWorkspace().IncrStatementID(ctx, true))
+		logutil.Infof("*********************transfer****************************")
 		require.NoError(t, toTransferTxn1.Commit(p.Ctx))
 	}
 
@@ -722,8 +726,11 @@ func TestInProgressTransfer(t *testing.T) {
 	{
 		// trigge the second transfer, find the pk in the first row of the latest nobject
 		time.Sleep(200 * time.Millisecond)
+		logutil.Infof("%v", tae.Catalog.SimplePPString(3))
 		ctx := context.WithValue(p.Ctx, disttae.UT_ForceTransCheck{}, 42)
+		logutil.Infof("*********************transfer****************************")
 		require.NoError(t, toTransferTxn2.GetWorkspace().IncrStatementID(ctx, true))
+		logutil.Infof("*********************transfer****************************")
 		require.NoError(t, toTransferTxn2.Commit(p.Ctx))
 	}
 }

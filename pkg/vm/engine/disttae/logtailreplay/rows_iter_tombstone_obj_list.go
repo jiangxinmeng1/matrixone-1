@@ -11,7 +11,7 @@ import (
 	"github.com/tidwall/btree"
 )
 
-type RowEntryInterface interface{
+type RowEntryInterface interface {
 	GetRowID() types.Rowid
 	GetBatch() *batch.Batch
 	GetOffset() int64
@@ -177,18 +177,25 @@ func (p *rowsIter_V2) nextObjectWithoutBlockID() (ok bool) {
 		p.rowIter.Release()
 	}
 	for {
+		logutil.Infof("lalala")
 		if p.objFirstCalled {
+			logutil.Infof("lalala")
 			ok = p.objIter.Next()
 		} else {
 			ok = p.objIter.First()
 			p.objFirstCalled = true
 		}
 		if !ok {
+			logutil.Infof("lalala")
 			return false
 		}
 		obj = p.objIter.Item()
 		if obj.InMemory {
+			logutil.Infof("lalala")
 			break
+		} else {
+			logutil.Infof("lalala obj %v", obj.ObjectStats.ObjectName().ObjectId().String())
+			return false
 		}
 	}
 	p.rowIter = obj.Rows.Iter()
@@ -313,6 +320,7 @@ type primaryKeyIter_V2 struct {
 var _ RowsIter_V2 = new(primaryKeyIter_V2)
 
 func (p *primaryKeyIter_V2) Next() bool {
+	defer logutil.Infof("lalala")
 
 	if !p.objFirstCalled || !p.spec.Move(p) {
 		ok := p.nextObjectWithoutBlockID()
@@ -427,6 +435,7 @@ type primaryKeyDelIter_V2 struct {
 }
 
 var _ RowsIter_V2 = new(primaryKeyDelIter_V2)
+
 func (p *primaryKeyDelIter_V2) nextObjectWithoutBlockID() (ok bool) {
 	var obj TombstoneEntry_V2
 	if !p.objFirstCalled {
@@ -454,26 +463,45 @@ func (p *primaryKeyDelIter_V2) nextObjectWithoutBlockID() (ok bool) {
 }
 
 func (p *primaryKeyDelIter_V2) Next() bool {
-	if !p.objFirstCalled || !p.spec.MoveTombstone(p) {
-		ok := p.nextObjectWithoutBlockID()
-		if !ok {
-			return false
-		}
-		for {
-			if p.spec.MoveTombstone(p) {
-				p.curRow = p.rowsIter.Item()
-				return true
-			} else {
-				ok = p.nextObjectWithoutBlockID()
-				if !ok {
-					return false
+	for {
+		if !p.objFirstCalled || !p.spec.MoveTombstone(p) {
+			ok := p.nextObjectWithoutBlockID()
+			if !ok {
+				return false
+			}
+			for {
+				if p.spec.MoveTombstone(p) {
+					entry := p.rowsIter.Item()
+					if p.checkBlockID {
+						if types.PrefixCompare(entry.RowID[:], p.bid[:]) == 0 {
+							p.curRow = p.rowsIter.Item()
+							return true
+						}
+					} else {
+						p.curRow = p.rowsIter.Item()
+						return true
+					}
+				} else {
+					ok = p.nextObjectWithoutBlockID()
+					if !ok {
+						return false
+					}
 				}
 			}
 		}
+		if p.checkBlockID {
+			entry := p.rowsIter.Item()
+			if types.PrefixCompare(entry.RowID[:], p.bid[:]) == 0 {
+				p.curRow = p.rowsIter.Item()
+				return true
+			}
+		} else {
+			p.curRow = p.rowsIter.Item()
+			return true
+		}
+
 	}
 
-	p.curRow = p.rowsIter.Item()
-	return true
 }
 
 func (p *primaryKeyDelIter_V2) Entry() RowEntryInterface {
@@ -488,9 +516,9 @@ func (p *primaryKeyDelIter_V2) Close() error {
 
 type PrimaryKeyMatchSpec_V2 struct {
 	// Move moves to the target
-	Move func(p *primaryKeyIter_V2) bool
+	Move          func(p *primaryKeyIter_V2) bool
 	MoveTombstone func(p *primaryKeyDelIter_V2) bool
-	Name string
+	Name          string
 }
 
 func Exact_V2(key []byte) PrimaryKeyMatchSpec_V2 {

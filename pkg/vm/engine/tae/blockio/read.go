@@ -89,6 +89,7 @@ func ReadDataByFilter(
 			return deleteMask.Contains(uint64(i))
 		})
 	}
+	logutil.Infof("lalala sels %v",sels)
 	sels, err = ds.ApplyTombstones(ctx, info.BlockID, sels)
 	if err != nil {
 		return
@@ -179,6 +180,7 @@ func BlockDataRead(
 	policy fileservice.Policy,
 	tableName string,
 ) (*batch.Batch, error) {
+	defer logutil.Infof("lalala")
 	if logutil.GetSkip1Logger().Core().Enabled(zap.DebugLevel) {
 		logutil.Debugf("read block %s, columns %v, types %v", info.BlockID.String(), columns, colTypes)
 	}

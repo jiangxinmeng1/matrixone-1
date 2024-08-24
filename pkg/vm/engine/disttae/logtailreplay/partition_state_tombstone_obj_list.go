@@ -140,13 +140,13 @@ type RowIDIndexEntry struct {
 	Offset int64
 }
 
-func (r RowIDIndexEntry) GetRowID() types.Rowid{
+func (r RowIDIndexEntry) GetRowID() types.Rowid {
 	return r.RowID
 }
-func (r RowIDIndexEntry) GetBatch() *batch.Batch{
+func (r RowIDIndexEntry) GetBatch() *batch.Batch {
 	return r.Batch
 }
-func (r RowIDIndexEntry) GetOffset() int64{
+func (r RowIDIndexEntry) GetOffset() int64 {
 	return r.Offset
 }
 func (r RowIDIndexEntry) Less(than RowIDIndexEntry) bool {
@@ -183,13 +183,14 @@ type RowEntry_V2 struct {
 	Batch  *batch.Batch
 	Offset int64
 }
-func (r RowEntry_V2) GetRowID() types.Rowid{
+
+func (r RowEntry_V2) GetRowID() types.Rowid {
 	return r.RowID
 }
-func (r RowEntry_V2) GetBatch() *batch.Batch{
+func (r RowEntry_V2) GetBatch() *batch.Batch {
 	return r.Batch
 }
-func (r RowEntry_V2) GetOffset() int64{
+func (r RowEntry_V2) GetOffset() int64 {
 	return r.Offset
 }
 func (r RowEntry_V2) Less(than RowEntry_V2) bool {
@@ -201,18 +202,18 @@ func (r RowEntry_V2) Less(than RowEntry_V2) bool {
 	if cmp > 0 {
 		return false
 	}
-	// asc
-	if r.RowID.Less(than.RowID) {
-		return true
-	}
-	if than.RowID.Less(r.RowID) {
-		return false
-	}
 	// desc
 	if than.Time.Less(&r.Time) {
 		return true
 	}
 	if r.Time.Less(&than.Time) {
+		return false
+	}
+	// asc
+	if r.RowID.Less(than.RowID) {
+		return true
+	}
+	if than.RowID.Less(r.RowID) {
 		return false
 	}
 	return false
@@ -610,6 +611,7 @@ func (p *PartitionStateWithTombstoneObject) HandleRowsInsert(
 			entry.Batch = batch
 			entry.Offset = int64(i)
 		}
+		logutil.Infof("lalala insert %v", entry.RowID.String())
 		obj.Rows.Set(entry)
 	}
 
@@ -907,10 +909,11 @@ func (p *PartitionStateWithTombstoneObject) NewPrimaryKeyDelIter(
 	bid types.Blockid,
 ) *primaryKeyDelIter_V2 {
 	return &primaryKeyDelIter_V2{
-		ts: ts,
-		spec: spec,
+		ts:          ts,
+		spec:        spec,
 		objectsIter: p.tombstoneObjets.Iter(),
-		bid: bid,
+		bid:         bid,
+		checkBlockID: !bid.IsEmpty(),
 	}
 }
 

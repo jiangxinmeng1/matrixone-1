@@ -391,6 +391,7 @@ func doTransferRowids(
 	}
 	for {
 		var bat *batch.Batch
+		logutil.Infof("lalala read ************************")
 		if bat, err = readers[0].Read(
 			ctx,
 			attrs,
@@ -400,6 +401,7 @@ func doTransferRowids(
 		); err != nil {
 			return
 		}
+		logutil.Infof("lalala read ************************")
 		if bat == nil {
 			break
 		}

@@ -384,6 +384,11 @@ func (r *reader) Read(
 		r.fs, mp, vp, policy,
 		r.tableDef.Name,
 	)
+	if bat == nil || bat.Vecs[0] == nil {
+		logutil.Infof("lalala read blk %v, length 0", blkInfo.BlockID.String())
+	} else {
+		logutil.Infof("lalala read blk %v, length %d", blkInfo.BlockID.String(), bat.Vecs[0].Length())
+	}
 	if err != nil {
 		return nil, err
 	}

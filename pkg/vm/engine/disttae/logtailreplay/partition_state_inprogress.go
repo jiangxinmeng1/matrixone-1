@@ -18,6 +18,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
+	"runtime/trace"
+	"sync/atomic"
+
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -30,9 +34,6 @@ import (
 	txnTrace "github.com/matrixorigin/matrixone/pkg/txn/trace"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/tidwall/btree"
-	"math"
-	"runtime/trace"
-	"sync/atomic"
 )
 
 type PartitionStateInProgress struct {
@@ -96,6 +97,102 @@ func (p *PartitionStateInProgress) HandleLogtailEntryInProgress(
 	default:
 		logutil.Panicf("unsupported logtail entry type: %s", entry.String())
 	}
+}
+
+const (
+	DataObject uint8 = iota
+	TombstoneObject
+	DataRow
+	TombstoneRow
+)
+
+type TailBatch struct {
+	Desc  uint8
+	Batch *batch.Batch
+}
+
+func fillInObjectBatch(bat **batch.Batch, entry *ObjectEntry) {
+}
+
+func isCreatedByCN(entry *ObjectEntry) bool {
+	return false
+}
+
+func (p *PartitionStateInProgress) GetData(start, end types.TS) []*TailBatch {
+	return nil
+}
+func (p *PartitionStateInProgress) dataObject(start, end types.TS) (ret *TailBatch) {
+	var bat *batch.Batch
+	iter := p.dataObjects.Copy().Iter()
+	defer iter.Release()
+	for iter.Next() {
+		entry := iter.Item()
+		if entry.Appendable {
+			fillInObjectBatch(&bat, &entry)
+		} else {
+			if isCreatedByCN(&entry) {
+				fillInObjectBatch(&bat, &entry)
+			}
+		}
+	}
+	if bat != nil {
+		ret = &TailBatch{
+			Desc: DataObject,
+		}
+	}
+	return
+}
+
+func checkTS(start, end types.TS, ts types.TS) bool {
+	return ts.LessEq(&end) && ts.GreaterEq(&start)
+}
+func (p *PartitionStateInProgress) tombstoneObject(start, end types.TS) (ret *TailBatch) {
+	var bat *batch.Batch
+	iter := p.tombstoneObjets.Copy().Iter()
+	defer iter.Release()
+	for iter.Next() {
+		entry := iter.Item()
+		if entry.Appendable {
+			if checkTS(start, end, entry.DeleteTime) {
+				fillInObjectBatch(&bat, &entry)
+			}
+		} else {
+			if checkTS(start, end, entry.CreateTime) {
+				if isCreatedByCN(&entry) {
+					fillInObjectBatch(&bat, &entry)
+				}
+			}
+		}
+	}
+	if bat != nil {
+		ret = &TailBatch{
+			Desc:  DataObject,
+			Batch: bat,
+		}
+	}
+	return
+}
+func fillInInsertBatch(bat **batch.Batch, entry *RowEntry) {
+
+}
+func fillInDeleteBatch(bat **batch.Batch, entry *RowEntry) {
+
+}
+func (p *PartitionStateInProgress) getData(start, end types.TS) (insert, delete *TailBatch) {
+	var insertBatch, deleteBatch *batch.Batch
+	iter := p.rows.Copy().Iter()
+	defer iter.Release()
+	for iter.Next() {
+		entry := iter.Item()
+		if checkTS(start, end, entry.Time) {
+			if !entry.Deleted {
+				fillInInsertBatch(&insertBatch, &entry)
+			} else {
+				fillInDeleteBatch(&deleteBatch, &entry)
+			}
+		}
+	}
+	return nil, nil
 }
 
 func (p *PartitionStateInProgress) HandleDataObjectList(

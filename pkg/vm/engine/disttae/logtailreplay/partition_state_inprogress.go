@@ -260,7 +260,7 @@ func (p *PartitionStateInProgress) dataObject(start, end types.TS, isTombstone b
 		entry := iter.Item()
 		if entry.Appendable {
 			if entry.Appendable {
-				if checkTS(start, end, entry.DeleteTime) {
+				if entry.DeleteTime.GreaterEq(&start) || entry.CreateTime.LessEq(&end) {
 					fillInObjectBatch(&bat, &entry, mp)
 				}
 			}

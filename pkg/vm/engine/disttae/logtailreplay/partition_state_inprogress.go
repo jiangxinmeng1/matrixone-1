@@ -237,7 +237,7 @@ func fillInDeleteBatch(bat **batch.Batch, entry *RowEntry, mp *mpool.MPool) {
 		(*bat).Vecs[2] = vector.NewVec(types.T_TS.ToType())
 	}
 	vector.AppendFixed((*bat).Vecs[0], entry.RowID, false, mp)
-	vector.AppendFixed((*bat).Vecs[1], entry.PrimaryIndexBytes, false, mp)
+	vector.AppendBytes((*bat).Vecs[1], entry.PrimaryIndexBytes, false, mp)
 	vector.AppendFixed((*bat).Vecs[2], entry.Time, false, mp)
 }
 func isCreatedByCN(entry *ObjectEntry) bool {

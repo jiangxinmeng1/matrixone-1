@@ -264,6 +264,8 @@ func (space *tableSpace) prepareApplyObjectStats(stats objectio.ObjectStats) (er
 			return
 		}
 		space.nobj.GetMeta().(*catalog.ObjectEntry).SetSorted()
+		stats.SetSorted()
+		stats.SetCNCreated()
 		err = space.nobj.UpdateStats(stats)
 		if err != nil {
 			return

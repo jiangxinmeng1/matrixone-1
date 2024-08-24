@@ -418,6 +418,7 @@ func HandleMergeEntryInTxn(
 		}
 		createdObjs = append(createdObjs, obj.GetMeta().(*catalog.ObjectEntry))
 		// set stats and sorted property
+		stats.SetSorted()
 		if err = obj.UpdateStats(stats); err != nil {
 			return nil, err
 		}

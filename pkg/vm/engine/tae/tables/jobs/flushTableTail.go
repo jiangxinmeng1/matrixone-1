@@ -731,7 +731,9 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 	}
 
 	// update new status for created blocks
-	err = createdObjectHandle.UpdateStats(writer.Stats())
+	stats := writer.Stats()
+	stats.SetSorted()
+	err = createdObjectHandle.UpdateStats(stats)
 	if err != nil {
 		return
 	}
@@ -840,7 +842,9 @@ func (task *flushTableTailTask) waitFlushAObjForSnapshot(ctx context.Context, su
 		if err = subtask.WaitDone(ictx); err != nil {
 			return
 		}
-		if err = handles[i].UpdateStats(subtask.stat); err != nil {
+		stat := subtask.stat.Clone()
+		stat.SetAppendable()
+		if err = handles[i].UpdateStats(*stat); err != nil {
 			return
 		}
 	}

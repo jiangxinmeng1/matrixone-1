@@ -225,11 +225,11 @@ func checkTS(start, end types.TS, ts types.TS) bool {
 }
 func (p *TailHandler) dataObject(isTombstone bool, mp *mpool.MPool) (ret *TailBatch) {
 	var bat *batch.Batch
-	var iter btree.IterG[ObjectEntry]
+	var iter *btree.IterG[ObjectEntry]
 	if isTombstone {
-		iter = p.tombstoneObjets
+		iter = &p.tombstoneObjets
 	} else {
-		iter = p.dataObjects
+		iter = &p.dataObjects
 	}
 	for iter.Next() {
 		entry := iter.Item()

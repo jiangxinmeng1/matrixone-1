@@ -683,11 +683,6 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 		sel []int64
 	)
 
-	appendFunctions := make([]func(*vector.Vector, *vector.Vector, int64) error, len(bat.Attrs))
-	for i := range bat.Attrs {
-		appendFunctions[i] = vector.GetUnionOneFunction(colTypes[i], mp)
-	}
-
 	if ls.pStateRows.insIter == nil {
 		if ls.memPKFilter.SpecFactory == nil {
 			ls.pStateRows.insIter = ls.pState.NewRowsIter(ls.snapshotTS, nil, false)
@@ -759,10 +754,10 @@ func (ls *LocalDataSource) filterInMemCommittedInserts(
 							true,
 							mp)
 					} else {
-						err = appendFunctions[i](
-							bat.Vecs[i],
+						err = bat.Vecs[i].UnionOne(
 							entry.Batch.Vecs[int(2+seqNums[i])],
 							entry.Offset,
+							mp,
 						)
 					}
 					if err != nil {

@@ -242,7 +242,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			tbl.store.warChecker.Delete(id)
 		}
 	}
-	transferd := &nulls.Nulls{}
+	transferd := nulls.Nulls{}
 	// transfer in memory deletes
 	if tbl.tombstoneTable.tableSpace.node == nil {
 		return
@@ -282,8 +282,17 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			return
 		}
 	}
-	deletes.Deletes = transferd
-	deletes.Compact()
+	if transferd.IsEmpty() {
+		return
+	}
+	for i, attr := range deletes.Attrs {
+		// Skip the rowid column.
+		// The rowid column is always empty in the delete node.
+		if attr == catalog.PhyAddrColumnName {
+			continue
+		}
+		deletes.Vecs[i].CompactByBitmap(&transferd)
+	}
 	return
 }
 

@@ -294,9 +294,6 @@ func BlockDataReadBackup(
 	ts types.TS,
 	fs fileservice.FileService,
 ) (loaded *batch.Batch, sortKey uint16, err error) {
-	if logutil.GetSkip1Logger().Core().Enabled(zap.DebugLevel) {
-		logutil.Debugf("read block %s, columns %v, types %v", info.BlockID.String())
-	}
 	// read block data from storage specified by meta location
 	loaded, sortKey, err = LoadOneBlock(ctx, fs, info.MetaLocation(), objectio.SchemaData)
 	if err != nil {

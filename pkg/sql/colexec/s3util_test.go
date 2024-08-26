@@ -15,6 +15,8 @@ package colexec
 
 import (
 	"context"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"testing"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
@@ -54,4 +56,39 @@ func TestSortKey(t *testing.T) {
 	for i := range cols {
 		require.Equal(t, cols2[i], res[i])
 	}
+}
+
+func TestSetStatsCNCreated(t *testing.T) {
+	proc := testutil.NewProc()
+	s3writer := &S3Writer{}
+	s3writer.SetSortIdx(0)
+	_, err := s3writer.GenerateWriter(proc)
+	require.NoError(t, err)
+
+	bat := batch.NewWithSize(1)
+	bat.Vecs[0] = vector.NewVec(types.T_Rowid.ToType())
+
+	for i := 0; i < 100; i++ {
+		row := types.RandomRowid()
+		err = vector.AppendFixed[types.Rowid](bat.Vecs[0], row, false, proc.GetMPool())
+		require.NoError(t, err)
+	}
+
+	err = s3writer.WriteBlock(bat, objectio.SchemaTombstone)
+	require.NoError(t, err)
+
+	_, stats, err := s3writer.WriteEndBlocks(proc)
+	require.NoError(t, err)
+
+	cnt := 0
+	for _, s := range stats {
+		if !s.IsZero() {
+			cnt++
+			require.True(t, s.GetCNCreated())
+			require.Equal(t, uint32(bat.VectorCount()), s.BlkCnt())
+			require.Equal(t, uint32(bat.Vecs[0].Length()), s.Rows())
+		}
+	}
+
+	require.Equal(t, 1, cnt)
 }

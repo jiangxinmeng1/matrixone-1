@@ -716,5 +716,13 @@ func (w *S3Writer) WriteEndBlocks(proc *process.Process) ([]objectio.BlockInfo, 
 		}
 		blkInfos = append(blkInfos, blkInfo)
 	}
-	return blkInfos, w.writer.GetObjectStats(), err
+
+	stats := w.writer.GetObjectStats()
+	for i := range stats {
+		if !stats[i].IsZero() {
+			stats[i].SetCNCreated()
+		}
+	}
+
+	return blkInfos, stats, err
 }

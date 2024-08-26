@@ -683,6 +683,9 @@ func (h *Handle) HandleWrite(
 			statsVec := containers.ToTNVector(statsCNVec, common.WorkspaceAllocator)
 			for i := 0; i < statsVec.Length(); i++ {
 				s := objectio.ObjectStats(statsVec.Get(i).([]byte))
+				if !s.GetCNCreated() {
+					logutil.Fatal("the `CNCreated` mask not set")
+				}
 				delete(metalocations, s.ObjectName().String())
 			}
 			if len(metalocations) != 0 {

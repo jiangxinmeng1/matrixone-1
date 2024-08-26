@@ -9262,3 +9262,34 @@ func TestTryDeleteByDeltaloc2(t *testing.T) {
 	tae.CheckRowsByScan(rows-1, true)
 	t.Log(tae.Catalog.SimplePPString(3))
 }
+
+func TestMergeBlocks4(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(5, 3)
+	schema.BlockMaxRows = 8
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 10)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	obj := testutil.GetOneBlockMeta(rel)
+	task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{obj}, tae.Runtime, 0, false)
+	assert.NoError(t, err)
+	err = task.OnExec(context.Background())
+	assert.NoError(t, err)
+	txn.SetPrepareCommitFn(func(at txnif.AsyncTxn) error {
+		tae.DeleteAll(true)
+		tae.CompactBlocks(true)
+		t.Log(tae.Catalog.SimplePPString(3))
+		err := txn.GetStore().PreApplyCommit()
+		return err
+	})
+	assert.NoError(t, txn.Commit(context.Background()))
+}

@@ -261,6 +261,9 @@ func NewObjectEntry(
 		CreateNode:  *txnbase.NewTxnMVCCNodeWithTxn(txn),
 		ObjectState: ObjectState_Create_Active,
 	}
+	if state == ES_Appendable {
+		e.ObjectMVCCNode.ObjectStats.SetAppendable()
+	}
 	objectio.SetObjectStatsObjectName(&e.ObjectStats, objectio.BuildObjectNameWithObjectID(id))
 	if dataFactory != nil {
 		e.objData = dataFactory(e)

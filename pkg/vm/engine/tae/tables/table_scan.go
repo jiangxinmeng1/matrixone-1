@@ -75,13 +75,17 @@ func TombstoneRangeScanByObject(
 	it := tableEntry.MakeTombstoneObjectIt()
 	for it.Next() {
 		tombstone := it.Item()
-		skip := tombstone.IsCreatingOrAborted() || tombstone.HasDropCommitted()
-		if skip {
+		if tombstone.IsCreatingOrAborted() {
 			continue
 		}
-		visible := tombstone.IsVisibleInRange(start, end)
-		if !visible {
-			continue
+		if tombstone.IsAppendable() {
+			if tombstone.DeletedAt.Less(&start) || tombstone.CreatedAt.Greater(&end) {
+				continue
+			}
+		} else {
+			if !tombstone.ObjectStats.GetCNCreated() {
+				continue
+			}
 		}
 		if tombstone.HasCommittedPersistedData() {
 			zm := tombstone.GetSortKeyZonemap()

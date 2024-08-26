@@ -28,7 +28,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/perfcounter"
 	txnTrace "github.com/matrixorigin/matrixone/pkg/txn/trace"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/tidwall/btree"
 	"math"
 	"runtime/trace"
@@ -175,11 +174,6 @@ func (p *PartitionStateInProgress) HandleDataObjectList(
 				IsAppendable: objEntry.Appendable,
 			}
 			p.objectIndexByTS.Set(e)
-		}
-
-		//prefetch the object meta
-		if err := blockio.PrefetchMeta(p.service, fs, objEntry.Location()); err != nil {
-			logutil.Errorf("prefetch object meta failed. %v", err)
 		}
 
 		p.dataObjects.Set(objEntry)
@@ -339,11 +333,6 @@ func (p *PartitionStateInProgress) HandleTombstoneObjectList(
 			if !old.DeleteTime.IsEmpty() {
 				continue
 			}
-		}
-
-		//prefetch the object meta
-		if err := blockio.PrefetchMeta(p.service, fs, objEntry.Location()); err != nil {
-			logutil.Errorf("prefetch object meta failed. %v", err)
 		}
 
 		p.tombstoneObjets.Set(objEntry)

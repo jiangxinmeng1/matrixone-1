@@ -108,6 +108,7 @@ func NewFlushTableTailEntry(
 			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
+			time.Sleep(time.Second*2)
 			var err error
 			entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(ctx, entry.txn.GetStartTS(), entry.collectTs)
 			if err != nil {

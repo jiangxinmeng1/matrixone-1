@@ -9282,14 +9282,13 @@ func TestMergeBlocks4(t *testing.T) {
 	obj := testutil.GetOneBlockMeta(rel)
 	task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{obj}, tae.Runtime, 0, false)
 	assert.NoError(t, err)
-	err = task.OnExec(context.Background())
-	assert.NoError(t, err)
-	txn.SetPrepareCommitFn(func(at txnif.AsyncTxn) error {
+	go func() {
+		time.Sleep(time.Second)
 		tae.DeleteAll(true)
 		tae.CompactBlocks(true)
-		t.Log(tae.Catalog.SimplePPString(3))
-		err := txn.GetStore().PreApplyCommit()
-		return err
-	})
+	}()
+	err = task.OnExec(context.Background())
+	assert.NoError(t, err)
+
 	assert.NoError(t, txn.Commit(context.Background()))
 }

@@ -580,7 +580,6 @@ type TombstoneType uint8
 
 const (
 	InvalidTombstoneData TombstoneType = iota
-	TombstoneWithDeltaLoc
 	TombstoneData
 )
 

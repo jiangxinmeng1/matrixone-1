@@ -181,6 +181,7 @@ func TestHandle_HandleCommitPerformanceForS3Load(t *testing.T) {
 		metaLocBat := containers.BuildBatch(attrs, vecTypes, vecOpts)
 		for i := 0; i < 50; i++ {
 			metaLocBat.Vecs[0].Append([]byte(blkMetas[offset+i]), false)
+			stats[offset+i].SetCNCreated()
 			metaLocBat.Vecs[1].Append([]byte(stats[offset+i][:]), false)
 		}
 		offset += 50
@@ -393,6 +394,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	metaLocBat1 := containers.BuildBatch(attrs, vecTypes, vecOpts)
 	metaLocBat1.Vecs[0].Append([]byte(metaLoc1), false)
 	metaLocBat1.Vecs[0].Append([]byte(metaLoc2), false)
+	stats1.SetCNCreated()
 	metaLocBat1.Vecs[1].Append([]byte(stats1[:]), false)
 	metaLocBat1.Vecs[1].Append([]byte(stats1[:]), false)
 	metaLocMoBat1 := containers.ToCNBatch(metaLocBat1)
@@ -408,6 +410,7 @@ func TestHandle_HandlePreCommitWriteS3(t *testing.T) {
 	//add one non-appendable block from S3 into "tbtest" table
 	metaLocBat2 := containers.BuildBatch(attrs, vecTypes, vecOpts)
 	metaLocBat2.Vecs[0].Append([]byte(metaLoc3), false)
+	stats3.SetCNCreated()
 	metaLocBat2.Vecs[1].Append([]byte(stats3[:]), false)
 	metaLocMoBat2 := containers.ToCNBatch(metaLocBat2)
 	addS3BlkEntry2, err := makePBEntry(INSERT, dbTestID,

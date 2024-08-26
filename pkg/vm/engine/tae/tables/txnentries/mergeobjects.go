@@ -26,6 +26,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
+	"github.com/matrixorigin/matrixone/pkg/util/fault"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -85,6 +86,10 @@ func NewMergeObjectsEntry(
 	if !entry.skipTransfer && totalCreatedBlkCnt > 0 {
 		entry.delTbls = make(map[types.Objectid]map[uint16]struct{})
 		entry.collectTs = rt.Now()
+		_, _, ok := fault.TriggerFault("tae: slow transfer deletes")
+		if ok {
+			time.Sleep(time.Second)
+		}
 		var err error
 		// phase 1 transfer
 		entry.transCntBeforeCommit, _, err = entry.collectDelsAndTransfer(ctx, entry.txn.GetStartTS(), entry.collectTs)

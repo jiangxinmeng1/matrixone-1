@@ -26,6 +26,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
+	"github.com/matrixorigin/matrixone/pkg/util/fault"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -108,6 +109,10 @@ func NewFlushTableTailEntry(
 			entry.nextRoundDirties = make(map[*catalog.ObjectEntry]struct{})
 			// collect deletes phase 1
 			entry.collectTs = rt.Now()
+			_, _, ok := fault.TriggerFault("tae: slow transfer deletes")
+			if ok {
+				time.Sleep(time.Second)
+			}
 			var err error
 			entry.transCntBeforeCommit, err = entry.collectDelsAndTransfer(ctx, entry.txn.GetStartTS(), entry.collectTs)
 			if err != nil {

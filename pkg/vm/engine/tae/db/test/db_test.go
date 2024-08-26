@@ -9262,3 +9262,54 @@ func TestTryDeleteByDeltaloc2(t *testing.T) {
 	tae.CheckRowsByScan(rows-1, true)
 	t.Log(tae.Catalog.SimplePPString(3))
 }
+
+func TestMergeBlocks4(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(1, 0)
+	schema.BlockMaxRows = 8
+	schema.ObjectMaxBlocks = 5
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 10)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	obj := testutil.GetOneBlockMeta(rel)
+	task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{obj}, tae.Runtime, 0, false)
+	assert.NoError(t, err)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		fault.Enable()
+		defer fault.Disable()
+		err := fault.AddFaultPoint(context.Background(), "tae: slow transfer deletes", ":::", "echo", 0, "mock flush timeout")
+		assert.NoError(t, err)
+		defer func() {
+			err := fault.RemoveFaultPoint(context.Background(), "tae: slow transfer deletes")
+			assert.NoError(t, err)
+		}()
+		tae.DeleteAll(true)
+		tae.CompactBlocks(true)
+		time.Sleep(time.Millisecond * 500)
+		txn, rel := tae.GetRelation()
+		obj := testutil.GetOneTombstoneMeta(rel)
+		task, err := jobs.NewMergeObjectsTask(nil, txn, []*catalog.ObjectEntry{obj}, tae.Runtime, 0, true)
+		assert.NoError(t, err)
+		err = task.OnExec(context.Background())
+		assert.NoError(t, err)
+		assert.NoError(t, txn.Commit(context.Background()))
+		t.Log(tae.Catalog.SimplePPString(3))
+	}()
+	err = task.OnExec(context.Background())
+	assert.NoError(t, err)
+	wg.Wait()
+
+	assert.NoError(t, txn.Commit(context.Background()))
+	tae.CheckRowsByScan(0, true)
+}

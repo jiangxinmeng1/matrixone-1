@@ -139,7 +139,7 @@ func (entry *ObjectEntry) GetDropEntry(txn txnif.TxnReader) (dropped *ObjectEntr
 func (entry *ObjectEntry) GetUpdateEntry(txn txnif.TxnReader, stats *objectio.ObjectStats) (dropped *ObjectEntry, isNewNode bool) {
 	dropped = entry.Clone()
 	node := dropped.GetLastMVCCNode()
-	dropped.ObjectStats = *stats
+	objectio.SetObjectStats(&dropped.ObjectStats, stats)
 	dropped.GetObjectData().UpdateMeta(dropped)
 	if node.Txn != nil && txn.GetID() == node.Txn.GetID() {
 		return
@@ -242,12 +242,15 @@ func (entry *ObjectEntry) StatsString(zonemapKind common.ZonemapPrintKind) strin
 
 func NewObjectEntry(
 	table *TableEntry,
-	id *objectio.ObjectId,
 	txn txnif.AsyncTxn,
-	state EntryState,
+	stats objectio.ObjectStats,
 	dataFactory ObjectDataFactory,
 	isTombstone bool,
 ) *ObjectEntry {
+	state := ES_Appendable
+	if !stats.GetAppendable() {
+		state = ES_NotAppendable
+	}
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
@@ -260,39 +263,10 @@ func NewObjectEntry(
 		},
 		CreateNode:  *txnbase.NewTxnMVCCNodeWithTxn(txn),
 		ObjectState: ObjectState_Create_Active,
-	}
-	if state == ES_Appendable {
-		e.ObjectMVCCNode.ObjectStats.SetAppendable()
-	}
-	objectio.SetObjectStatsObjectName(&e.ObjectStats, objectio.BuildObjectNameWithObjectID(id))
-	if dataFactory != nil {
-		e.objData = dataFactory(e)
-	}
-	return e
-}
-
-func NewObjectEntryByMetaLocation(
-	table *TableEntry,
-	id *objectio.ObjectId,
-	start, end types.TS,
-	state EntryState,
-	metalocation objectio.Location,
-	dataFactory ObjectDataFactory,
-) *ObjectEntry {
-	e := &ObjectEntry{
-		table: table,
-		ObjectNode: ObjectNode{
-			state:    state,
-			sorted:   state == ES_NotAppendable,
-			SortHint: table.GetDB().catalog.NextObject(),
+		ObjectMVCCNode: ObjectMVCCNode{
+			ObjectStats: stats,
 		},
-		EntryMVCCNode: EntryMVCCNode{
-			CreatedAt: end,
-		},
-		CreateNode:  *txnbase.NewTxnMVCCNodeWithStartEnd(start, end),
-		ObjectState: ObjectState_Create_ApplyCommit,
 	}
-	objectio.SetObjectStatsObjectName(&e.ObjectStats, objectio.BuildObjectNameWithObjectID(id))
 	if dataFactory != nil {
 		e.objData = dataFactory(e)
 	}
@@ -305,6 +279,7 @@ func NewReplayObjectEntry() *ObjectEntry {
 }
 
 func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *ObjectEntry {
+	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
@@ -317,8 +292,10 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 		},
 		CreateNode:  *txnbase.NewTxnMVCCNodeWithTS(ts),
 		ObjectState: ObjectState_Create_ApplyCommit,
+		ObjectMVCCNode: ObjectMVCCNode{
+			ObjectStats: *stats,
+		},
 	}
-	objectio.SetObjectStatsObjectName(&e.ObjectStats, objectio.BuildObjectNameWithObjectID(objectio.NewObjectid()))
 	return e
 }
 
@@ -434,7 +411,8 @@ func (entry *ObjectEntry) getBlockCntFromStats() (blkCnt uint32) {
 }
 
 func (entry *ObjectEntry) IsAppendable() bool {
-	return entry.state == ES_Appendable
+	return entry.ObjectStats.GetAppendable()
+	// return entry.state == ES_Appendable
 }
 
 func (entry *ObjectEntry) SetSorted() {

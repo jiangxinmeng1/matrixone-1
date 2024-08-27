@@ -412,16 +412,16 @@ func HandleMergeEntryInTxn(
 	for _, stats := range entry.CreatedObjs {
 		stats := objectio.ObjectStats(stats)
 		objID := stats.ObjectName().ObjectId()
-		obj, err := rel.CreateNonAppendableObject(isTombstone, new(objectio.CreateObjOpt).WithId(objID))
+		objstats := objectio.NewObjectStatsWithObjectID(objID, false, true, false)
+		objectio.SetObjectStats(objstats, &stats)
+		obj, err := rel.CreateNonAppendableObject(
+			isTombstone,
+			new(objectio.CreateObjOpt).WithObjectStats(objstats).WithIsTombstone(isTombstone))
 		if err != nil {
 			return nil, err
 		}
 		createdObjs = append(createdObjs, obj.GetMeta().(*catalog.ObjectEntry))
 		// set stats and sorted property
-		stats.SetSorted()
-		if err = obj.UpdateStats(stats); err != nil {
-			return nil, err
-		}
 		objEntry := obj.GetMeta().(*catalog.ObjectEntry)
 		objEntry.SetSorted()
 	}

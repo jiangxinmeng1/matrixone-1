@@ -368,7 +368,7 @@ func (entry *ObjectEntry) StringWithLevel(level common.PPLevel) string {
 		nameStr = "TOMBSTONE"
 	}
 	state := "A"
-	if entry.IsAppendable() {
+	if !entry.IsAppendable() {
 		state = "NA"
 	}
 	sorted := "S"

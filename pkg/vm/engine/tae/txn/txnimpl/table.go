@@ -494,7 +494,8 @@ func (tbl *txnTable) CreateObject(isTombstone bool) (obj handle.Object, err erro
 	perfcounter.Update(tbl.store.ctx, func(counter *perfcounter.CounterSet) {
 		counter.TAE.Object.Create.Add(1)
 	})
-	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
+	sorted := isTombstone
+	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, sorted, false)
 	return tbl.createObject(&objectio.CreateObjOpt{Stats: stats, IsTombstone: isTombstone})
 }
 

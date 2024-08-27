@@ -187,8 +187,7 @@ func (e *ObjectMVCCNode) IsEmpty() bool {
 
 func (e *ObjectMVCCNode) AppendTuple(sid *types.Objectid, batch *containers.Batch, empty bool) {
 	if empty {
-		stats := objectio.NewObjectStats()
-		objectio.SetObjectStatsObjectName(stats, objectio.BuildObjectNameWithObjectID(sid)) // when replay, sid is get from object name
+		stats := objectio.NewObjectStatsWithObjectID(sid, e.GetAppendable(), e.GetSorted(), e.GetCNCreated()) // when replay, sid is get from object name
 		batch.GetVectorByName(ObjectAttr_ObjectStats).Append(stats[:], false)
 		return
 	}

@@ -446,7 +446,6 @@ func (catalog *Catalog) onReplayCheckpointObject(
 		object := NewReplayObjectEntry()
 		object.table = rel
 		object.ObjectNode = ObjectNode{
-			state:       state,
 			sorted:      state == ES_NotAppendable,
 			SortHint:    catalog.NextObject(),
 			IsTombstone: isTombstone,

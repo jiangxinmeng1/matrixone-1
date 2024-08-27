@@ -207,7 +207,6 @@ func ReadObjectInfoTuple(bat *containers.Batch, row int) (e *ObjectMVCCNode) {
 }
 
 type ObjectNode struct {
-	state    EntryState
 	IsLocal  bool   // this object is hold by a localobject
 	SortHint uint64 // sort object by create time, make iteration on object determined
 	sorted   bool   // deprecated
@@ -221,11 +220,6 @@ const (
 )
 
 func (node *ObjectNode) ReadFrom(r io.Reader) (n int64, err error) {
-	_, err = r.Read(types.EncodeInt8((*int8)(&node.state)))
-	if err != nil {
-		return
-	}
-	n += 1
 	_, err = r.Read(types.EncodeBool(&node.IsLocal))
 	if err != nil {
 		return
@@ -250,11 +244,6 @@ func (node *ObjectNode) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 func (node *ObjectNode) WriteTo(w io.Writer) (n int64, err error) {
-	_, err = w.Write(types.EncodeInt8((*int8)(&node.state)))
-	if err != nil {
-		return
-	}
-	n += 1
 	_, err = w.Write(types.EncodeBool(&node.IsLocal))
 	if err != nil {
 		return

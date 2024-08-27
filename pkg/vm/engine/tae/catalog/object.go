@@ -106,7 +106,6 @@ func (entry *ObjectEntry) Clone() *ObjectEntry {
 		DeleteNode:    entry.DeleteNode,
 		table:         entry.table,
 		ObjectNode: ObjectNode{
-			state:       entry.state,
 			IsLocal:     entry.IsLocal,
 			SortHint:    entry.SortHint,
 			sorted:      entry.sorted,
@@ -247,14 +246,9 @@ func NewObjectEntry(
 	dataFactory ObjectDataFactory,
 	isTombstone bool,
 ) *ObjectEntry {
-	state := ES_Appendable
-	if !stats.GetAppendable() {
-		state = ES_NotAppendable
-	}
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
-			state:       state,
 			SortHint:    table.GetDB().catalog.NextObject(),
 			IsTombstone: isTombstone,
 		},
@@ -283,7 +277,6 @@ func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *Obje
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{
-			state:       ES_Appendable,
 			IsLocal:     true,
 			IsTombstone: isTombstone,
 		},
@@ -361,7 +354,11 @@ func (entry *ObjectEntry) PPString(level common.PPLevel, depth int, prefix strin
 
 func (entry *ObjectEntry) Repr() string {
 	id := entry.AsCommonID()
-	return fmt.Sprintf("[%s%s]OBJ[%s]", entry.state.Repr(), entry.ObjectNode.String(), id.String())
+	state := "A"
+	if !entry.IsAppendable() {
+		state = "NA"
+	}
+	return fmt.Sprintf("[%s%s]OBJ[%s]", state, entry.ObjectNode.String(), id.String())
 }
 
 func (entry *ObjectEntry) String() string {
@@ -373,11 +370,15 @@ func (entry *ObjectEntry) StringWithLevel(level common.PPLevel) string {
 	if entry.IsTombstone {
 		nameStr = "TOMBSTONE"
 	}
+	state := "A"
+	if entry.IsAppendable() {
+		state = "NA"
+	}
 	if level <= common.PPL1 {
 		return fmt.Sprintf("[%s-%s]%v[%s]%v",
-			entry.state.Repr(), entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String())
+			state, entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String())
 	}
-	s := fmt.Sprintf("[%s-%s]%s[%s]%v%v", entry.state.Repr(), entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String(), entry.ObjectMVCCNode.String())
+	s := fmt.Sprintf("[%s-%s]%s[%s]%v%v", state, entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String(), entry.ObjectMVCCNode.String())
 	if !entry.DeleteNode.IsEmpty() {
 		s = fmt.Sprintf("%s -> %s", s, entry.DeleteNode.String())
 	}

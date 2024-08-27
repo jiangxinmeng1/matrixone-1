@@ -209,7 +209,6 @@ func ReadObjectInfoTuple(bat *containers.Batch, row int) (e *ObjectMVCCNode) {
 type ObjectNode struct {
 	IsLocal  bool   // this object is hold by a localobject
 	SortHint uint64 // sort object by create time, make iteration on object determined
-	sorted   bool   // deprecated
 
 	// for tombstone
 	IsTombstone bool
@@ -230,11 +229,6 @@ func (node *ObjectNode) ReadFrom(r io.Reader) (n int64, err error) {
 		return
 	}
 	n += 8
-	_, err = r.Read(types.EncodeBool(&node.sorted))
-	if err != nil {
-		return
-	}
-	n += 1
 	_, err = r.Read(types.EncodeBool(&node.IsTombstone))
 	if err != nil {
 		return
@@ -254,24 +248,12 @@ func (node *ObjectNode) WriteTo(w io.Writer) (n int64, err error) {
 		return
 	}
 	n += 8
-	_, err = w.Write(types.EncodeBool(&node.sorted))
-	if err != nil {
-		return
-	}
-	n += 1
 	_, err = w.Write(types.EncodeBool(&node.IsTombstone))
 	if err != nil {
 		return
 	}
 	n += 1
 	return
-}
-func (node *ObjectNode) String() string {
-	sorted := "US"
-	if node.sorted {
-		sorted = "S"
-	}
-	return fmt.Sprintf("%s/%d", sorted, node.SortHint)
 }
 
 type BlockNode struct {

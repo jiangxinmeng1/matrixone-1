@@ -716,8 +716,12 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		task.createdMergedObjectName = name.String()
 	}
 
+	sorted := false
+	if task.rel.GetMeta().(*catalog.TableEntry).GetLastestSchema(isTombstone).HasSortKey() {
+		sorted = true
+	}
 	// update new status for created blocks
-	stats := objectio.NewObjectStatsWithObjectID(objID, false, true, false)
+	stats := objectio.NewObjectStatsWithObjectID(objID, false, sorted, false)
 	writerStats := writer.Stats()
 	objectio.SetObjectStats(stats, &writerStats)
 	// create new object to hold merged blocks
@@ -737,9 +741,6 @@ func (task *flushTableTailTask) mergeAObjs(ctx context.Context, isTombstone bool
 		}
 		createdObjectHandle = task.createdObjHandles
 	}
-	toObjectEntry := createdObjectHandle.GetMeta().(*catalog.ObjectEntry)
-	toObjectEntry.SetSorted()
-	stats.SetSorted()
 	err = createdObjectHandle.GetMeta().(*catalog.ObjectEntry).GetObjectData().Init()
 	if err != nil {
 		return

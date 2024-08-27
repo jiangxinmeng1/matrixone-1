@@ -108,7 +108,6 @@ func (entry *ObjectEntry) Clone() *ObjectEntry {
 		ObjectNode: ObjectNode{
 			IsLocal:     entry.IsLocal,
 			SortHint:    entry.SortHint,
-			sorted:      entry.sorted,
 			IsTombstone: entry.IsTombstone,
 		},
 		objData:     entry.objData,
@@ -148,12 +147,6 @@ func (entry *ObjectEntry) GetUpdateEntry(txn txnif.TxnReader, stats *objectio.Ob
 	return
 }
 
-func (entry *ObjectEntry) GetSortedEntry() (sorted *ObjectEntry) {
-	sorted = entry.Clone()
-	sorted.sorted = true
-	sorted.GetObjectData().UpdateMeta(sorted)
-	return
-}
 func (entry *ObjectEntry) DeleteBefore(ts types.TS) bool {
 	deleteTS := entry.GetDeleteAt()
 	if deleteTS.IsEmpty() {
@@ -358,7 +351,11 @@ func (entry *ObjectEntry) Repr() string {
 	if !entry.IsAppendable() {
 		state = "NA"
 	}
-	return fmt.Sprintf("[%s%s]OBJ[%s]", state, entry.ObjectNode.String(), id.String())
+	sorted := "S"
+	if !entry.IsSorted() {
+		sorted = "US"
+	}
+	return fmt.Sprintf("[%s%s%d]OBJ[%s]", state, sorted, entry.ObjectNode.SortHint, id.String())
 }
 
 func (entry *ObjectEntry) String() string {
@@ -374,11 +371,15 @@ func (entry *ObjectEntry) StringWithLevel(level common.PPLevel) string {
 	if entry.IsAppendable() {
 		state = "NA"
 	}
-	if level <= common.PPL1 {
-		return fmt.Sprintf("[%s-%s]%v[%s]%v",
-			state, entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String())
+	sorted := "S"
+	if !entry.IsSorted() {
+		sorted = "US"
 	}
-	s := fmt.Sprintf("[%s-%s]%s[%s]%v%v", state, entry.ObjectNode.String(), nameStr, entry.ID().String(), entry.EntryMVCCNode.String(), entry.ObjectMVCCNode.String())
+	if level <= common.PPL1 {
+		return fmt.Sprintf("[%s-%s%d]%v[%s]%v",
+			state, sorted, entry.ObjectNode.SortHint, nameStr, entry.ID().String(), entry.EntryMVCCNode.String())
+	}
+	s := fmt.Sprintf("[%s-%s%d]%s[%s]%v%v", state, sorted, entry.ObjectNode.SortHint, nameStr, entry.ID().String(), entry.EntryMVCCNode.String(), entry.ObjectMVCCNode.String())
 	if !entry.DeleteNode.IsEmpty() {
 		s = fmt.Sprintf("%s -> %s", s, entry.DeleteNode.String())
 	}
@@ -416,12 +417,8 @@ func (entry *ObjectEntry) IsAppendable() bool {
 	// return entry.state == ES_Appendable
 }
 
-func (entry *ObjectEntry) SetSorted() {
-	entry.table.getObjectList(entry.IsTombstone).SetSorted(entry.SortHint)
-}
-
 func (entry *ObjectEntry) IsSorted() bool {
-	return entry.sorted
+	return entry.ObjectStats.GetSorted()
 }
 
 func (entry *ObjectEntry) GetTable() *TableEntry {

@@ -408,11 +408,16 @@ func HandleMergeEntryInTxn(
 		}
 	}
 
+	sorted := false
+	if rel.GetMeta().(*catalog.TableEntry).GetLastestSchema(isTombstone).HasSortKey() {
+		sorted = true
+	}
 	// construct new object,
 	for _, stats := range entry.CreatedObjs {
 		stats := objectio.ObjectStats(stats)
 		objID := stats.ObjectName().ObjectId()
-		objstats := objectio.NewObjectStatsWithObjectID(objID, false, true, false)
+		// set stats and sorted property
+		objstats := objectio.NewObjectStatsWithObjectID(objID, false, sorted, false)
 		objectio.SetObjectStats(objstats, &stats)
 		obj, err := rel.CreateNonAppendableObject(
 			isTombstone,
@@ -421,9 +426,6 @@ func HandleMergeEntryInTxn(
 			return nil, err
 		}
 		createdObjs = append(createdObjs, obj.GetMeta().(*catalog.ObjectEntry))
-		// set stats and sorted property
-		objEntry := obj.GetMeta().(*catalog.ObjectEntry)
-		objEntry.SetSorted()
 	}
 
 	txnEntry, err := txnentries.NewMergeObjectsEntry(

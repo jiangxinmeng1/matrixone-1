@@ -1450,7 +1450,7 @@ func (tbl *txnTable) TryDeleteByDeltaloc(id *common.ID, deltaloc objectio.Locati
 }
 
 func (tbl *txnTable) deltaloc2ObjectStat(loc objectio.Location, fs fileservice.FileService) objectio.ObjectStats {
-	stats := *objectio.NewObjectStatsWithObjectID(loc.Name().ObjectId(), false, false, true)
+	stats := *objectio.NewObjectStatsWithObjectID(loc.Name().ObjectId(), false, true, true)
 	objMeta, err := objectio.FastLoadObjectMeta(context.Background(), &loc, false, fs)
 	if err != nil {
 		panic(err)

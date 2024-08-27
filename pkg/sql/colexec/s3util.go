@@ -721,6 +721,9 @@ func (w *S3Writer) WriteEndBlocks(proc *process.Process) ([]objectio.BlockInfo, 
 	for i := range stats {
 		if !stats[i].IsZero() {
 			stats[i].SetCNCreated()
+			if w.sortIndex != -1 {
+				stats[i].SetSorted()
+			}
 		}
 	}
 

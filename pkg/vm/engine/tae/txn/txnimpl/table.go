@@ -179,6 +179,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 	}
 	id := tbl.entry.AsCommonID()
 	// transfer deltaloc
+	t0 := time.Now()
 	for _, stats := range tbl.tombstoneTable.tableSpace.stats {
 		hasConflict := false
 		for blkID := range stats.BlkCnt() {
@@ -246,6 +247,7 @@ func (tbl *txnTable) TransferDeletes(ts types.TS, phase string) (err error) {
 			tbl.store.warChecker.Delete(id)
 		}
 	}
+	logutil.Infof("lalala transfer takes %v", time.Since(t0))
 	transferd := nulls.Nulls{}
 	// transfer in memory deletes
 	if tbl.tombstoneTable.tableSpace.node == nil {

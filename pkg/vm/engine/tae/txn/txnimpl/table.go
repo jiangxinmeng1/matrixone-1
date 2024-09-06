@@ -861,10 +861,12 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		pkVec.Close()
 		return err
 	}
+	t0 := time.Now()
 	if err = tbl.DoPrecommitDedupByPK(pkVec, zm, isTombstone); err != nil {
 		pkVec.Close()
 		return err
 	}
+	logutil.Infof("txn %x dedup takes %v", tbl.store.txn.GetID(), time.Since(t0))
 	pkVec.Close()
 	return
 }

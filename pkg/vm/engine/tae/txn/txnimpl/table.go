@@ -98,9 +98,10 @@ type txnTable struct {
 	txnEntries  *txnEntries
 	csnStart    uint32
 
-	dataTable      *baseTable
-	tombstoneTable *baseTable
-	transferedTS   types.TS
+	dataTable           *baseTable
+	tombstoneTable      *baseTable
+	transferedTS        types.TS
+	rangeDeleteDuration time.Duration
 
 	idx int
 }
@@ -866,7 +867,7 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		pkVec.Close()
 		return err
 	}
-	logutil.Infof("txn %x dedup takes %v", tbl.store.txn.GetID(), time.Since(t0))
+	logutil.Infof("txn %x dedup takes %v, range delete %v", tbl.store.txn.GetID(), time.Since(t0), tbl.rangeDeleteDuration)
 	pkVec.Close()
 	return
 }
@@ -1293,7 +1294,9 @@ func (tbl *txnTable) RangeDelete(
 	end uint32,
 	pk containers.Vector,
 	dt handle.DeleteType) (err error) {
+	t0 := time.Now()
 	defer func() {
+		tbl.rangeDeleteDuration += time.Since(t0)
 		if err == nil {
 			return
 		}

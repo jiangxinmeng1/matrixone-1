@@ -98,10 +98,15 @@ type txnTable struct {
 	txnEntries  *txnEntries
 	csnStart    uint32
 
-	dataTable           *baseTable
-	tombstoneTable      *baseTable
-	transferedTS        types.TS
+	dataTable      *baseTable
+	tombstoneTable *baseTable
+	transferedTS   types.TS
+
 	rangeDeleteDuration time.Duration
+	rdCreateBatch       time.Duration
+	rdDedup             time.Duration
+	rdApply             time.Duration
+	rdCache             time.Duration
 
 	idx int
 }
@@ -867,7 +872,8 @@ func (tbl *txnTable) PrePrepareDedup(ctx context.Context, isTombstone bool) (err
 		pkVec.Close()
 		return err
 	}
-	logutil.Infof("txn %x dedup takes %v, range delete %v", tbl.store.txn.GetID(), time.Since(t0), tbl.rangeDeleteDuration)
+	logutil.Infof("txn %x dedup takes %v, range delete %v, create batch %v, dedup %v, apply %v, cache %v",
+		tbl.store.txn.GetID(), time.Since(t0), tbl.rangeDeleteDuration, tbl.rdCreateBatch, tbl.rdDedup, tbl.rdApply, tbl.rdCache)
 	pkVec.Close()
 	return
 }
@@ -1332,7 +1338,9 @@ func (tbl *txnTable) RangeDelete(
 			}
 		}
 	}()
+	tCreateBatch := time.Now()
 	deleteBatch := tbl.createTombstoneBatch(id, start, end, pk)
+	tbl.rdCreateBatch += time.Since(tCreateBatch)
 	defer func() {
 		for _, attr := range deleteBatch.Attrs {
 			if attr == catalog.AttrPKVal {
@@ -1350,13 +1358,16 @@ func (tbl *txnTable) RangeDelete(
 	if tbl.tombstoneTable == nil {
 		tbl.tombstoneTable = newBaseTable(tbl.entry.GetLastestSchema(true), true, tbl)
 	}
+	tDedup := time.Now
 	err = tbl.dedup(tbl.store.ctx, deleteBatch.GetVectorByName(catalog.AttrRowID), true)
+	tbl.rdDedup += time.Since(tDedup())
 	if err != nil {
 		return
 	}
 	if tbl.tombstoneTable.tableSpace == nil {
 		tbl.tombstoneTable.tableSpace = newTableSpace(tbl, true)
 	}
+	tApply := time.Now()
 	_, err = tbl.tombstoneTable.tableSpace.Append(deleteBatch)
 	if err != nil {
 		return
@@ -1369,6 +1380,8 @@ func (tbl *txnTable) RangeDelete(
 			tbl.tombstoneTable.tableSpace.prepareApplyANode(anode, uint32(startOffset))
 		}
 	}
+	tbl.rdApply += time.Since(tApply)
+	tCache := time.Now()
 	obj, err := tbl.store.warChecker.CacheGet(
 		tbl.entry.GetDB().ID,
 		id.TableID, id.ObjectID(),
@@ -1377,6 +1390,7 @@ func (tbl *txnTable) RangeDelete(
 		return
 	}
 	tbl.store.warChecker.Insert(obj)
+	tbl.rdCache += time.Since(tCache)
 	return
 }
 func (tbl *txnTable) contains(

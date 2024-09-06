@@ -222,6 +222,15 @@ func (reader *tableReader) readTableWithTxn(
 		}
 
 		insertData, deleteData, curHint, err = changes.Next(ctx, reader.mp)
+		dataStr := "nil"
+		if insertData != nil {
+			dataStr = fmt.Sprintf("%d", insertData.Vecs[0].Length())
+		}
+		deleteStr := "nil"
+		if deleteData != nil {
+			deleteStr = fmt.Sprintf("%d", deleteData.Vecs[0].Length())
+		}
+		logutil.Infof("lalala from %v, to %v, insert %d, delete %d", fromTs.ToString(), toTs.ToString(), dataStr, deleteStr)
 		if err != nil {
 			return
 		}

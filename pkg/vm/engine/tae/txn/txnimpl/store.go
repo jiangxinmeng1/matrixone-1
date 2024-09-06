@@ -199,6 +199,7 @@ func (store *txnStore) EndTrace() {
 }
 
 func (store *txnStore) TriggerTrace(state uint8) {
+	logutil.Infof("lalala txn %x, state %d, time %v", store.txn.GetID(), state, time.Now())
 	if store.tracer == nil {
 		return
 	}

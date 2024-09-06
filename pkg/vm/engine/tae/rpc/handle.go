@@ -771,10 +771,11 @@ func (h *Handle) HandleWrite(
 		)
 
 		for _, stats := range req.TombstoneStats {
+			logutil.Infof("misuxi delete tbl %v txn %x, stats %v", req.TableName, txn.GetID(), stats.String())
 			id := tb.GetMeta().(*catalog.TableEntry).AsCommonID()
 
 			if ok, err = tb.TryDeleteByStats(id, stats); err != nil {
-				logutil.Errorf("try delete by stats faild: %s, %v", stats.String(), err)
+				logutil.Errorf("try delete by stats faild: %s, %v, txn %x", stats.String(), err, txn.GetID())
 				return err
 			} else if ok {
 				continue
@@ -813,6 +814,7 @@ func (h *Handle) HandleWrite(
 	if len(req.Batch.Vecs) != 2 {
 		panic(fmt.Sprintf("req.Batch.Vecs length is %d, should be 2", len(req.Batch.Vecs)))
 	}
+	logutil.Infof("misuxi delete tbl %v txn %x, in memory batch length %d", req.TableName, txn.GetID(), req.Batch.Vecs[0].Length())
 	rowIDVec := containers.ToTNVector(req.Batch.GetVector(0), common.WorkspaceAllocator)
 	defer rowIDVec.Close()
 	pkVec := containers.ToTNVector(req.Batch.GetVector(1), common.WorkspaceAllocator)

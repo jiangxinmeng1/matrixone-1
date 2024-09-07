@@ -7624,7 +7624,7 @@ func TestDedupSnapshot3(t *testing.T) {
 	defer tae.Close()
 
 	schema := catalog.MockSchemaAll(13, 3)
-	schema.BlockMaxRows = 10
+	schema.BlockMaxRows = 2
 	schema.ObjectMaxBlocks = 3
 	tae.BindSchema(schema)
 	testutil.CreateRelation(t, tae.DB, "db", schema, true)

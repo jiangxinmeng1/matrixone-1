@@ -101,15 +101,12 @@ type txnTable struct {
 	dataTable      *baseTable
 	tombstoneTable *baseTable
 	transferedTS   types.TS
-<<<<<<< HEAD
 
 	rangeDeleteDuration time.Duration
 	rdCreateBatch       time.Duration
 	rdDedup             time.Duration
 	rdApply             time.Duration
 	rdCache             time.Duration
-=======
->>>>>>> update_range_delete
 
 	idx int
 }
@@ -1324,6 +1321,7 @@ func (tbl *txnTable) DeleteByPhyAddrKeys(
 	pk containers.Vector,
 	dt handle.DeleteType) (err error) {
 	rowIDStr := rowIDVec.PPString(1)
+	t0 := time.Now()
 	defer func() {
 		tbl.rangeDeleteDuration += time.Since(t0)
 		if err == nil {

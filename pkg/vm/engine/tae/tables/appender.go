@@ -15,6 +15,7 @@
 package tables
 
 import (
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -113,6 +114,9 @@ func (appender *objectAppender) ApplyAppend(
 	appender.obj.Lock()
 	defer appender.obj.Unlock()
 	from, err = node.ApplyAppendLocked(bat, txn)
+
+	pk := bat.Vecs[node.writeSchema.GetPrimaryKey().Idx].Get(0)
+	logutil.Infof("lalala append %v, txn %v, %v", pk, txn.GetStartTS().ToString(), txn.GetCommitTS().ToString())
 
 	schema := node.writeSchema
 	for _, colDef := range schema.ColDefs {

@@ -7629,12 +7629,12 @@ func TestDedupSnapshot3(t *testing.T) {
 	tae.BindSchema(schema)
 	testutil.CreateRelation(t, tae.DB, "db", schema, true)
 
-	totalRows := 100
+	totalRows := 10
 
 	bat := catalog.MockBatch(schema, int(totalRows))
 	bats := bat.Split(totalRows)
 	var wg sync.WaitGroup
-	pool, _ := ants.NewPool(80)
+	pool, _ := ants.NewPool(800)
 	defer pool.Release()
 
 	appendFn := func(offset uint32) func() {

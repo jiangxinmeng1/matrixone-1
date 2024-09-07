@@ -816,7 +816,6 @@ func (h *Handle) HandleWrite(
 	}
 	logutil.Infof("misuxi delete tbl %v txn %x, in memory batch length %d", req.TableName, txn.GetID(), req.Batch.Vecs[0].Length())
 	rowIDVec := containers.ToTNVector(req.Batch.GetVector(0), common.WorkspaceAllocator)
-	defer rowIDVec.Close()
 	pkVec := containers.ToTNVector(req.Batch.GetVector(1), common.WorkspaceAllocator)
 	//defer pkVec.Close()
 	// TODO: debug for #13342, remove me later

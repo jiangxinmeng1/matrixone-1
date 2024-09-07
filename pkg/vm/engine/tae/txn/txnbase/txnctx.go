@@ -126,6 +126,7 @@ func (ctx *TxnCtx) GetID() string             { return ctx.ID }
 func (ctx *TxnCtx) HasSnapshotLag() bool      { return ctx.SnapshotTS.Less(&ctx.StartTS) }
 func (ctx *TxnCtx) GetSnapshotTS() types.TS   { return ctx.SnapshotTS }
 func (ctx *TxnCtx) SetSnapshotTS(ts types.TS) { ctx.SnapshotTS = ts }
+func (ctx *TxnCtx) SetStartTS(ts types.TS) { ctx.StartTS = ts }
 func (ctx *TxnCtx) GetStartTS() types.TS      { return ctx.StartTS }
 func (ctx *TxnCtx) GetCommitTS() types.TS {
 	ctx.RLock()

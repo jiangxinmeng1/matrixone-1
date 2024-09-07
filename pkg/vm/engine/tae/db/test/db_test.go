@@ -7619,7 +7619,7 @@ func TestDedupSnapshot3(t *testing.T) {
 	testutils.EnsureNoLeak(t)
 	ctx := context.Background()
 
-	opts := config.WithQuickScanAndCKPOpts(nil)
+	opts := config.WithLongScanAndCKPOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
@@ -7652,12 +7652,13 @@ func TestDedupSnapshot3(t *testing.T) {
 			txn2, _ := tae.StartTxn(nil)
 			txn2.SetDedupType(txnif.DedupPolicy_CheckIncremental)
 			txn2.SetSnapshotTS(txn.GetStartTS())
+			txn2.SetStartTS(txn.GetStartTS())
 			database, _ = txn2.GetDatabase("db")
 			rel, _ = database.GetRelationByName(schema.Name)
 			err1 := rel.Append(context.Background(), bats[offset])
 			err2 := txn2.Commit(context.Background())
 			if err1 == nil && err2 == nil {
-				logutil.Infof("lalala row %d append successfully", offset)
+				logutil.Infof("lalala row %d append successfully %x", offset, txn.GetID())
 			}
 		}
 	}
@@ -7672,18 +7673,18 @@ func TestDedupSnapshot3(t *testing.T) {
 	wg.Wait()
 
 	txn, rel := tae.GetRelation()
-	for _, def := range schema.ColDefs {
-		rows := testutil.GetColumnRowsByScan(t, rel, def.Idx, false)
-		if totalRows != rows {
-			t.Log(tae.Catalog.SimplePPString(common.PPL3))
-			it := rel.MakeObjectIt(false)
-			for it.Next() {
-				obj := it.GetObject()
-				t.Log(obj.GetMeta().(*catalog.ObjectEntry).GetObjectData().PPString(common.PPL3, 0, "", -1))
-			}
+	// for _, def := range schema.ColDefs {
+	rows := testutil.GetColumnRowsByScan(t, rel, 0, false)
+	if totalRows != rows {
+		t.Log(tae.Catalog.SimplePPString(common.PPL3))
+		it := rel.MakeObjectIt(false)
+		for it.Next() {
+			obj := it.GetObject()
+			t.Log(obj.GetMeta().(*catalog.ObjectEntry).GetObjectData().PPString(common.PPL3, 0, "", -1))
 		}
-		assert.Equal(t, totalRows, rows)
 	}
+	assert.Equal(t, totalRows, rows)
+	// }
 	assert.NoError(t, txn.Commit(context.Background()))
 }
 

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
-	"go.uber.org/zap"
+	// "go.uber.org/zap"
 
 	"github.com/RoaringBitmap/roaring"
 
@@ -718,7 +718,7 @@ func (tbl *txnTable) GetByFilter(
 	pks := tbl.store.rt.VectorPool.Small.GetVector(pkType)
 	defer pks.Close()
 	pks.Append(filter.Val, false)
-	rowIDs, err := tbl.dataTable.getRowsByPK(ctx, pks, false, false)
+	_, rowIDs, err := tbl.dataTable.getRowsByPK(ctx, pks, false, false)
 	if err != nil && !moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict) {
 		return
 	}
@@ -878,7 +878,7 @@ func (tbl *txnTable) DedupSnapByPK(
 ) (err error) {
 	r := trace.StartRegion(ctx, "DedupSnapByPK")
 	defer r.End()
-	rowIDs, err := tbl.getBaseTable(isTombstone).getRowsByPK(ctx, keys, dedupAfterSnapshotTS, true)
+	str, rowIDs, err := tbl.getBaseTable(isTombstone).getRowsByPK(ctx, keys, dedupAfterSnapshotTS, true)
 	if err != nil {
 		return
 	}
@@ -892,15 +892,18 @@ func (tbl *txnTable) DedupSnapByPK(
 	for i := 0; i < rowIDs.Length(); i++ {
 		colName := tbl.getBaseTable(isTombstone).schema.GetPrimaryKey().Name
 		if !rowIDs.IsNull(i) {
-			logutil.Error("Append Duplicate",
-				zap.String("table", tbl.dataTable.schema.Name),
-				zap.Bool("isTombstone", isTombstone),
-				zap.String("pk", keys.PPString(keys.Length())),
-				zap.String("rowids", rowIDs.PPString(rowIDs.Length())),
-			)
+			// logutil.Error("Append Duplicate",
+			// 	zap.String("table", tbl.dataTable.schema.Name),
+			// 	zap.Bool("isTombstone", isTombstone),
+			// 	zap.String("pk", keys.PPString(keys.Length())),
+			// 	zap.String("rowids", rowIDs.PPString(rowIDs.Length())),
+			// )
 			entry := common.TypeStringValue(*keys.GetType(), keys.Get(i), false)
 			return moerr.NewDuplicateEntryNoCtx(entry, colName)
 		}
+	}
+	if !dedupAfterSnapshotTS {
+		logutil.Infof("%x %v", tbl.store.txn.GetID(), str)
 	}
 	return
 }

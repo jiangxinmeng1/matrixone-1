@@ -92,11 +92,25 @@ func (n *AppendMVCCHandle) GetAppendNodeByRowLocked(row uint32) (an *AppendNode)
 	return
 }
 
+func (n *AppendMVCCHandle) WaitCommit(ts types.TS) {
+	n.appends.ForEach(func(an *AppendNode) bool {
+		needWait, waitTxn := an.NeedWaitCommitting(ts)
+		if needWait {
+			n.RUnlock()
+			waitTxn.GetTxnState(true)
+			n.RLock()
+			return false
+		}
+		return true
+	}, false)
+}
 func (n *AppendMVCCHandle) GetMaxRowByTSLocked(ts types.TS) uint32 {
 	_, node := n.appends.GetNodeToReadByPrepareTS(ts)
 	if node == nil {
+		logutil.Infof("get max row ts %v, row %v-0", ts.ToString(), n.meta.ID().String())
 		return 0
 	}
+	logutil.Infof("get max row ts %v, row %v-%d", ts.ToString(), n.meta.ID().String(), node.maxRow)
 	return node.maxRow
 }
 

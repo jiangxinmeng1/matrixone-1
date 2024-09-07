@@ -16,6 +16,7 @@ package txnimpl
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -147,7 +148,7 @@ func (tbl *baseTable) addObjsWithMetaLoc(ctx context.Context, stats objectio.Obj
 	}
 	return tbl.tableSpace.AddObjsWithMetaLoc(pkVecs, stats)
 }
-func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, dedupAfterSnapshotTS bool, checkWW bool) (rowIDs containers.Vector, err error) {
+func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, dedupAfterSnapshotTS bool, checkWW bool) (debugStr string, rowIDs containers.Vector, err error) {
 	it := newObjectItOnSnap(tbl.txnTable, tbl.isTombstone, true)
 	rowIDs = tbl.txnTable.store.rt.VectorPool.Small.GetVector(&objectio.RowidType)
 	pkType := pks.GetType()
@@ -197,6 +198,7 @@ func (tbl *baseTable) getRowsByPK(ctx context.Context, pks containers.Vector, de
 				continue
 			}
 		}
+		debugStr = fmt.Sprintf("%s;%v %v %v", debugStr, obj.ID().String(), pks.Get(0), dedupAfterSnapshotTS)
 		err = obj.GetObjectData().GetDuplicatedRows(
 			ctx,
 			tbl.txnTable.store.txn,

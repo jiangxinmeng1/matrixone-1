@@ -115,8 +115,6 @@ func (appender *objectAppender) ApplyAppend(
 	defer appender.obj.Unlock()
 	from, err = node.ApplyAppendLocked(bat, txn)
 
-	pk := bat.Vecs[node.writeSchema.GetPrimaryKey().Idx].Get(0)
-	logutil.Infof("lalala append %v, txn %v, %v", pk, txn.GetStartTS().ToString(), txn.GetCommitTS().ToString())
 
 	schema := node.writeSchema
 	for _, colDef := range schema.ColDefs {
@@ -129,5 +127,7 @@ func (appender *objectAppender) ApplyAppend(
 			}
 		}
 	}
+	pk := bat.Vecs[node.writeSchema.GetPrimaryKey().Idx].Get(0)
+	logutil.Infof("lalala append %v, txn %v, %v", pk, txn.GetStartTS().ToString(), txn.GetCommitTS().ToString())
 	return
 }

@@ -273,7 +273,9 @@ func (node *memoryNode) GetDuplicatedRows(
 		checkFn = node.checkConflictLocked(txn, isCommitting)
 	}
 	err = node.getDuplicatedRowsLocked(ctx, keys, keysZM, rowIDs, maxVisibleRow, checkFn, skipCommittedBeforeTxnForAblk, mp)
-
+	if !isCommitting {
+		logutil.Infof("txn %x %v, obj %v, mx row %d, rowids %v", txn.GetID(), txn.GetStartTS().ToString(), node.object.meta.Load().ID().String(), maxVisibleRow, rowIDs.IsNull(0))
+	}
 	return
 }
 

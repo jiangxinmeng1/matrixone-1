@@ -7663,7 +7663,7 @@ func TestDedupSnapshot3(t *testing.T) {
 	}
 
 	for i := 0; i < totalRows; i++ {
-		for j := 0; j < 5; j++ {
+		for j := 0; j < 500; j++ {
 			wg.Add(1)
 			err := pool.Submit(appendFn(uint32(i)))
 			assert.Nil(t, err)

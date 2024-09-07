@@ -7646,7 +7646,6 @@ func TestDedupSnapshot3(t *testing.T) {
 			err := rel.BatchDedup(bats[offset].Vecs[3])
 			txn.Commit(context.Background())
 			if err != nil {
-				logutil.Infof("err is %v", err)
 				return
 			}
 
@@ -7655,8 +7654,11 @@ func TestDedupSnapshot3(t *testing.T) {
 			txn2.SetSnapshotTS(txn.GetStartTS())
 			database, _ = txn2.GetDatabase("db")
 			rel, _ = database.GetRelationByName(schema.Name)
-			_ = rel.Append(context.Background(), bats[offset])
-			_ = txn2.Commit(context.Background())
+			err1 := rel.Append(context.Background(), bats[offset])
+			err2 := txn2.Commit(context.Background())
+			if err1 == nil && err2 == nil {
+				logutil.Infof("lalala row %d append successfully", offset)
+			}
 		}
 	}
 

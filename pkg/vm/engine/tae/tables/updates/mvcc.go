@@ -100,6 +100,19 @@ func (n *AppendMVCCHandle) GetMaxRowByTSLocked(ts types.TS) uint32 {
 	return node.maxRow
 }
 
+func (n *AppendMVCCHandle) WaitCommit(ts types.TS) {
+	n.appends.ForEach(func(an *AppendNode) bool {
+		needWait, waitTxn := an.NeedWaitCommitting(ts)
+		if needWait {
+			n.RUnlock()
+			waitTxn.GetTxnState(true)
+			n.RLock()
+			return false
+		}
+		return true
+	}, false)
+}
+
 // it collects all append nodes in the range [start, end]
 // minRow: is the min row
 // maxRow: is the max row

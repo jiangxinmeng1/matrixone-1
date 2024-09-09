@@ -248,6 +248,7 @@ func (obj *aobject) GetMaxRowByTS(ts types.TS) (uint32, error) {
 	if !node.IsPersisted() {
 		obj.RLock()
 		defer obj.RUnlock()
+		obj.appendMVCC.WaitCommit(ts)
 		return obj.appendMVCC.GetMaxRowByTSLocked(ts), nil
 	} else {
 		vec, err := obj.LoadPersistedCommitTS(0)

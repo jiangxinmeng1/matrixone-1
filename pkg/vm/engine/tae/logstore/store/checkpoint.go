@@ -15,6 +15,7 @@
 package store
 
 import (
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	driverEntry "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
@@ -22,6 +23,7 @@ import (
 )
 
 func (w *StoreImpl) RangeCheckpoint(gid uint32, start, end uint64) (ckpEntry entry.Entry, err error) {
+	logutil.Infof("LogService Driver: range delete %d-%d,%d", gid, start, end)
 	ckpEntry = w.makeRangeCheckpointEntry(gid, start, end)
 	drentry, _, err := w.doAppend(GroupCKP, ckpEntry)
 	if err == sm.ErrClose {
@@ -58,6 +60,8 @@ func (w *StoreImpl) onLogCKPInfoQueue(items ...any) {
 		if err != nil {
 			panic(err)
 		}
+		logutil.Infof("LogService Driver: ckp entry is done %d-%d,%d",
+			e.Info.Checkpoints[0].Group, e.Info.Checkpoints[0].Ranges.GetMin(), e.Info.Checkpoints[0].Ranges.GetMax())
 		w.logCheckpointInfo(e.Info)
 	}
 	w.onCheckpoint()
@@ -70,6 +74,7 @@ func (w *StoreImpl) onCheckpoint() {
 
 func (w *StoreImpl) ckpCkp() {
 	e := w.makeInternalCheckpointEntry()
+	logutil.Infof("LogService Driver: append internal entry")
 	driverEntry, _, err := w.doAppend(GroupInternal, e)
 	if err == sm.ErrClose {
 		return
@@ -87,14 +92,17 @@ func (w *StoreImpl) ckpCkp() {
 
 func (w *StoreImpl) onTruncatingQueue(items ...any) {
 	for _, item := range items {
+		logutil.Infof("LogService Driver: start wait truncating entry")
 		e := item.(*driverEntry.Entry)
 		err := e.WaitDone()
 		if err != nil {
 			panic(err)
 		}
+		logutil.Infof("LogService Driver: finish wait truncating entry")
 		w.logCheckpointInfo(e.Info)
 	}
 	gid, driverLsn := w.getDriverCheckpointed()
+	logutil.Infof("LogService Driver: get driver lsn %d", driverLsn)
 	if gid == 0 {
 		return
 	}
@@ -108,12 +116,16 @@ func (w *StoreImpl) onTruncatingQueue(items ...any) {
 func (w *StoreImpl) onTruncateQueue(items ...any) {
 	lsn := w.driverCheckpointing.Load()
 	if lsn != w.driverCheckpointed {
+		logutil.Infof("LogService Driver: start truncate %d", lsn)
 		err := w.driver.Truncate(lsn)
+		logutil.Infof("LogService Driver: driver finish truncate %d", lsn)
 		for err != nil {
 			lsn = w.driverCheckpointing.Load()
 			err = w.driver.Truncate(lsn)
 		}
+		logutil.Infof("LogService Driver: driver start gc lsn %d", lsn)
 		w.gcWalDriverLsnMap(lsn)
+		logutil.Infof("LogService Driver: driver finish gc lsn %d", lsn)
 		w.driverCheckpointed = lsn
 	}
 }

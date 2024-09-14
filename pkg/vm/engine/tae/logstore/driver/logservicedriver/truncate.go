@@ -24,6 +24,7 @@ import (
 
 // driver lsn -> entry lsn
 func (d *LogServiceDriver) Truncate(lsn uint64) error {
+	logutil.Infof("LogService Driver: driver start truncate %d", lsn)
 	if lsn > d.truncating.Load() {
 		d.truncating.Store(lsn)
 	}
@@ -48,6 +49,7 @@ func (d *LogServiceDriver) doTruncate() {
 	lastServiceLsn := d.truncatedLogserviceLsn
 	lsn := lastServiceLsn
 	//TODO use valid lsn
+	logutil.Infof("LogService Driver: driver start get logservice lsn, last lsn %d", lsn)
 	next := d.getNextValidLogserviceLsn(lsn)
 	for d.isToTruncate(next, target) {
 		lsn = next
@@ -57,6 +59,7 @@ func (d *LogServiceDriver) doTruncate() {
 		}
 	}
 	if lsn == lastServiceLsn {
+		logutil.Infof("LogService Driver: retrun because logservice is small %d", lsn)
 		return
 	}
 	d.truncateLogservice(lsn)

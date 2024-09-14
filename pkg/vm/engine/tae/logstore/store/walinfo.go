@@ -238,6 +238,8 @@ func (w *StoreInfo) logCheckpointInfo(info *entry.Info) {
 				ckpInfo.MergeCommandMap(intervals.Command)
 			}
 			w.ckpMu.Unlock()
+			logutil.Infof("LogService Driver: log checkpoint entries %d-%d,%d",
+				intervals.Group, intervals.Ranges.GetMin(), intervals.Ranges.GetMax())
 		}
 	case GroupInternal:
 		w.checkpointedMu.Lock()
@@ -256,11 +258,15 @@ func (w *StoreInfo) onCheckpoint() {
 			continue
 		}
 		w.checkpointed[gid] = ckped
+		logutil.Infof("LogService Driver: log checkpoint info %d-%d",
+			gid, ckped)
 	}
 	w.checkpointedMu.Unlock()
 	w.ckpcntMu.Lock()
 	for gid, ckp := range w.checkpointInfo {
 		w.ckpcnt[gid] = ckp.GetCkpCnt()
+		logutil.Infof("LogService Driver: log checkpoint info %d-%d",
+			gid, w.ckpcnt[gid])
 	}
 	w.ckpcntMu.Unlock()
 }

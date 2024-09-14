@@ -51,13 +51,20 @@ func (d *LogServiceDriver) doTruncate() {
 	//TODO use valid lsn
 	logutil.Infof("LogService Driver: driver start get logservice lsn, last lsn %d", lsn)
 	next := d.getNextValidLogserviceLsn(lsn)
+	loopCount := 0
 	for d.isToTruncate(next, target) {
+		loopCount++
 		lsn = next
 		next = d.getNextValidLogserviceLsn(lsn)
 		if next <= lsn {
 			break
 		}
 	}
+	d.addrMu.RLock()
+	min := d.validLsn.Minimum()
+	max := d.validLsn.Maximum()
+	d.addrMu.RUnlock()
+	logutil.Infof("LogService Driver: loop count %d, driver lsn %d, min valid %d, max valid %d", loopCount, target, min, max)
 	if lsn == lastServiceLsn {
 		logutil.Infof("LogService Driver: retrun because logservice is small %d", lsn)
 		return

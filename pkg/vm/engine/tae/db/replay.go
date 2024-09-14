@@ -113,6 +113,9 @@ func (replayer *Replayer) Replay() {
 }
 
 func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte, typ uint16, info any) {
+	if lsn < 21477763965 {
+		return
+	}
 	replayer.once.Do(replayer.PreReplayWal)
 	if group != wal.GroupPrepare && group != wal.GroupC {
 		return

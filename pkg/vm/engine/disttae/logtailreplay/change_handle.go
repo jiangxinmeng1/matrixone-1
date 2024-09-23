@@ -427,6 +427,48 @@ type ChangeHandler struct {
 	tombstoneHandle *baseHandle
 	dataHandle      *baseHandle
 	coarseMaxRow    int
+
+	prevDataTS, prevTombstoneTS       types.TS
+	totalDataRows, totalTombstoneRows int
+}
+
+func (c *ChangeHandler) check(data, tombstone *batch.Batch) {
+	if data != nil {
+		maxTS := types.TS{}
+		commitTSVec := data.Vecs[len(data.Vecs)-1]
+		commitTSs := vector.MustFixedColNoTypeCheck[types.TS](commitTSVec)
+		for _, ts := range commitTSs {
+			if !ts.GreaterEq(&c.prevDataTS) {
+				panic("debug")
+			}
+			if !ts.GreaterEq(&c.prevTombstoneTS) {
+				panic("debug")
+			}
+			if ts.Greater(&maxTS) {
+				maxTS = ts
+			}
+		}
+		c.prevDataTS = maxTS
+		c.totalDataRows += commitTSVec.Length()
+	}
+	if tombstone != nil {
+		maxTS := types.TS{}
+		commitTSVec := data.Vecs[len(tombstone.Vecs)-1]
+		commitTSs := vector.MustFixedColNoTypeCheck[types.TS](commitTSVec)
+		for _, ts := range commitTSs {
+			if !ts.Greater(&c.prevDataTS) {
+				panic("debug")
+			}
+			if !ts.GreaterEq(&c.prevTombstoneTS) {
+				panic("debug")
+			}
+			if ts.Greater(&maxTS) {
+				maxTS = ts
+			}
+		}
+		c.prevTombstoneTS = maxTS
+		c.totalTombstoneRows += commitTSVec.Length()
+	}
 }
 
 func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPool, maxRow uint32, fs fileservice.FileService, ctx context.Context) (changeHandle *ChangeHandler, err error) {
@@ -471,19 +513,23 @@ func (p *ChangeHandler) Next(ctx context.Context, mp *mpool.MPool) (data, tombst
 		case NextChangeHandle_Data:
 			err = p.dataHandle.Next(ctx, &data, mp)
 			if err == nil && data.Vecs[0].Length() >= p.coarseMaxRow {
+				p.check(data, tombstone)
 				return
 			}
 		case NextChangeHandle_Tombstone:
 			err = p.tombstoneHandle.Next(ctx, &tombstone, mp)
 			if err == nil && tombstone.Vecs[0].Length() >= p.coarseMaxRow {
+				p.check(data, tombstone)
 				return
 			}
 		}
 		if moerr.IsMoErrCode(err, moerr.OkExpectedEOF) {
 			err = nil
+			p.check(data, tombstone)
 			return
 		}
 		if err != nil {
+			p.check(data, tombstone)
 			return
 		}
 	}

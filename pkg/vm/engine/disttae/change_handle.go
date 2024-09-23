@@ -30,9 +30,9 @@ import (
 )
 
 func (tbl *txnTable) CollectChanges(ctx context.Context, from, to types.TS, mp *mpool.MPool) (engine.ChangesHandle, error) {
-	if from.IsEmpty() {
-		return NewCheckpointChangesHandle(to, tbl, mp, ctx)
-	}
+	// if from.IsEmpty() {
+	// 	return NewCheckpointChangesHandle(to, tbl, mp, ctx)
+	// }
 	state, err := tbl.getPartitionState(ctx)
 	if err != nil {
 		return nil, err

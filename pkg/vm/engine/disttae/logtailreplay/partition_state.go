@@ -91,10 +91,16 @@ func (p *PartitionState) HandleLogtailEntry(
 		} else if IsTombstoneObjectList(entry.TableName) {
 			p.HandleTombstoneObjectList(ctx, entry, fs, pool)
 		} else {
+			if p.tid == 272523 {
+				logutil.Infof("misuxi insert %d", entry.Bat.Vecs[0].Len)
+			}
 			p.HandleRowsInsert(ctx, entry.Bat, primarySeqnum, packer, pool)
 		}
 
 	case api.Entry_Delete:
+		if p.tid == 272523 {
+			logutil.Infof("misuxi delete %d", entry.Bat.Vecs[0].Len)
+		}
 		p.HandleRowsDelete(ctx, entry.Bat, packer, pool)
 
 	default:

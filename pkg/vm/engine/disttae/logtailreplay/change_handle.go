@@ -18,10 +18,12 @@ import (
 	"context"
 	"fmt"
 
+	goSort "sort"
+
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/sort"
-	goSort "sort"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -146,6 +148,12 @@ func NewCNObjectHandle(isTombstone bool, objects []*ObjectEntry, fs fileservice.
 func (h *CNObjectHandle) isEnd() bool {
 	return h.objectOffsetCursor >= len(h.objects)
 }
+func (h *CNObjectHandle) getObject() string {
+	if h.isEnd() {
+		return ""
+	}
+	return h.objects[h.objectOffsetCursor].ObjectStats.ObjectName().ObjectId().String()
+}
 func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (err error) {
 	if h.isEnd() {
 		return moerr.GetOkExpectedEOF()
@@ -242,7 +250,12 @@ func (h *AObjectHandle) getNextAObject(ctx context.Context) (err error) {
 func (h *AObjectHandle) isEnd() bool {
 	return h.objectOffsetCursor >= len(h.objects)
 }
-
+func (h *AObjectHandle) getObject() string {
+	if h.isEnd() {
+		return ""
+	}
+	return h.objects[h.objectOffsetCursor].ObjectStats.ObjectName().ObjectId().String()
+}
 func (h *AObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (err error) {
 	if h.isEnd() {
 		return moerr.GetOkExpectedEOF()
@@ -283,10 +296,19 @@ func (h *AObjectHandle) NextTS() types.TS {
 	return vector.GetFixedAtNoTypeCheck[types.TS](commitTSVec, h.rowOffsetCursor)
 }
 
+type record struct {
+	typ    int
+	obj    string
+	length int
+}
+
 type baseHandle struct {
 	aobjHandle     *AObjectHandle
 	cnObjectHandle *CNObjectHandle
 	inMemoryHandle *BatchHandle
+	tombstone      bool
+	records        []*record
+	prev           *record
 }
 
 const (
@@ -299,7 +321,9 @@ const (
 )
 
 func NewBaseHandler(state *PartitionState, start, end types.TS, mp *mpool.MPool, tombstone bool, fs fileservice.FileService, ctx context.Context) (p *baseHandle, err error) {
-	p = &baseHandle{}
+	p = &baseHandle{
+		tombstone: tombstone,
+	}
 	var iter btree.IterG[ObjectEntry]
 	if tombstone {
 		iter = state.tombstoneObjectsNameIndex.Copy().Iter()
@@ -354,19 +378,72 @@ func (p *baseHandle) NextTS() types.TS {
 	ts, _ := p.nextTS()
 	return ts
 }
+func (p *baseHandle) isSameRecord(typ int, obj string) bool {
+	if p.prev == nil {
+		return false
+	}
+	return p.prev.typ == typ && p.prev.obj == obj
+}
 func (p *baseHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (err error) {
 	_, typ := p.nextTS()
 	switch typ {
 	case NextChangeHandle_AObj:
+		obj := p.aobjHandle.getObject()
+		if p.isSameRecord(NextChangeHandle_AObj, obj) {
+			p.prev.length++
+		} else {
+			if p.prev != nil {
+				p.records = append(p.records, p.prev)
+			}
+			p.prev = &record{
+				typ:    NextChangeHandle_AObj,
+				obj:    obj,
+				length: 1,
+			}
+		}
 		err = p.aobjHandle.Next(ctx, bat, mp)
 	case NextChangeHandle_InMemory:
+		if p.isSameRecord(NextChangeHandle_InMemory, "") {
+			p.prev.length++
+		} else {
+			if p.prev != nil {
+				p.records = append(p.records, p.prev)
+			}
+			p.prev = &record{
+				typ:    NextChangeHandle_InMemory,
+				obj:    "",
+				length: 1,
+			}
+		}
 		err = p.inMemoryHandle.Next(bat, mp)
 	case NextChangeHandle_CNObj:
+		obj := p.cnObjectHandle.getObject()
+		startLength := 0
+		if *bat != nil {
+			startLength = (*bat).Vecs[0].Length()
+		}
 		err = p.cnObjectHandle.Next(ctx, bat, mp)
+		batchLength := 0
+		if *bat != nil {
+			batchLength = (*bat).Vecs[0].Length() - startLength
+		}
+		if p.isSameRecord(NextChangeHandle_CNObj, obj) {
+			p.prev.length += batchLength
+		} else {
+			if p.prev != nil {
+				p.records = append(p.records, p.prev)
+			}
+			p.prev = &record{
+				typ:    NextChangeHandle_CNObj,
+				obj:    obj,
+				length: batchLength,
+			}
+		}
 	}
 	return
 }
 func (p *baseHandle) newBatchHandleWithRowIterator(ctx context.Context, iter btree.IterG[RowEntry], start, end types.TS, tombstone bool, mp *mpool.MPool) (h *BatchHandle, err error) {
+	defer logutil.Infof("misuxi")
 	bat := p.getBatchesFromRowIterator(iter, start, end, tombstone, mp)
 	if bat == nil {
 		return nil, moerr.GetOkExpectedEOF()
@@ -378,17 +455,21 @@ func (p *baseHandle) newBatchHandleWithRowIterator(ctx context.Context, iter btr
 	return
 }
 func (p *baseHandle) getBatchesFromRowIterator(iter btree.IterG[RowEntry], start, end types.TS, tombstone bool, mp *mpool.MPool) (bat *batch.Batch) {
+	dataCnt, tCnt := 0, 0
 	for iter.Next() {
 		entry := iter.Item()
 		if checkTS(start, end, entry.Time) {
 			if !entry.Deleted && !tombstone {
 				fillInInsertBatch(&bat, &entry, mp)
+				dataCnt++
 			}
 			if entry.Deleted && tombstone {
 				fillInDeleteBatch(&bat, &entry, mp)
+				tCnt++
 			}
 		}
 	}
+	logutil.Infof("misuxi tombstone %v, rows %d/%d", tombstone, dataCnt, tCnt)
 	return
 }
 func (p *baseHandle) getObjectEntries(objIter btree.IterG[ObjectEntry], start, end types.TS) (aobj, cnObj []*ObjectEntry) {
@@ -428,39 +509,39 @@ type ChangeHandler struct {
 	dataHandle      *baseHandle
 	coarseMaxRow    int
 
+	start, end                        types.TS
 	prevDataTS, prevTombstoneTS       types.TS
 	totalDataRows, totalTombstoneRows int
 }
 
 func (c *ChangeHandler) check(data, tombstone *batch.Batch) {
+	maxDataTS := types.TS{}
 	if data != nil {
-		maxTS := types.TS{}
 		commitTSVec := data.Vecs[len(data.Vecs)-1]
 		commitTSs := vector.MustFixedColNoTypeCheck[types.TS](commitTSVec)
 		for _, ts := range commitTSs {
 			if !ts.GreaterEq(&c.prevDataTS) {
-				panic("debug")
+				panic(fmt.Sprintf("lalala prev %v, current %v", c.prevDataTS.ToString(), ts.ToString()))
 			}
 			if !ts.GreaterEq(&c.prevTombstoneTS) {
-				panic("debug")
+				panic(fmt.Sprintf("lalala prev %v, current %v", c.prevTombstoneTS.ToString(), ts.ToString()))
 			}
-			if ts.Greater(&maxTS) {
-				maxTS = ts
+			if ts.Greater(&maxDataTS) {
+				maxDataTS = ts
 			}
 		}
-		c.prevDataTS = maxTS
 		c.totalDataRows += commitTSVec.Length()
 	}
 	if tombstone != nil {
 		maxTS := types.TS{}
-		commitTSVec := data.Vecs[len(tombstone.Vecs)-1]
+		commitTSVec := tombstone.Vecs[len(tombstone.Vecs)-1]
 		commitTSs := vector.MustFixedColNoTypeCheck[types.TS](commitTSVec)
 		for _, ts := range commitTSs {
 			if !ts.Greater(&c.prevDataTS) {
-				panic("debug")
+				panic(fmt.Sprintf("lalala prev %v, current %v %v", c.prevDataTS.ToString(), ts.ToString(), commitTSVec.GetType()))
 			}
 			if !ts.GreaterEq(&c.prevTombstoneTS) {
-				panic("debug")
+				panic(fmt.Sprintf("lalala prev %v, current %v", c.prevTombstoneTS.ToString(), ts.ToString()))
 			}
 			if ts.Greater(&maxTS) {
 				maxTS = ts
@@ -468,6 +549,9 @@ func (c *ChangeHandler) check(data, tombstone *batch.Batch) {
 		}
 		c.prevTombstoneTS = maxTS
 		c.totalTombstoneRows += commitTSVec.Length()
+	}
+	if !maxDataTS.IsEmpty() {
+		c.prevDataTS = maxDataTS
 	}
 }
 
@@ -477,6 +561,8 @@ func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPo
 	}
 	changeHandle = &ChangeHandler{
 		coarseMaxRow: int(maxRow),
+		start:        start,
+		end:          end,
 	}
 	changeHandle.tombstoneHandle, err = NewBaseHandler(state, start, end, mp, true, fs, ctx)
 	if err != nil {
@@ -492,6 +578,17 @@ func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPo
 func (p *ChangeHandler) Close() error {
 	p.dataHandle.Close()
 	p.tombstoneHandle.Close()
+	str := "data:"
+	for _, r := range p.dataHandle.records {
+		str = fmt.Sprintf("%s %d %v %d;", str, r.typ, r.obj, r.length)
+	}
+	str = fmt.Sprintf("%s tombstone:", str)
+	for _, r := range p.tombstoneHandle.records {
+		str = fmt.Sprintf("%s %d %v %d;", str, r.typ, r.obj, r.length)
+	}
+	if p.totalDataRows != 0 || p.totalTombstoneRows != 0 {
+		logutil.Infof("misuxi, insert %v %v %d %d %s", p.start.ToString(), p.end.ToString(), p.totalDataRows, p.totalTombstoneRows, str)
+	}
 	return nil
 }
 func (p *ChangeHandler) decideNextHandle() int {

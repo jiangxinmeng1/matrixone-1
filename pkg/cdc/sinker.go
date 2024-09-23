@@ -98,7 +98,7 @@ func (s *consoleSinker) Sink(ctx context.Context, data *DecoderOutput) error {
 			iter := data.insertAtmBatch.GetRowIterator()
 			for iter.Next() {
 				_ = iter.Row(ctx, row)
-				logutil.Infof("insert %v", row)
+				// logutil.Infof("insert %v", row)
 			}
 		}
 	case OutputTypeUnfinishedTailWIP:

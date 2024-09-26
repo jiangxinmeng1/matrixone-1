@@ -425,20 +425,19 @@ func TestChangesHandleForCNWrite(t *testing.T) {
 
 		handle, err = rel.CollectChanges(ctx, startTS, taeEngine.GetDB().TxnMgr.Now(), mp)
 		assert.NoError(t, err)
-		batchCount := 0
+		rowCount := 0
 		for {
 			data, tombstone, _, err := handle.Next(ctx, mp)
 			if data == nil && tombstone == nil {
 				break
 			}
-			batchCount++
 			assert.NoError(t, err)
 			assert.Nil(t, tombstone)
 			checkInsertBatch(bat, data, t)
-			assert.Equal(t, data.Vecs[0].Length(), 8192)
+			rowCount+= data.Vecs[0].Length()
 			data.Clean(mp)
 		}
-		assert.Equal(t, batchCount, 10)
+		assert.Equal(t, rowCount,81920)
 		assert.NoError(t, handle.Close())
 	}
 }

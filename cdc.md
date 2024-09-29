@@ -40,37 +40,42 @@ ChangesHandle.Next()的返回结果有三种类型：
 
 ### Tail
 
-#### 选择数据
+#### 特殊优化
+
+这些场景可以直接消费，不用排序
+1. data和tombstone都很小，只用调用一次ChangesHandle.Next
+2. 只有tombstone或只有data
+
+#### 其他场景
 
 partition state里有这些数据：
     
 1.  内存中的数据
      * 事务数据量较小时TN会把数据写入aobj，提交后存到Partition state的内存里
-2. aobj
-     * 一段时间后，aobj会刷盘，CN会存aobj的信息
-3. CN写的NAObject
+2. appendable object(AOBJ)
+     * 一段时间后，AOBJ会刷盘，CN会存AOBJ的信息
+     * AOBJ之间的数据时间上没有交叉
+     * 一个AOBJ中包含多个事务多个时间戳
+3. CN写的nonappendable object(CN NAOBJ)
      * 数据量较大时，CN会写文件，把文件发给TN提交
-4. TN merge产生的NAObject
-     * 数据和被merge的Object重复
-    
-为了消除重复数据，只收集前三种数据：1. 内存数据，2. 刷盘的Aobj，3. CN naobj里的数据。一个aobj中包含多个事务的数据，这些事务之间可能提交了CN naobj。aobj和cnnaobj的时间是交叉的。如果要按时间顺序收集，一个aobj里的数据不能一次性全拿，可能要先收集一部分，再收集某个cnnaobj的数据，再收集剩下的。一个CN naobj里只有一个事务。内存里也有多个事务。
+     * 一个CN NAOBJ只包含一个事务
+     * 一个CN NAOBJ可能在一个AOBJ里的某两个事务之间提交，AOBJ和CN NAOBJ的时间可能交叉。如果要按时间顺序收集，一个aobj里的数据不能一次性全拿，可能要先收集一部分，再收集某个cnnaobj的数据，再收集剩下的
+4. TN merge产生的nonappendable object
+     * 数据和被merge的Object重复，不用收集
 
-##### 实现
-1. 特殊优化
+![](changes_handle.png)
 
-    这些场景可以直接消费，不用排序
-    1. data和tombstone都很小，只用调用一次ChangesHandle.Next
-    2. 只有tombstone或只有data
-
-2. 其他场景
-
-    ![](changes_handle.png)
-    1. 为tombstone和data各自建三个handle: 1. aobject handle 2. in memory handle 3. cn handle。每个handle内部的数据是排序的。
-    2. 为data(或tombstone)收集1-2个batch。
-        1. 取三个handle各自的nextTS。
-        2. 取nextTS最小的handle，收集第二小的nextts前的数据放到缓存里。
-        3. 一直重复，直到缓存里有足够多的数据（8192-16384行）
-    3. 比较data和tombstone缓存数据的最大TS。对于ts较大的batch，只发送前半部分。完整地发送另一个batch。
+收集步骤：
+1. 为tombstone和data各自建三个handle，每个handle内部的数据是排序的。
+    1. AOBJ handle：
+        先按照AOBJ的create TS排序，每次读一个AOBJ缓存到内存中。刷盘的Tombstone的AOBJ是按row id排序的，读上来后需要按时间排序。
+    2. CN handle: 按create TS排序。
+    3. In memory handle: 按每行的commit TS排序。
+2. 为data(或tombstone)收集1-2个batch。
+    1. 取三个handle各自的nextTS（AOBJ: t1，CN NOBJ：t2，in memory：t3）。
+    2. 取nextTS最小的handle，收集第二小的nextts前的数据（AOBJ handle里t1-t2的数据）放到缓存里。
+    3. 一直重复，直到缓存里有足够多的数据（8192-16384行）
+3. 比较data和tombstone缓存数据的最大TS。对于ts较大的batch（tombstone），只发送前半部分。完整地发送另一个batch（data）。
 
 ## 遇到的问题
 
@@ -117,7 +122,7 @@ partition state里有这些数据：
  当Tail数据很多，事务数量很大的时候，之前的实现性能上有问题。
 
  之前的实现：
- 1. 准备 aobject handle，in memory handle，cn handle
+ 1. 准备 AOBJ handle，in memory handle，CN NAOBJ handle
  2. 检查data和tombstone中6个handle的ts, 取ts最小的handle，收集一个事务的数据。
  3. 一直循环，直到拿到8192行
 

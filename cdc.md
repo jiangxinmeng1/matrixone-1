@@ -43,10 +43,8 @@ ChangesHandle.Next()的返回结果有三种类型：
 #### 选择数据
 
 partition state里有这些数据：
-图1
     
 1.  内存中的数据
-
      * 事务数据量较小时TN会把数据写入aobj，提交后存到Partition state的内存里
 2. aobj
      * 一段时间后，aobj会刷盘，CN会存aobj的信息
@@ -55,7 +53,7 @@ partition state里有这些数据：
 4. TN merge产生的NAObject
      * 数据和被merge的Object重复
     
-为了消除重复数据，只收集前三种数据：1. 内存数据，2. 刷盘的Aobj，3. CN naobj里的数据。一个aobj中包含多个事务的数据，这些事务之间可能提交了CN naobj。如果要按时间顺序收集，一个aobj里的数据不能一次性全拿，可能要先收集一部分，再收集某个cnnaobj的数据，再收集剩下的。一个CN naobj里只有一个事务。内存里也有多个事务。
+为了消除重复数据，只收集前三种数据：1. 内存数据，2. 刷盘的Aobj，3. CN naobj里的数据。一个aobj中包含多个事务的数据，这些事务之间可能提交了CN naobj。aobj和cnnaobj的时间是交叉的。如果要按时间顺序收集，一个aobj里的数据不能一次性全拿，可能要先收集一部分，再收集某个cnnaobj的数据，再收集剩下的。一个CN naobj里只有一个事务。内存里也有多个事务。
 
 ##### 实现
 1. 特殊优化
@@ -66,11 +64,11 @@ partition state里有这些数据：
 
 2. 其他场景
 
-    图2
+    ![](changes_handle.png)
     1. 为tombstone和data各自建三个handle: 1. aobject handle 2. in memory handle 3. cn handle。每个handle内部的数据是排序的。
     2. 为data(或tombstone)收集1-2个batch。
         1. 取三个handle各自的nextTS。
-        2. 取nextTS最小的handle，收集第二小的nextts前的数据。
+        2. 取nextTS最小的handle，收集第二小的nextts前的数据放到缓存里。
         3. 一直重复，直到缓存里有足够多的数据（8192-16384行）
     3. 比较data和tombstone缓存数据的最大TS。对于ts较大的batch，只发送前半部分。完整地发送另一个batch。
 
@@ -80,7 +78,15 @@ partition state里有这些数据：
 
  一次merge对应一个事务。obj1 merge成obj2，会收集obj1上事务startts之前的数据和tombstone，消费tombstone并且排序之后写到obj2上。事务startts到committs之间的tombstone还没消费过，所以提交时，会把它们transfer到obj2上。这些transfer的tombstone，和普通的删除都会写入aobj。ChangesHandle会误读这些tombstone。
  例如这种情况，ChangeHandle会依次收集到tombstone1，data1，tombstone2，这个pk会被误删。
- 图（ mergestart, updatecommit, mergecommit）
+ 
+ ```
+  merge start           update commit          merge commit
+                              |                     |
+  ----------------------------+---------------------+---------------------------->
+                              |                     |
+                         tombstone 1            tombstone2(transfer)
+                          data1
+ ```
 
  * 解决方案 
  1. 用obj的delete ts过滤
@@ -92,7 +98,15 @@ partition state里有这些数据：
  
 ### 大量删除的transfer产生重复的tombstone
  如果删除事务的startts和committs之间，对应的obj被merge掉了，这个tombstone要transfer到新的object上。
-    图（delete start,merge commit, delete commit）
+
+ ```
+  update start           merge commit          update commit
+                                                    |
+  --------------------------------------------------+---------------------------->
+                                                    |
+                                                tombstone1
+                                                tombstone2(transfer)
+ ```
  在数据量较大的删除里，如果cn写的文件里部分需要transfer，剩下的不需要，会保留原来的文件。transfer产生的tombstone会和原来文件里的tombstone重复。
 
 * 解决方案：
@@ -107,7 +121,7 @@ partition state里有这些数据：
  2. 检查data和tombstone中6个handle的ts, 取ts最小的handle，收集一个事务的数据。
  3. 一直循环，直到拿到8192行
 
-    图
+    ![](changes_handle2.png)
 
     现在的实现中拿第二小的nextts去收集一段时间内的数据，能减少数据拷贝和比较ts的次数。
 

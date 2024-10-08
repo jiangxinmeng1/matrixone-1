@@ -198,9 +198,9 @@ func (c *DashboardCreator) initFrontendSQLLength() dashboard.Option {
 		"Input SQL Length",
 		c.getMultiHistogram(
 			[]string{
-				c.getMetricWithFilter(`mo_frontend_sql_length_bucket`, `label="total-sql-length"`),
-				c.getMetricWithFilter(`mo_frontend_sql_length_bucket`, `label="load-data-inline-sql-length"`),
-				c.getMetricWithFilter(`mo_frontend_sql_length_bucket`, `label="other-sql-length""`),
+				c.getMetricWithFilter(`mo_frontend_input_sql_length_bucket`, `label="total-sql-length"`),
+				c.getMetricWithFilter(`mo_frontend_input_sql_length_bucket`, `label="load-data-inline-sql-length"`),
+				c.getMetricWithFilter(`mo_frontend_input_sql_length_bucket`, `label="other-sql-length"`),
 			},
 			[]string{
 				"total-sql-length",
@@ -209,7 +209,7 @@ func (c *DashboardCreator) initFrontendSQLLength() dashboard.Option {
 			},
 			[]float64{0.50, 0.8, 0.90, 0.99},
 			[]float32{3, 3, 3, 3},
-			axis.Unit("s"),
+			axis.Unit("bytes"),
 			axis.Min(0))...,
 	)
 }
@@ -247,13 +247,9 @@ func (c *DashboardCreator) initFrontendCdc() dashboard.Option {
 			3,
 			[]string{
 				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_processing_record_count", `type="total"`) + `)`,
-				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_processing_record_count", `type="snapshot"`) + `)`,
-				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_processing_record_count", `type="tail"`) + `)`,
 			},
 			[]string{
 				"total",
-				"snapshot",
-				"tail",
 			}),
 
 		c.withMultiGraph(
@@ -261,13 +257,9 @@ func (c *DashboardCreator) initFrontendCdc() dashboard.Option {
 			3,
 			[]string{
 				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_allocated_batch_bytes", `type="total"`) + `)`,
-				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_allocated_batch_bytes", `type="snapshot"`) + `)`,
-				`sum(` + c.getMetricWithFilter("mo_frontend_cdc_allocated_batch_bytes", `type="tail"`) + `)`,
 			},
 			[]string{
 				"total",
-				"snapshot",
-				"tail",
 			}),
 	)
 }

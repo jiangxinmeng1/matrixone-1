@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package disttae
+package engine_util
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,8 +37,13 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/testutil"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/engine_util"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
+)
+
+const (
+	SMALL = iota
+	NORMAL
+	LARGE
 )
 
 // -----------------------------------------------------------------
@@ -46,10 +52,30 @@ import (
 
 func (mixin *withFilterMixin) reset() {
 	mixin.filterState.filter = objectio.BlockReadFilter{}
-	mixin.columns.pkPos = -1
 	mixin.columns.indexOfFirstSortedColumn = -1
 	mixin.columns.seqnums = nil
 	mixin.columns.colTypes = nil
+}
+
+func (mixin *withFilterMixin) tryUpdateTombstoneColumns(cols []string) {
+	pkColIdx := mixin.tableDef.Name2ColIndex[mixin.tableDef.Pkey.PkeyColName]
+	pkCol := mixin.tableDef.Cols[pkColIdx]
+
+	mixin.columns.seqnums = []uint16{0, 1}
+	mixin.columns.colTypes = []types.Type{
+		types.T_Rowid.ToType(),
+		plan2.ExprType2Type(&pkCol.Typ)}
+
+	mixin.columns.colTypes[1].Scale = pkCol.Typ.Scale
+	mixin.columns.colTypes[1].Width = pkCol.Typ.Width
+
+	if len(cols) == len(objectio.TombstoneAttrs_TN_Created) {
+		mixin.columns.seqnums = append(mixin.columns.seqnums, 2)
+		mixin.columns.colTypes = append(mixin.columns.colTypes, types.T_TS.ToType())
+	}
+
+	mixin.filterState.seqnums = mixin.columns.seqnums[:]
+	mixin.filterState.colTypes = mixin.columns.colTypes[:]
 }
 
 // when the reader.Read is called for a new block, it will always
@@ -68,19 +94,29 @@ func (mixin *withFilterMixin) tryUpdateColumns(cols []string) {
 	// record the column selectivity
 	chit, ctotal := len(cols), len(mixin.tableDef.Cols)
 	v2.TaskSelColumnTotal.Add(float64(ctotal))
-	v2.TaskSelColumnHit.Add(float64(ctotal - chit))
+	if ctotal >= chit {
+		v2.TaskSelColumnHit.Add(float64(ctotal - chit))
+	}
 
 	mixin.columns.seqnums = make([]uint16, len(cols))
 	mixin.columns.colTypes = make([]types.Type, len(cols))
 	// mixin.columns.colNulls = make([]bool, len(cols))
-	mixin.columns.pkPos = -1
 	mixin.columns.indexOfFirstSortedColumn = -1
+
+	pkPos := -1
+
+	if slices.Equal(cols, objectio.TombstoneAttrs_CN_Created) ||
+		slices.Equal(cols, objectio.TombstoneAttrs_TN_Created) {
+		mixin.tryUpdateTombstoneColumns(cols)
+		return
+	}
 
 	for i, column := range cols {
 		column = strings.ToLower(column)
 		if column == catalog.Row_ID {
 			mixin.columns.seqnums[i] = objectio.SEQNUM_ROWID
 			mixin.columns.colTypes[i] = objectio.RowidType
+			mixin.columns.phyAddrPos = i
 		} else {
 			if plan2.GetSortOrderByName(mixin.tableDef, column) == 0 {
 				mixin.columns.indexOfFirstSortedColumn = i
@@ -91,7 +127,7 @@ func (mixin *withFilterMixin) tryUpdateColumns(cols []string) {
 
 			if mixin.tableDef.Pkey != nil && mixin.tableDef.Pkey.PkeyColName == column {
 				// primary key is in the cols
-				mixin.columns.pkPos = i
+				pkPos = i
 			}
 			mixin.columns.colTypes[i] = plan2.ExprType2Type(&colDef.Typ)
 			mixin.columns.colTypes[i].Scale = colDef.Typ.Scale
@@ -99,13 +135,13 @@ func (mixin *withFilterMixin) tryUpdateColumns(cols []string) {
 		}
 	}
 
-	if mixin.columns.pkPos != -1 {
+	if pkPos != -1 {
 		// here we will select the primary key column from the vectors, and
 		// use the search function to find the offset of the primary key.
 		// it returns the offset of the primary key in the pk vector.
 		// if the primary key is not found, it returns empty slice
-		mixin.filterState.seqnums = []uint16{mixin.columns.seqnums[mixin.columns.pkPos]}
-		mixin.filterState.colTypes = mixin.columns.colTypes[mixin.columns.pkPos : mixin.columns.pkPos+1]
+		mixin.filterState.seqnums = []uint16{mixin.columns.seqnums[pkPos]}
+		mixin.filterState.colTypes = mixin.columns.colTypes[pkPos : pkPos+1]
 	}
 }
 
@@ -113,21 +149,21 @@ func (mixin *withFilterMixin) tryUpdateColumns(cols []string) {
 // ------------------------ emptyReader ----------------------------
 // -----------------------------------------------------------------
 
-func (r *emptyReader) SetFilterZM(objectio.ZoneMap) {
+func (r *EmptyReader) SetFilterZM(objectio.ZoneMap) {
 }
 
-func (r *emptyReader) GetOrderBy() []*plan.OrderBySpec {
+func (r *EmptyReader) GetOrderBy() []*plan.OrderBySpec {
 	return nil
 }
 
-func (r *emptyReader) SetOrderBy([]*plan.OrderBySpec) {
+func (r *EmptyReader) SetOrderBy([]*plan.OrderBySpec) {
 }
 
-func (r *emptyReader) Close() error {
+func (r *EmptyReader) Close() error {
 	return nil
 }
 
-func (r *emptyReader) Read(
+func (r *EmptyReader) Read(
 	_ context.Context,
 	_ []string,
 	_ *plan.Expr,
@@ -162,6 +198,52 @@ func gatherStats(lastNumRead, lastNumHit int64) {
 // -----------------------------------------------------------------
 // ------------------------ mergeReader ----------------------------
 // -----------------------------------------------------------------
+
+type withFilterMixin struct {
+	fs       fileservice.FileService
+	ts       timestamp.Timestamp
+	tableDef *plan.TableDef
+	name     string
+
+	// columns used for reading
+	columns struct {
+		seqnums    []uint16
+		colTypes   []types.Type
+		phyAddrPos int
+
+		indexOfFirstSortedColumn int
+	}
+
+	filterState struct {
+		//point select for primary key
+		expr     *plan.Expr
+		filter   objectio.BlockReadFilter
+		seqnums  []uint16 // seqnums of the columns in the filter
+		colTypes []types.Type
+	}
+}
+
+type reader struct {
+	withFilterMixin
+
+	source engine.DataSource
+
+	memFilter MemPKFilter
+
+	scanType   int
+	cacheBatch *batch.Batch
+}
+
+func (r *reader) SetScanType(typ int) {
+	r.scanType = typ
+}
+
+type mergeReader struct {
+	rds []engine.Reader
+}
+
+type EmptyReader struct {
+}
 
 func NewMergeReader(readers []engine.Reader) *mergeReader {
 	return &mergeReader{
@@ -233,7 +315,8 @@ func (r *mergeReader) Read(
 func NewReader(
 	ctx context.Context,
 	mp *mpool.MPool,
-	e *Engine,
+	packerPool *fileservice.Pool[*types.Packer],
+	fs fileservice.FileService,
 	tableDef *plan.TableDef,
 	ts timestamp.Timestamp,
 	expr *plan.Expr,
@@ -241,7 +324,7 @@ func NewReader(
 	source engine.DataSource,
 ) (*reader, error) {
 
-	baseFilter, err := engine_util.ConstructBasePKFilter(
+	baseFilter, err := ConstructBasePKFilter(
 		expr,
 		tableDef,
 		mp,
@@ -250,8 +333,7 @@ func NewReader(
 		return nil, err
 	}
 
-	packerPool := e.packerPool
-	memFilter, err := newMemPKFilter(
+	memFilter, err := NewMemPKFilter(
 		tableDef,
 		ts,
 		packerPool,
@@ -261,7 +343,7 @@ func NewReader(
 		return nil, err
 	}
 
-	blockFilter, err := engine_util.ConstructBlockPKFilter(
+	blockFilter, err := ConstructBlockPKFilter(
 		catalog.IsFakePkName(tableDef.Pkey.PkeyColName),
 		baseFilter,
 	)
@@ -271,8 +353,7 @@ func NewReader(
 
 	r := &reader{
 		withFilterMixin: withFilterMixin{
-			ctx:      ctx,
-			fs:       e.fs,
+			fs:       fs,
 			ts:       ts,
 			tableDef: tableDef,
 			name:     tableDef.Name,
@@ -280,6 +361,7 @@ func NewReader(
 		memFilter: memFilter,
 		source:    source,
 	}
+	r.columns.phyAddrPos = -1
 	r.filterState.expr = expr
 	r.filterState.filter = blockFilter
 	return r, nil
@@ -288,6 +370,12 @@ func NewReader(
 func (r *reader) Close() error {
 	r.source.Close()
 	r.withFilterMixin.reset()
+	if r.cacheBatch != nil {
+		if r.cacheBatch.Allocated() > 0 {
+			logutil.Fatal("cache batch is not empty")
+		}
+		r.cacheBatch = nil
+	}
 	return nil
 }
 
@@ -347,11 +435,11 @@ func (r *reader) Read(
 	//read block
 	filter := r.withFilterMixin.filterState.filter
 
-	statsCtx, numRead, numHit := r.ctx, int64(0), int64(0)
+	statsCtx, numRead, numHit := ctx, int64(0), int64(0)
 	if filter.Valid {
 		// try to store the blkReadStats CounterSet into ctx, so that
 		// it can record the mem cache hit stats when call MemCache.Read() later soon.
-		statsCtx, numRead, numHit = prepareGatherStats(r.ctx)
+		statsCtx, numRead, numHit = prepareGatherStats(ctx)
 	}
 
 	var policy fileservice.Policy
@@ -359,13 +447,18 @@ func (r *reader) Read(
 		policy = fileservice.SkipMemoryCacheWrites
 	}
 
+	if r.cacheBatch == nil {
+		cacheBatch := batch.EmptyBatchWithSize(len(r.columns.seqnums) + 1)
+		r.cacheBatch = &cacheBatch
+	}
+
 	err = blockio.BlockDataRead(
 		statsCtx,
-		r.isTombstone,
 		blkInfo,
 		r.source,
 		r.columns.seqnums,
 		r.columns.colTypes,
+		r.columns.phyAddrPos,
 		r.ts,
 		r.filterState.seqnums,
 		r.filterState.colTypes,
@@ -373,6 +466,7 @@ func (r *reader) Read(
 		policy,
 		r.name,
 		outBatch,
+		r.cacheBatch,
 		mp,
 		r.fs,
 	)

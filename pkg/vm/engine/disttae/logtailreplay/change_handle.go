@@ -21,6 +21,7 @@ import (
 	goSort "sort"
 
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/sort"
 
@@ -196,9 +197,9 @@ func (h *CNObjectHandle) isEnd() bool {
 func (h *CNObjectHandle) IsEmpty() bool {
 	return len(h.objects) == 0
 }
-func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (err error) {
+func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (blkStr string, err error) {
 	if h.isEnd() {
-		return moerr.GetOkExpectedEOF()
+		return "", moerr.GetOkExpectedEOF()
 	}
 	currentObject := h.objects[h.objectOffsetCursor].ObjectStats
 	data, err := readObjects(
@@ -227,11 +228,12 @@ func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.
 		for _, vec := range data.Vecs {
 			newVec := vector.NewVec(*vec.GetType())
 			if err != nil {
-				return err
+				return "", err
 			}
 			(*bat).Vecs = append((*bat).Vecs, newVec)
 		}
 	}
+	blkStr = fmt.Sprintf("%s-%d", currentObject.ObjectName().ObjectId().ShortStringEx(), h.blkOffsetCursor)
 	srcLen := data.Vecs[0].Length()
 	sels := make([]int64, srcLen)
 	for j := 0; j < srcLen; j++ {
@@ -250,7 +252,8 @@ func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.
 }
 
 func (h *CNObjectHandle) QuickNext(ctx context.Context, data **batch.Batch, mp *mpool.MPool) (err error) {
-	return h.Next(ctx, data, mp)
+	_, err = h.Next(ctx, data, mp)
+	return
 }
 
 func (h *CNObjectHandle) NextTS() types.TS {
@@ -346,15 +349,16 @@ func (h *AObjectHandle) QuickNext(ctx context.Context, data **batch.Batch, mp *m
 get nexttss
 next with ts
 */
-func (h *AObjectHandle) NextWithTS(ctx context.Context, bat **batch.Batch, ts types.TS, mp *mpool.MPool) (batchMaxTS types.TS, err error) {
+func (h *AObjectHandle) NextWithTS(ctx context.Context, bat **batch.Batch, ts types.TS, mp *mpool.MPool) (blkStr string, batchMaxTS types.TS, err error) {
 	if h.isEnd() {
-		return maxTS, moerr.GetOkExpectedEOF()
+		return "", maxTS, moerr.GetOkExpectedEOF()
 	}
 	if ts.Equal(&maxTS) {
 		err = h.next(ctx, bat, mp, h.rowOffsetCursor, h.batchLength)
 		return
 	}
 	end := getOffsetByCommitTS(h.currentBatch.Vecs[len(h.currentBatch.Vecs)-1], ts, true, h.rowOffsetCursor)
+	blkStr = h.objects[h.objectOffsetCursor].ObjectStats.ObjectName().ObjectId().ShortStringEx() + "-0"
 	err = h.next(ctx, bat, mp, h.rowOffsetCursor, end)
 	commitTSVec := (*bat).Vecs[len((*bat).Vecs)-1]
 	batchMaxTS = vector.GetFixedAtNoTypeCheck[types.TS](commitTSVec, commitTSVec.Length()-1)
@@ -416,6 +420,9 @@ type baseHandle struct {
 	mp           *mpool.MPool
 
 	skipTS map[types.TS]struct{}
+
+	extendBatchDebugStr string
+	windowBatchDebugStr string
 }
 
 const (
@@ -428,14 +435,14 @@ const (
 )
 
 func NewBaseHandler(
-	state *PartitionState, 
-	start, end types.TS, 
-	mp *mpool.MPool, 
-	tombstone bool, 
-	fs fileservice.FileService, 
+	state *PartitionState,
+	start, end types.TS,
+	mp *mpool.MPool,
+	tombstone bool,
+	fs fileservice.FileService,
 	ctx context.Context) (p *baseHandle, err error) {
 	p = &baseHandle{
-		mp: mp,
+		mp:     mp,
 		skipTS: make(map[types.TS]struct{}),
 	}
 	var iter btree.IterG[ObjectEntry]
@@ -534,7 +541,13 @@ func (p *baseHandle) getAllBatches(mp *mpool.MPool) (bat *batch.Batch, err error
 	}
 	batchOffset := len(p.currentBatch) - 1
 	rowOffset := p.batchLength[batchOffset]
-	return p.cloneWindowBatches(batchOffset, rowOffset, mp)
+	bat,err = p.cloneWindowBatches(batchOffset,rowOffset,mp)
+	batchLength := 0
+	if bat != nil {
+		batchLength = bat.Vecs[0].Length()
+	}
+	p.windowBatchDebugStr = fmt.Sprintf("%s %d %d %d;", p.windowBatchDebugStr, batchOffset, rowOffset, batchLength)
+	return
 }
 func (p *baseHandle) cloneWindowBatches(batchOffset, rowoOffset int, mp *mpool.MPool) (bat *batch.Batch, err error) {
 	if batchOffset == 0 && rowoOffset <= p.currentRow {
@@ -607,7 +620,13 @@ func (p *baseHandle) windowBatchWithTS(ts types.TS, includeEqual bool, mp *mpool
 		return nil, moerr.GetOkExpectedEOF()
 	}
 	batchOffset, rowoffset := p.getOffsetByTS(ts, includeEqual)
-	return p.cloneWindowBatches(batchOffset, rowoffset, mp)
+	bat, err = p.cloneWindowBatches(batchOffset, rowoffset, mp)
+	batchLength := 0
+	if bat != nil {
+		batchLength = bat.Vecs[0].Length()
+	}
+	p.windowBatchDebugStr = fmt.Sprintf("%s %d %d %d;", p.windowBatchDebugStr, batchOffset, rowoffset, batchLength)
+	return
 }
 func (p *baseHandle) fillInSkipTS(iter btree.IterG[ObjectEntry], start, end types.TS) {
 	for iter.Next() {
@@ -632,6 +651,8 @@ func (p *baseHandle) IsSmall() bool {
 	return count < SmallBatchThreshold
 }
 func (p *baseHandle) Close() {
+	logutil.Infof(p.extendBatchDebugStr)
+	logutil.Infof(p.windowBatchDebugStr)
 	if p.inMemoryHandle != nil {
 		p.inMemoryHandle.Close()
 	}
@@ -684,7 +705,7 @@ func (p *baseHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPoo
 	case NextChangeHandle_InMemory:
 		err = p.inMemoryHandle.Next(bat, mp)
 	case NextChangeHandle_CNObj:
-		err = p.cnObjectHandle.Next(ctx, bat, mp)
+		_, err = p.cnObjectHandle.Next(ctx, bat, mp)
 	}
 	return
 }
@@ -696,13 +717,21 @@ func (p *baseHandle) extendBatch(ctx context.Context, bat **batch.Batch, mp *mpo
 		if ts.IsEmpty() {
 			ts = maxTS
 		}
+		batchLength := 0
+		if *bat != nil {
+			batchLength = (*bat).Vecs[0].Length()
+		}
+		var blkStr string
 		switch typ {
 		case NextChangeHandle_AObj:
-			ts, err = p.aobjHandle.NextWithTS(ctx, bat, ts, mp)
+			blkStr, ts, err = p.aobjHandle.NextWithTS(ctx, bat, ts, mp)
+			p.extendBatchDebugStr = fmt.Sprintf("%s AO", p.extendBatchDebugStr)
 		case NextChangeHandle_InMemory:
 			ts, err = p.inMemoryHandle.NextWithTS(ctx, bat, ts, mp)
+			p.extendBatchDebugStr = fmt.Sprintf("%s MEM", p.extendBatchDebugStr)
 		case NextChangeHandle_CNObj:
-			err = p.cnObjectHandle.Next(ctx, bat, mp)
+			blkStr, err = p.cnObjectHandle.Next(ctx, bat, mp)
+			p.extendBatchDebugStr = fmt.Sprintf("%s CN", p.extendBatchDebugStr)
 			ts = minTS
 		}
 		if err != nil {
@@ -711,7 +740,10 @@ func (p *baseHandle) extendBatch(ctx context.Context, bat **batch.Batch, mp *mpo
 			}
 			return
 		}
+		batchLength2 := (*bat).Vecs[0].Length()
+		p.extendBatchDebugStr = fmt.Sprintf("%s %s %d;", p.extendBatchDebugStr, blkStr, batchLength2-batchLength)
 		if *bat != nil && (*bat).Vecs[0].Length() >= CoarseMaxRow {
+			p.extendBatchDebugStr = fmt.Sprintf("%s||", p.extendBatchDebugStr)
 			return
 		}
 	}

@@ -167,9 +167,7 @@ func (r *BatchHandle) next(bat **batch.Batch, mp *mpool.MPool, start, end int) (
 			(*bat).Vecs = append((*bat).Vecs, newVec)
 		}
 	} else {
-		for i, vec := range (*bat).Vecs {
-			appendFromEntry(r.batches.Vecs[i], vec, r.rowOffsetCursor, mp)
-		}
+		err = unionBatch(*bat, r.batches, start, end, mp)
 	}
 	return
 }
@@ -235,13 +233,9 @@ func (h *CNObjectHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.
 	}
 	blkStr = fmt.Sprintf("%s-%d", currentObject.ObjectName().ObjectId().ShortStringEx(), h.blkOffsetCursor)
 	srcLen := data.Vecs[0].Length()
-	sels := make([]int64, srcLen)
-	for j := 0; j < srcLen; j++ {
-		sels[j] = int64(j)
-	}
-	for i, vec := range (*bat).Vecs {
-		src := data.Vecs[i]
-		vec.Union(src, sels, mp)
+	err = unionBatch(*bat, data, 0, srcLen, mp)
+	if err != nil {
+		return
 	}
 	h.blkOffsetCursor++
 	if h.blkOffsetCursor >= int(currentObject.BlkCnt()) {
@@ -385,9 +379,7 @@ func (h *AObjectHandle) next(ctx context.Context, bat **batch.Batch, mp *mpool.M
 			(*bat).Vecs[i] = newVec
 		}
 	} else {
-		for i, vec := range (*bat).Vecs {
-			appendFromEntry(h.currentBatch.Vecs[i], vec, h.rowOffsetCursor, mp)
-		}
+		err = unionBatch(*bat, h.currentBatch, start, end, mp)
 	}
 	h.rowOffsetCursor = end
 	if h.rowOffsetCursor >= h.batchLength {
@@ -541,7 +533,7 @@ func (p *baseHandle) getAllBatches(mp *mpool.MPool) (bat *batch.Batch, err error
 	}
 	batchOffset := len(p.currentBatch) - 1
 	rowOffset := p.batchLength[batchOffset]
-	bat,err = p.cloneWindowBatches(batchOffset,rowOffset,mp)
+	bat, err = p.cloneWindowBatches(batchOffset, rowOffset, mp)
 	batchLength := 0
 	if bat != nil {
 		batchLength = bat.Vecs[0].Length()
@@ -920,9 +912,7 @@ func (p *ChangeHandler) quickNext(ctx context.Context, mp *mpool.MPool) (data, t
 func (p *ChangeHandler) Next(ctx context.Context, mp *mpool.MPool) (data, tombstone *batch.Batch, hint engine.ChangesHandle_Hint, err error) {
 	hint = engine.ChangesHandle_Tail_done
 	dataTS, err := p.dataHandle.extendCurrentBatch(ctx)
-	var emptyData bool
 	if moerr.IsMoErrCode(err, moerr.OkExpectedEOF) {
-		emptyData = true
 		err = nil
 	}
 	if err != nil {
@@ -931,9 +921,6 @@ func (p *ChangeHandler) Next(ctx context.Context, mp *mpool.MPool) (data, tombst
 	tombstoneTS, err := p.tombstoneHandle.extendCurrentBatch(ctx)
 	if moerr.IsMoErrCode(err, moerr.OkExpectedEOF) {
 		err = nil
-		if emptyData {
-			return
-		}
 	}
 	if err != nil {
 		return
@@ -1234,4 +1221,21 @@ func updateCNDataBatch(bat *batch.Batch, commitTS types.TS, mp *mpool.MPool) {
 		return
 	}
 	bat.Vecs = append(bat.Vecs, commitTSVec)
+}
+
+func unionBatch(dest, src *batch.Batch, start, end int, mp *mpool.MPool) (err error) {
+	srcLen := end - start
+	sels := make([]int64, srcLen)
+	for j := start; j < end; j++ {
+		sels[j-start] = int64(j)
+	}
+	for i, vec := range dest.Vecs {
+		src := src.Vecs[i]
+		err = vec.Union(src, sels, mp)
+		if err != nil {
+			dest.Clean(mp)
+			return
+		}
+	}
+	return
 }

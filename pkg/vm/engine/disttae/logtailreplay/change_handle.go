@@ -347,13 +347,13 @@ func (h *AObjectHandle) NextWithTS(ctx context.Context, bat **batch.Batch, ts ty
 	if h.isEnd() {
 		return "", maxTS, moerr.GetOkExpectedEOF()
 	}
+	blkStr = h.objects[h.objectOffsetCursor].ObjectStats.ObjectName().ObjectId().ShortStringEx() + "-0"
 	if ts.Equal(&maxTS) {
 		err = h.next(ctx, bat, mp, h.rowOffsetCursor, h.batchLength)
-		return
+	} else {
+		end := getOffsetByCommitTS(h.currentBatch.Vecs[len(h.currentBatch.Vecs)-1], ts, true, h.rowOffsetCursor)
+		err = h.next(ctx, bat, mp, h.rowOffsetCursor, end)
 	}
-	end := getOffsetByCommitTS(h.currentBatch.Vecs[len(h.currentBatch.Vecs)-1], ts, true, h.rowOffsetCursor)
-	blkStr = h.objects[h.objectOffsetCursor].ObjectStats.ObjectName().ObjectId().ShortStringEx() + "-0"
-	err = h.next(ctx, bat, mp, h.rowOffsetCursor, end)
 	commitTSVec := (*bat).Vecs[len((*bat).Vecs)-1]
 	batchMaxTS = vector.GetFixedAtNoTypeCheck[types.TS](commitTSVec, commitTSVec.Length()-1)
 	return
@@ -413,6 +413,7 @@ type baseHandle struct {
 
 	skipTS map[types.TS]struct{}
 
+	tombstone           bool
 	extendBatchDebugStr string
 	windowBatchDebugStr string
 }
@@ -434,8 +435,9 @@ func NewBaseHandler(
 	fs fileservice.FileService,
 	ctx context.Context) (p *baseHandle, err error) {
 	p = &baseHandle{
-		mp:     mp,
-		skipTS: make(map[types.TS]struct{}),
+		mp:        mp,
+		tombstone: tombstone,
+		skipTS:    make(map[types.TS]struct{}),
 	}
 	var iter btree.IterG[ObjectEntry]
 	if tombstone {
@@ -466,15 +468,22 @@ func (p *baseHandle) init(ctx context.Context, quick bool, mp *mpool.MPool) (err
 	return
 }
 func (p *baseHandle) extendCurrentBatch(ctx context.Context) (ts types.TS, err error) {
+	if len(p.currentBatch) == 0 {
+		ts = maxTS
+	} else {
+		ts = p.maxTSs[len(p.maxTSs)-1]
+	}
 	for len(p.batchLength) < 2 {
 		var bat *batch.Batch
 		ts, err = p.extendBatch(ctx, &bat, p.mp)
+		if bat != nil {
+			p.currentBatch = append(p.currentBatch, bat)
+			p.maxTSs = append(p.maxTSs, ts)
+			p.batchLength = append(p.batchLength, bat.Vecs[0].Length())
+		}
 		if err != nil {
 			return
 		}
-		p.currentBatch = append(p.currentBatch, bat)
-		p.maxTSs = append(p.maxTSs, ts)
-		p.batchLength = append(p.batchLength, bat.Vecs[0].Length())
 	}
 	return
 }
@@ -617,7 +626,9 @@ func (p *baseHandle) windowBatchWithTS(ts types.TS, includeEqual bool, mp *mpool
 	if bat != nil {
 		batchLength = bat.Vecs[0].Length()
 	}
-	p.windowBatchDebugStr = fmt.Sprintf("%s %d %d %d;", p.windowBatchDebugStr, batchOffset, rowoffset, batchLength)
+	if batchLength != 0 {
+		p.windowBatchDebugStr = fmt.Sprintf("%s %d %d %d;", p.windowBatchDebugStr, batchOffset, rowoffset, batchLength)
+	}
 	return
 }
 func (p *baseHandle) fillInSkipTS(iter btree.IterG[ObjectEntry], start, end types.TS) {
@@ -701,7 +712,8 @@ func (p *baseHandle) Next(ctx context.Context, bat **batch.Batch, mp *mpool.MPoo
 	}
 	return
 }
-func (p *baseHandle) extendBatch(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (ts types.TS, err error) {
+func (p *baseHandle) extendBatch(ctx context.Context, bat **batch.Batch, mp *mpool.MPool) (batchMaxTS types.TS, err error) {
+	var ts types.TS
 	for {
 		var typ int
 		var minTS types.TS
@@ -716,19 +728,19 @@ func (p *baseHandle) extendBatch(ctx context.Context, bat **batch.Batch, mp *mpo
 		var blkStr string
 		switch typ {
 		case NextChangeHandle_AObj:
-			blkStr, ts, err = p.aobjHandle.NextWithTS(ctx, bat, ts, mp)
+			blkStr, batchMaxTS, err = p.aobjHandle.NextWithTS(ctx, bat, ts, mp)
 			p.extendBatchDebugStr = fmt.Sprintf("%s AO", p.extendBatchDebugStr)
 		case NextChangeHandle_InMemory:
-			ts, err = p.inMemoryHandle.NextWithTS(ctx, bat, ts, mp)
+			batchMaxTS, err = p.inMemoryHandle.NextWithTS(ctx, bat, ts, mp)
 			p.extendBatchDebugStr = fmt.Sprintf("%s MEM", p.extendBatchDebugStr)
 		case NextChangeHandle_CNObj:
 			blkStr, err = p.cnObjectHandle.Next(ctx, bat, mp)
 			p.extendBatchDebugStr = fmt.Sprintf("%s CN", p.extendBatchDebugStr)
-			ts = minTS
+			batchMaxTS = minTS
 		}
 		if err != nil {
 			if moerr.IsMoErrCode(err, moerr.OkExpectedEOF) {
-				ts = maxTS
+				batchMaxTS = maxTS
 			}
 			return
 		}

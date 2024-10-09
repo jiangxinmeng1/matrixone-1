@@ -17,6 +17,7 @@ package logtailreplay
 import (
 	"context"
 	"fmt"
+	"time"
 
 	goSort "sort"
 
@@ -840,6 +841,10 @@ type ChangeHandler struct {
 	dataHandle      *baseHandle
 	coarseMaxRow    int
 	quick           bool
+
+	dataLength, tombstoneLength int
+	start, end                  types.TS
+	duration                    time.Duration
 }
 
 func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPool, maxRow uint32, fs fileservice.FileService, ctx context.Context) (changeHandle *ChangeHandler, err error) {
@@ -848,6 +853,8 @@ func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPo
 	}
 	changeHandle = &ChangeHandler{
 		coarseMaxRow: int(maxRow),
+		start:        start,
+		end:          end,
 	}
 	changeHandle.tombstoneHandle, err = NewBaseHandler(state, start, end, mp, true, fs, ctx)
 	if err != nil {
@@ -872,6 +879,9 @@ func NewChangesHandler(state *PartitionState, start, end types.TS, mp *mpool.MPo
 func (p *ChangeHandler) Close() error {
 	p.dataHandle.Close()
 	p.tombstoneHandle.Close()
+	if p.dataLength != 0 && p.tombstoneLength != 0 {
+		logutil.Infof("misuxi collect %v, %v, %d/%d, takes %v", p.start.ToString(), p.end.ToString(), p.dataLength, p.tombstoneLength, p.duration)
+	}
 	return nil
 }
 func (p *ChangeHandler) decideMode() {
@@ -910,6 +920,7 @@ func (p *ChangeHandler) quickNext(ctx context.Context, mp *mpool.MPool) (data, t
 	return
 }
 func (p *ChangeHandler) Next(ctx context.Context, mp *mpool.MPool) (data, tombstone *batch.Batch, hint engine.ChangesHandle_Hint, err error) {
+	t0 := time.Now()
 	hint = engine.ChangesHandle_Tail_done
 	dataTS, err := p.dataHandle.extendCurrentBatch(ctx)
 	if moerr.IsMoErrCode(err, moerr.OkExpectedEOF) {
@@ -956,6 +967,13 @@ func (p *ChangeHandler) Next(ctx context.Context, mp *mpool.MPool) (data, tombst
 			return
 		}
 	}
+	if data != nil {
+		p.dataLength += data.Vecs[0].Length()
+	}
+	if tombstone != nil {
+		p.tombstoneLength += tombstone.Vecs[0].Length()
+	}
+	p.duration += time.Since(t0)
 	return
 }
 func (p *ChangeHandler) Next1(ctx context.Context, mp *mpool.MPool) (data, tombstone *batch.Batch, hint engine.ChangesHandle_Hint, err error) {

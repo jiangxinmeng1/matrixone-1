@@ -892,7 +892,7 @@ func (p *ChangeHandler) Close() error {
 	p.dataHandle.Close()
 	p.tombstoneHandle.Close()
 	if p.dataLength != 0 && p.tombstoneLength != 0 {
-		logutil.Infof("misuxi collect %v, %v, %d/%d, takes %v", p.start.ToString(), p.end.ToString(), p.dataLength, p.tombstoneLength, p.duration)
+		logutil.Infof("misuxi collect equal %v %v, %v, %d/%d, takes %v", p.dataLength == p.tombstoneLength, p.start.ToString(), p.end.ToString(), p.dataLength, p.tombstoneLength, p.duration)
 	}
 	return nil
 }

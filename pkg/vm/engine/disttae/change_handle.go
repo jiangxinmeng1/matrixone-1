@@ -33,14 +33,14 @@ import (
 )
 
 func (tbl *txnTable) CollectChanges(ctx context.Context, from, to types.TS, mp *mpool.MPool) (engine.ChangesHandle, error) {
-	if from.IsEmpty() {
-		return NewCheckpointChangesHandle(to, tbl, mp, ctx)
-	}
-	state, err := tbl.getPartitionState(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return logtailreplay.NewChangesHandler(state, from, to, mp, 8192, tbl.getTxn().engine.fs, ctx)
+	// if from.IsEmpty() {
+	return NewCheckpointChangesHandle(to, tbl, mp, ctx)
+	// }
+	// state, err := tbl.getPartitionState(ctx)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// return logtailreplay.NewChangesHandler(state, from, to, mp, 8192, tbl.getTxn().engine.fs, ctx)
 }
 
 type ChangesHandle interface {
@@ -60,6 +60,7 @@ type CheckpointChangesHandle struct {
 	attrs  []string
 	isEnd  bool
 
+	sid         string
 	blockList   objectio.BlockInfoSlice
 	prefetchIdx int
 	readIdx     int
@@ -74,6 +75,7 @@ func NewCheckpointChangesHandle(end types.TS, table *txnTable, mp *mpool.MPool, 
 		end:   end,
 		table: table,
 		fs:    table.getTxn().engine.fs,
+		sid:   table.proc.Load().GetService(),
 	}
 	err := handle.initReader(ctx)
 	return handle, err
@@ -85,7 +87,7 @@ func (h *CheckpointChangesHandle) prefetch() {
 			return
 		}
 		blk := h.blockList.Get(h.prefetchIdx)
-		err := blockio.Prefetch("", h.fs, blk.MetaLoc[:])
+		err := blockio.Prefetch(h.sid, h.fs, blk.MetaLoc[:])
 		if err != nil {
 			logutil.Warnf("ChangesHandle: prefetch failed: %v", err)
 		}
@@ -96,7 +98,7 @@ func (h *CheckpointChangesHandle) Next(ctx context.Context, mp *mpool.MPool) (da
 	if time.Since(h.lastPrintTime) > time.Minute {
 		h.lastPrintTime = time.Now()
 		if h.dataLength != 0 {
-			logutil.Infof("ChangesHandle-Slow, data length %d, duration %d", h.dataLength, h.duration)
+			logutil.Infof("ChangesHandle-Slow, data length %d, duration %v", h.dataLength, h.duration)
 		}
 	}
 	select {
@@ -149,13 +151,14 @@ func (h *CheckpointChangesHandle) Next(ctx context.Context, mp *mpool.MPool) (da
 	data.Vecs[len(data.Vecs)-1] = committs
 	data.Attrs[len(data.Attrs)-1] = objectio.DefaultCommitTS_Attr
 	h.duration += time.Since(t0)
-	if data != nil {
 		h.dataLength += data.Vecs[0].Length()
-	}
 	return
 }
 func (h *CheckpointChangesHandle) Close() error {
 	h.reader.Close()
+	if h.dataLength != 0 {
+		logutil.Infof("ChangesHandle-Slow, data length %d, duration %v", h.dataLength, h.duration)
+	}
 	return nil
 }
 func (h *CheckpointChangesHandle) initReader(ctx context.Context) (err error) {

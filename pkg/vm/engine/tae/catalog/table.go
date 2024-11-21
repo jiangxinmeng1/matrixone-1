@@ -569,6 +569,27 @@ func (entry *TableEntry) PrepareRollback() (err error) {
 	return
 }
 
+func (entry *TableEntry) ApplyRollback() (err error) {
+	// Safety: in commit queue, that's ok without lock
+	t := entry.GetLatestNodeLocked()
+	if schema := t.BaseNode.Schema; schema.Extra.OldName != "" {
+		fullname := genTblFullName(schema.AcInfo.TenantID, schema.Name)
+		entry.GetDB().RollbackRenameTable(fullname, entry.ID)
+	}
+	var isEmpty bool
+	isEmpty, err = entry.BaseEntryImpl.ApplyRollback()
+	if err != nil {
+		return
+	}
+	if isEmpty {
+		err = entry.GetDB().RemoveEntry(entry)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
 /*
 s: start
 p: prepare

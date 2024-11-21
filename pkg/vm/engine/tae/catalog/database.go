@@ -580,6 +580,19 @@ func (e *DBEntry) PrepareRollback() (err error) {
 	return
 }
 
+func (e *DBEntry) ApplyRollback() (err error) {
+	var isEmpty bool
+	if isEmpty, err = e.BaseEntryImpl.ApplyRollback(); err != nil {
+		return
+	}
+	if isEmpty {
+		if err = e.catalog.RemoveDBEntry(e); err != nil {
+			return
+		}
+	}
+	return
+}
+
 // IsActive is coarse API: no consistency check
 func (e *DBEntry) IsActive() bool {
 	return !e.HasDropCommitted()

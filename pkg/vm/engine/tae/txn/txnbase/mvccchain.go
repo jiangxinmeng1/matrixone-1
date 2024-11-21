@@ -243,11 +243,14 @@ func (be *MVCCChain[T]) IsEmptyLocked() bool {
 	return head == nil
 }
 
-func (be *MVCCChain[T]) ApplyRollback() error {
+func (be *MVCCChain[T]) ApplyRollback() (bool, error) {
 	be.Lock()
 	defer be.Unlock()
-	return be.GetLatestNodeLocked().ApplyRollback()
-
+	node := be.MVCC.GetHead()
+	_ = node.GetPayload().ApplyRollback()
+	be.MVCC.Delete(node)
+	isEmpty := be.IsEmptyLocked()
+	return isEmpty, nil
 }
 
 func (be *MVCCChain[T]) ApplyCommit(id string) error {

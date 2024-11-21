@@ -628,6 +628,14 @@ func readBlockData(
 				deletes.Add(uint64(i))
 			}
 		}
+		if info.HasAbortVec() {
+			aborts := vector.MustFixedColWithTypeCheck[bool](&cacheVectors2[len(cols)-2])
+			for i := 0; i < len(aborts); i++ {
+				if aborts[i] {
+					deletes.Add(uint64(i))
+				}
+			}
+		}
 		logutil.Debugf(
 			"blockread %s scan filter cost %v: base %s filter out %v\n ",
 			info.BlockID.String(),

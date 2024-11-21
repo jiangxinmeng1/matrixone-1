@@ -689,6 +689,7 @@ func (tbl *txnTable) CreateObject(isTombstone bool) (obj handle.Object, err erro
 		true,
 		sorted,
 		false,
+		true,
 	)
 	return tbl.createObject(
 		&objectio.CreateObjOpt{Stats: stats, IsTombstone: isTombstone},

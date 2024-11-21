@@ -34,7 +34,7 @@ func TestCompactBlockCmd(t *testing.T) {
 
 	db, _ := c.CreateDBEntry("db", "", "", nil)
 	table, _ := db.CreateTableEntry(schema, nil, nil)
-	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
+	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false, false)
 	obj, _ := table.CreateObject(nil, &objectio.CreateObjOpt{Stats: stats, IsTombstone: false}, nil)
 
 	controller := NewAppendMVCCHandle(obj)

@@ -194,7 +194,7 @@ func TestBlockInfoSlice_Remove(t *testing.T) {
 
 func TestObjectStatsToBlockInfoSlice(t *testing.T) {
 	obj1 := NewObjectid()
-	stats := NewObjectStatsWithObjectID(obj1, true, true, true)
+	stats := NewObjectStatsWithObjectID(obj1, true, true, true, false)
 	extent := NewExtent(0x1f, 0x2f, 0x3f, 0x4f)
 	SetObjectStatsExtent(stats, extent)
 	blkCnt := uint16(99)

@@ -266,7 +266,7 @@ func NewReplayObjectEntry() *ObjectEntry {
 }
 
 func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *ObjectEntry {
-	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
+	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false, false)
 	e := &ObjectEntry{
 		table: table,
 		ObjectNode: ObjectNode{

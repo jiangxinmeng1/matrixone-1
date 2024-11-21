@@ -8380,7 +8380,7 @@ func TestDeduplication(t *testing.T) {
 	dataFactory := tables.NewDataFactory(
 		tae.Runtime,
 		tae.Dir)
-	stats := objectio.NewObjectStatsWithObjectID(ObjectIDs[0], true, false, false)
+	stats := objectio.NewObjectStatsWithObjectID(ObjectIDs[0], true, false, false, false)
 	obj, err := tbl.CreateObject(
 		txn,
 		new(objectio.CreateObjOpt).WithObjectStats(stats).WithIsTombstone(false), dataFactory.MakeObjectFactory())

@@ -196,7 +196,6 @@ func (n *AppendMVCCHandle) GetVisibleRowLocked(
 	ctx context.Context,
 	txn txnif.TxnReader,
 ) (maxrow uint32, visible bool, holes *nulls.Bitmap, err error) {
-	var holesMax uint32
 	anToWait := make([]*AppendNode, 0)
 	txnToWait := make([]txnif.TxnReader, 0)
 	n.appends.ForEach(func(an *AppendNode) bool {
@@ -211,13 +210,11 @@ func (n *AppendMVCCHandle) GetVisibleRowLocked(
 		if an.IsVisible(txn) {
 			visible = true
 			maxrow = an.maxRow
-		} else {
-			if holes == nil {
-				holes = nulls.NewWithSize(int(an.maxRow) + 1)
-			}
-			holes.AddRange(uint64(an.startRow), uint64(an.maxRow))
-			if holesMax < an.maxRow {
-				holesMax = an.maxRow
+			if an.IsAborted() {
+				if holes == nil {
+					holes = nulls.NewWithSize(int(an.maxRow) + 1)
+				}
+				holes.AddRange(uint64(an.startRow), uint64(an.maxRow))
 			}
 		}
 		startTS := txn.GetStartTS()
@@ -236,19 +233,13 @@ func (n *AppendMVCCHandle) GetVisibleRowLocked(
 			if maxrow < an.maxRow {
 				maxrow = an.maxRow
 			}
-		} else {
-			if holes == nil {
-				holes = nulls.NewWithSize(int(an.maxRow) + 1)
+			if an.IsAborted() {
+				if holes == nil {
+					holes = nulls.NewWithSize(int(an.maxRow) + 1)
+				}
+				holes.AddRange(uint64(an.startRow), uint64(an.maxRow))
+
 			}
-			holes.AddRange(uint64(an.startRow), uint64(an.maxRow))
-			if holesMax < an.maxRow {
-				holesMax = an.maxRow
-			}
-		}
-	}
-	if !holes.IsEmpty() {
-		for i := uint64(maxrow); i < uint64(holesMax); i++ {
-			holes.Del(i)
 		}
 	}
 	return

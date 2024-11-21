@@ -157,7 +157,7 @@ func ReadOneBlockWithMeta(
 			if seqnum == SEQNUM_COMMITTS {
 				seqnum = metaColCnt - 1
 			} else if seqnum == SEQNUM_ABORT {
-				panic("not support")
+				seqnum = metaColCnt - 2
 			} else {
 				panic(fmt.Sprintf("bad path to read special column %d", seqnum))
 			}

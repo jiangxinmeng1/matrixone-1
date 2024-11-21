@@ -101,7 +101,7 @@ func TestHasTombstoneChanged(t *testing.T) {
 	require.False(t, state.HasTombstoneChanged(types.BuildTS(13, 0), types.BuildTS(15, 0)))
 
 	roid := func() objectio.ObjectStats {
-		return *objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), false, true, false)
+		return *objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), false, true, false, false)
 	}
 
 	state.tombstoneObjectDTSIndex.Set(ObjectEntry{ObjectInfo{ObjectStats: roid(), CreateTime: types.BuildTS(5, 0), DeleteTime: types.BuildTS(8, 0)}})

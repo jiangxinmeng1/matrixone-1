@@ -194,6 +194,42 @@ func (obj *baseObject) LoadPersistedCommitTS(bid uint16) (vec containers.Vector,
 	return
 }
 
+func (obj *baseObject) LoadPersistedAbort(bid uint16) (vec containers.Vector, err error) {
+	if !obj.meta.Load().IsAppendable() {
+		panic("not support")
+	}
+	if !obj.meta.Load().ObjectStats.GetHasAbortVec() {
+		return nil, nil
+	}
+	location, err := obj.buildMetalocation(bid)
+	if err != nil {
+		return
+	}
+	if location.IsEmpty() {
+		return
+	}
+	//Extend lifetime of vectors is without the function.
+	//need to copy. closeFunc will be nil.
+	vectors, _, err := blockio.LoadColumns2(
+		context.Background(),
+		[]uint16{objectio.SEQNUM_ABORT},
+		nil,
+		obj.rt.Fs.Service,
+		location,
+		fileservice.Policy(0),
+		true,
+		obj.rt.VectorPool.Transient,
+	)
+	if err != nil {
+		return
+	}
+	if vectors[0].GetType().Oid != types.T_bool {
+		panic(fmt.Sprintf("%s: bad abort layout", obj.meta.Load().ID().String()))
+	}
+	vec = vectors[0]
+	return
+}
+
 // func (obj *baseObject) LoadPersistedColumnData(
 // 	ctx context.Context, schema *catalog.Schema, colIdx int, mp *mpool.MPool, blkID uint16,
 // ) (vec containers.Vector, err error) {
@@ -278,6 +314,7 @@ func (obj *baseObject) getDuplicateRowsWithLoad(
 			blkID,
 			maxVisibleRow,
 			obj.LoadPersistedCommitTS,
+			obj.LoadPersistedAbort,
 			txn,
 			skipCommittedBeforeTxnForAblk,
 		)
@@ -328,7 +365,7 @@ func (obj *baseObject) containsWithLoad(
 	var dedupFn any
 	if isAblk {
 		dedupFn = containers.MakeForeachVectorOp(
-			keys.GetType().Oid, containsAlkFunctions, data.Vecs[0], keys, obj.LoadPersistedCommitTS, txn,
+			keys.GetType().Oid, containsAlkFunctions, data.Vecs[0], keys, obj.LoadPersistedCommitTS, obj.LoadPersistedAbort, txn,
 			func(vrowID any) *model.TransDels {
 				rowID := vrowID.(types.Rowid)
 				blkID := rowID.BorrowBlockID()

@@ -28,7 +28,7 @@ func Test_GetUncommittedS3Tombstone(t *testing.T) {
 	var statsList []objectio.ObjectStats
 	for i := 0; i < 3; i++ {
 		row := types.RandomRowid()
-		stats := objectio.NewObjectStatsWithObjectID(row.BorrowObjectID(), false, false, true)
+		stats := objectio.NewObjectStatsWithObjectID(row.BorrowObjectID(), false, false, true, false)
 		objectio.SetObjectStatsRowCnt(stats, uint32(10+i*10))
 		statsList = append(statsList, *stats)
 	}

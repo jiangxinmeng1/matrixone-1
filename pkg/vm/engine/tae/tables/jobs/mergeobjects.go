@@ -448,7 +448,7 @@ func HandleMergeEntryInTxn(
 		stats := objectio.ObjectStats(stats)
 		objID := stats.ObjectName().ObjectId()
 		// set stats and sorted property
-		objstats := objectio.NewObjectStatsWithObjectID(objID, false, sorted, false)
+		objstats := objectio.NewObjectStatsWithObjectID(objID, false, sorted, false, false)
 		err := objectio.SetObjectStats(objstats, &stats)
 		if err != nil {
 			return nil, err

@@ -74,6 +74,9 @@ func (b *BlockInfo) ConstructBlockID(name ObjectName, sequence uint16) {
 func (b *BlockInfo) IsAppendable() bool {
 	return b.ObjectFlags&ObjectFlag_Appendable != 0
 }
+func (b *BlockInfo) HasAbortVec() bool {
+	return b.ObjectFlags&ObjectFlag_HasAbortVec != 0
+}
 
 func (b *BlockInfo) IsSorted() bool {
 	return b.ObjectFlags&ObjectFlag_Sorted != 0

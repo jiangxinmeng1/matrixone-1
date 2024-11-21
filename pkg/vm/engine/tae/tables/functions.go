@@ -136,7 +136,7 @@ func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vec
 
 func parseAGetDuplicateRowIDsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid, maxRow uint32,
-	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, skipCommittedBeforeTxnForAblk bool,
+	scanFn, abortFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, skipCommittedBeforeTxnForAblk bool,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -152,17 +152,20 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 		scanFn = args[4].(func(bid uint16) (vec containers.Vector, err error))
 	}
 	if args[5] != nil {
-		txn = args[5].(txnif.TxnReader)
+		abortFn = args[5].(func(bid uint16) (vec containers.Vector, err error))
 	}
 	if args[6] != nil {
-		skipCommittedBeforeTxnForAblk = args[6].(bool)
+		txn = args[6].(txnif.TxnReader)
+	}
+	if args[7] != nil {
+		skipCommittedBeforeTxnForAblk = args[7].(bool)
 	}
 	return
 }
 
 func parseAContainsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector,
-	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, delsFn func(rowID any) *model.TransDels,
+	scanFn, abortFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, delsFn func(rowID any) *model.TransDels,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -172,10 +175,13 @@ func parseAContainsArgs(args ...any) (
 		scanFn = args[2].(func(bid uint16) (vec containers.Vector, err error))
 	}
 	if args[3] != nil {
-		txn = args[3].(txnif.TxnReader)
+		abortFn = args[3].(func(bid uint16) (vec containers.Vector, err error))
 	}
 	if args[4] != nil {
-		delsFn = args[4].(func(rowID any) *model.TransDels)
+		txn = args[4].(txnif.TxnReader)
+	}
+	if args[5] != nil {
+		delsFn = args[5].(func(rowID any) *model.TransDels)
 	}
 	return
 }
@@ -265,16 +271,20 @@ func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, b
 }
 
 func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, blkID, maxRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
+	vec, rowIDs, blkID, maxRow, scanFn, abortFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if !rowIDs.IsNull(rowOffset) {
 			return nil
 		}
-		var tsVec containers.Vector
+		var tsVec, abortVec containers.Vector
 		defer func() {
 			if tsVec != nil {
 				tsVec.Close()
 				tsVec = nil
+			}
+			if abortVec != nil {
+				abortVec.Close()
+				abortVec = nil
 			}
 		}()
 		return containers.ForeachWindowVarlen(
@@ -299,6 +309,12 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 						return err
 					}
 				}
+				if abortVec == nil {
+					abortVec, err = abortFn(0)
+					if err != nil {
+						return err
+					}
+				}
 				commitTS := vector.GetFixedAtNoTypeCheck[types.TS](tsVec.GetDownstreamVector(), row)
 				startTS := txn.GetStartTS()
 				if commitTS.GT(&startTS) {
@@ -308,6 +324,9 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 						zap.String("commit ts", commitTS.ToString()),
 					)
 					return txnif.ErrTxnWWConflict
+				}
+				if abortVec != nil && vector.GetFixedAtNoTypeCheck[bool](abortVec.GetDownstreamVector(), row) {
+					return nil
 				}
 				if skip && commitTS.LT(&startTS) {
 					return nil
@@ -321,16 +340,20 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 
 func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, blkID, maxVisibleRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
+		vec, rowIDs, blkID, maxVisibleRow, scanFn, abortFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if !rowIDs.IsNull(rowOffset) {
 				return nil
 			}
-			var tsVec containers.Vector
+			var tsVec, abortVec containers.Vector
 			defer func() {
 				if tsVec != nil {
 					tsVec.Close()
 					tsVec = nil
+				}
+				if abortVec != nil {
+					abortVec.Close()
+					abortVec = nil
 				}
 			}()
 			return containers.ForeachWindowFixed(
@@ -354,6 +377,12 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 							return err
 						}
 					}
+					if abortVec == nil {
+						abortVec, err = abortFn(0)
+						if err != nil {
+							return err
+						}
+					}
 					commitTS := tsVec.Get(row).(types.TS)
 					startTS := txn.GetStartTS()
 					if commitTS.GT(&startTS) {
@@ -363,6 +392,9 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 							zap.String("commit ts", commitTS.ToString()),
 						)
 						return txnif.ErrTxnWWConflict
+					}
+					if abortVec != nil && vector.GetFixedAtNoTypeCheck[bool](abortVec.GetDownstreamVector(), row) {
+						return nil
 					}
 					if skip && commitTS.LT(&startTS) {
 						return nil
@@ -377,17 +409,21 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 
 func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, scanFn, txn, delsFn := parseAContainsArgs(args...)
+		vec, rowIDs, scanFn, abortFn, txn, delsFn := parseAContainsArgs(args...)
 		vs := vector.MustFixedColNoTypeCheck[T](vec.GetDownstreamVector())
 		return func(v1 T, _ bool, rowOffset int) error {
 			if rowIDs.IsNull(rowOffset) {
 				return nil
 			}
-			var tsVec containers.Vector
+			var tsVec, abortVec containers.Vector
 			defer func() {
 				if tsVec != nil {
 					tsVec.Close()
 					tsVec = nil
+				}
+				if abortVec != nil {
+					abortVec.Close()
+					abortVec = nil
 				}
 			}()
 			if row, existed := compute.GetOffsetWithFunc(
@@ -402,6 +438,16 @@ func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args 
 					if err != nil {
 						return err
 					}
+				}
+				if abortVec == nil {
+					var err error
+					abortVec, err = abortFn(0)
+					if err != nil {
+						return err
+					}
+				}
+				if abortVec != nil && vector.GetFixedAtNoTypeCheck[bool](abortVec.GetDownstreamVector(), row) {
+					return nil
 				}
 				rowIDs.Update(rowOffset, nil, true)
 				commitTS := tsVec.Get(row).(types.TS)

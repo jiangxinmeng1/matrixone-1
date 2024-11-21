@@ -108,7 +108,7 @@ func (node *memoryNode) Contains(
 	node.object.RLock()
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(node.object.meta.Load().ID(), 0)
-	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting),node.isAbort, mp)
+	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting), node.isAbort, mp)
 }
 func (node *memoryNode) getDuplicatedRowsLocked(
 	ctx context.Context,
@@ -172,8 +172,6 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 	if ok {
 		offset = dest.Length()
 		dest.Extend(node.data.Window(int(from), int(to-from)))
-		dest.GetVectorByName(objectio.TombstoneAttr_CommitTs_Attr).Extend(commitTSVec)
-		commitTSVec.Close() // TODO no copy
 	} else {
 		inner := node.data.CloneWindowWithPool(int(from), int(to-from), node.object.rt.VectorPool.Transient)
 		batWithVer := &containers.BatchWithVersion{
@@ -182,8 +180,6 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 			Seqnums:    node.writeSchema.AllSeqnums(),
 			Batch:      inner,
 		}
-		inner.AddVector(objectio.TombstoneAttr_CommitTs_Attr, commitTSVec)
-		batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_COMMITTS)
 		batches[node.writeSchema.Version] = batWithVer
 		dest = batWithVer
 	}
@@ -191,10 +187,22 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 		if ok {
 			dest.GetVectorByName(objectio.TombstoneAttr_Abort_Attr).Extend(abort)
 			abort.Close()
+			dest.GetVectorByName(objectio.TombstoneAttr_CommitTs_Attr).Extend(commitTSVec)
+			commitTSVec.Close()
 		} else {
+			dest.Seqnums = append(dest.Seqnums, objectio.SEQNUM_ABORT)
 			dest.AddVector(objectio.TombstoneAttr_Abort_Attr, abort)
+			dest.Seqnums = append(dest.Seqnums, objectio.SEQNUM_COMMITTS)
+			dest.AddVector(objectio.TombstoneAttr_CommitTs_Attr, commitTSVec)
 		}
 	} else {
+		if ok {
+			dest.GetVectorByName(objectio.TombstoneAttr_CommitTs_Attr).Extend(commitTSVec)
+			commitTSVec.Close()
+		} else {
+			dest.Seqnums = append(dest.Seqnums, objectio.SEQNUM_COMMITTS)
+			dest.AddVector(objectio.TombstoneAttr_CommitTs_Attr, commitTSVec)
+		}
 		iter := abortMap.GetBitmap().Iterator()
 		for iter.HasNext() {
 			row := iter.Next()
@@ -337,10 +345,14 @@ func (node *memoryNode) Scan(
 	}
 	node.object.RLock()
 	defer node.object.RUnlock()
-	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
+	maxRow, visible, abortMap, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
 	if !visible || err != nil {
 		// blk.RUnlock()
 		return
+	}
+	offset := 0
+	if *bat != nil {
+		offset = (*bat).Length()
 	}
 	err = node.getDataWindowLocked(
 		bat,
@@ -350,6 +362,13 @@ func (node *memoryNode) Scan(
 		maxRow,
 		mp,
 	)
+	if abortMap != nil {
+		iter := abortMap.GetBitmap().Iterator()
+		for iter.HasNext() {
+			row := iter.Next()
+			(*bat).Deletes.Add(row + uint64(offset))
+		}
+	}
 	for _, idx := range colIdxes {
 		if idx == objectio.SEQNUM_COMMITTS {
 			node.object.appendMVCC.FillInCommitTSVecLocked(
@@ -402,7 +421,7 @@ func (node *memoryNode) FillBlockTombstones(
 	mp *mpool.MPool) error {
 	node.object.RLock()
 	defer node.object.RUnlock()
-	maxRow, visible, _, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
+	maxRow, visible, abort, err := node.object.appendMVCC.GetVisibleRowLocked(ctx, txn)
 	if !visible || err != nil {
 		// blk.RUnlock()
 		return err
@@ -410,6 +429,9 @@ func (node *memoryNode) FillBlockTombstones(
 	rowIDVec := node.data.GetVectorByName(objectio.TombstoneAttr_Rowid_Attr)
 	rowIDs := vector.MustFixedColWithTypeCheck[types.Rowid](rowIDVec.GetDownstreamVector())
 	for i := 0; i < int(maxRow); i++ {
+		if abort != nil && abort.Contains(uint64(i)) {
+			continue
+		}
 		rowID := rowIDs[i]
 		if types.PrefixCompare(rowID[:], blkID[:]) == 0 {
 			if *deletes == nil {

@@ -48,6 +48,7 @@ const (
 	ObjectFlag_Appendable = 1 << iota
 	ObjectFlag_Sorted
 	ObjectFlag_CNCreated
+	ObjectFlag_HasAbortVec
 )
 
 var ZeroObjectStats ObjectStats
@@ -78,11 +79,17 @@ func WithAppendable() ObjectStatsOptions {
 	}
 }
 
+func WithHasAbortVec() ObjectStatsOptions {
+	return func(o *ObjectStats) {
+		o[reservedOffset] |= ObjectFlag_HasAbortVec
+	}
+}
+
 func NewObjectStats() *ObjectStats {
 	return new(ObjectStats)
 }
 
-func NewObjectStatsWithObjectID(id *ObjectId, appendable, sorted, cnCreated bool) *ObjectStats {
+func NewObjectStatsWithObjectID(id *ObjectId, appendable, sorted, cnCreated, hasAbortVect bool) *ObjectStats {
 	stats := new(ObjectStats)
 	SetObjectStatsObjectName(stats, BuildObjectNameWithObjectID(id))
 	if appendable {
@@ -95,6 +102,10 @@ func NewObjectStatsWithObjectID(id *ObjectId, appendable, sorted, cnCreated bool
 
 	if cnCreated {
 		stats[reservedOffset] = stats[reservedOffset] | ObjectFlag_CNCreated
+	}
+
+	if hasAbortVect {
+		stats[reservedOffset] = stats[reservedOffset] | ObjectFlag_HasAbortVec
 	}
 
 	return stats
@@ -129,6 +140,10 @@ func (des *ObjectStats) GetSorted() bool {
 func (des *ObjectStats) GetCNCreated() bool {
 	return des[reservedOffset]&ObjectFlag_CNCreated != 0
 }
+func (des *ObjectStats) GetHasAbortVec() bool {
+	return des[reservedOffset]&ObjectFlag_HasAbortVec != 0
+}
+
 func (des *ObjectStats) IsZero() bool {
 	return bytes.Equal(des[:], ZeroObjectStats[:])
 }

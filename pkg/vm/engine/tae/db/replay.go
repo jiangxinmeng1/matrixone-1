@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -134,6 +135,18 @@ func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte
 	}
 	if !replayer.checkLSN(lsn) {
 		return
+	}
+	if typ == txnbase.IOET_WALTxnCommand_TxnRollback {
+		head := objectio.DecodeIOEntryHeader(payload)
+		codec := objectio.GetIOEntryCodec(*head)
+		entry, err := codec.Decode(payload[4:])
+		if err != nil {
+			panic(err)
+		}
+		rollbackCMD := entry.(txnbase.TxnRollbackCommand)
+		lsn := rollbackCMD.LSN()
+		var txn txnif.AsyncTxn
+		txn.Rollback(context.TODO())
 	}
 	head := objectio.DecodeIOEntryHeader(payload)
 	if head.Version < txnbase.IOET_WALTxnEntry_V4 {

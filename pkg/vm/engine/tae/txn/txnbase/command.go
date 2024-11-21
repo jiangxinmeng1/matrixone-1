@@ -28,20 +28,23 @@ import (
 )
 
 const (
-	IOET_WALTxnEntry            uint16 = 3000
-	IOET_WALTxnCommand_Composed uint16 = 3001
-	IOET_WALTxnCommand_TxnState uint16 = 3002
+	IOET_WALTxnEntry               uint16 = 3000
+	IOET_WALTxnCommand_Composed    uint16 = 3001
+	IOET_WALTxnCommand_TxnState    uint16 = 3002
+	IOET_WALTxnCommand_TxnRollback uint16 = 3012
 
-	IOET_WALTxnEntry_V1            uint16 = 1
-	IOET_WALTxnEntry_V2            uint16 = 2
-	IOET_WALTxnEntry_V3            uint16 = 3
-	IOET_WALTxnEntry_V4            uint16 = 4
-	IOET_WALTxnCommand_Composed_V1 uint16 = 1
-	IOET_WALTxnCommand_TxnState_V1 uint16 = 1
+	IOET_WALTxnEntry_V1               uint16 = 1
+	IOET_WALTxnEntry_V2               uint16 = 2
+	IOET_WALTxnEntry_V3               uint16 = 3
+	IOET_WALTxnEntry_V4               uint16 = 4
+	IOET_WALTxnCommand_Composed_V1    uint16 = 1
+	IOET_WALTxnCommand_TxnState_V1    uint16 = 1
+	IOET_WALTxnCommand_TxnRollback_V1 uint16 = 1
 
-	IOET_WALTxnEntry_CurrVer            = IOET_WALTxnEntry_V4
-	IOET_WALTxnCommand_Composed_CurrVer = IOET_WALTxnCommand_Composed_V1
-	IOET_WALTxnCommand_TxnState_CurrVer = IOET_WALTxnCommand_TxnState_V1
+	IOET_WALTxnEntry_CurrVer               = IOET_WALTxnEntry_V4
+	IOET_WALTxnCommand_Composed_CurrVer    = IOET_WALTxnCommand_Composed_V1
+	IOET_WALTxnCommand_TxnState_CurrVer    = IOET_WALTxnCommand_TxnState_V1
+	IOET_WALTxnCommand_TxnRollback_CurrVer = IOET_WALTxnCommand_TxnRollback_V1
 
 	// CmdBufReserved is reserved size of cmd buffer, mainly the size of TxnCtx.Memo.
 	// ComposedCmd.CmdBufLimit is the max buffer size that could be sent out to log-service.
@@ -109,6 +112,18 @@ func init() {
 		nil,
 		func(b []byte) (any, error) {
 			txnEntry := NewEmptyTxnStateCmd()
+			err := txnEntry.UnmarshalBinary(b)
+			return txnEntry, err
+		},
+	)
+	objectio.RegisterIOEnrtyCodec(
+		objectio.IOEntryHeader{
+			Type:    IOET_WALTxnCommand_TxnRollback,
+			Version: IOET_WALTxnCommand_TxnRollback_V1,
+		},
+		nil,
+		func(b []byte) (any, error) {
+			txnEntry := NewEmptyTxnRollbackCmd()
 			err := txnEntry.UnmarshalBinary(b)
 			return txnEntry, err
 		},
@@ -574,6 +589,82 @@ func (cc *ComposedCmd) String() string {
 func (cc *ComposedCmd) Desc() string {
 	return cc.ToDesc("")
 }
+
+type TxnRollbackCommand struct {
+	lsn uint64
+}
+
+func NewTxnRollbackCommand(lsn uint64) *TxnRollbackCommand {
+	return &TxnRollbackCommand{
+		lsn: lsn,
+	}
+}
+
+func NewEmptyTxnRollbackCmd() *TxnRollbackCommand {
+	return &TxnRollbackCommand{}
+}
+func (c *TxnRollbackCommand) LSN() uint64 {
+	return c.lsn
+}
+func (c *TxnRollbackCommand) ReadFrom(r io.Reader) (n int64, err error) {
+	if _, err = r.Read(types.EncodeUint64(&c.lsn)); err != nil {
+		return
+	}
+	n = 8
+	return
+}
+func (c *TxnRollbackCommand) WriteTo(w io.Writer) (n int64, err error) {
+	t := c.GetType()
+	if _, err = w.Write(types.EncodeUint16(&t)); err != nil {
+		return
+	}
+	n = 2
+	v := IOET_WALTxnCommand_TxnRollback_CurrVer
+	if _, err = w.Write(types.EncodeUint16(&v)); err != nil {
+		return
+	}
+	n = 2
+	if _, err = w.Write(types.EncodeUint64(&c.lsn)); err != nil {
+		return
+	}
+	n = 8
+	return
+}
+func (c *TxnRollbackCommand) UnmarshalBinary(buf []byte) error {
+	bbuf := bytes.NewBuffer(buf)
+	_, err := c.ReadFrom(bbuf)
+	return err
+}
+func (c *TxnRollbackCommand) MarshalBinary() (buf []byte, err error) {
+	var buff *bytes.Buffer
+	_, err = c.WriteTo(buff)
+	if err != nil {
+		return
+	}
+	buf = buff.Bytes()
+	return
+}
+func (c *TxnRollbackCommand) GetType() uint16 {
+	return IOET_WALTxnCommand_TxnRollback
+}
+
+func (c *TxnRollbackCommand) Desc() string {
+	return fmt.Sprintf("ROLLBACK %d", c.lsn)
+}
+func (c *TxnRollbackCommand) String() string {
+	return c.Desc()
+}
+func (c *TxnRollbackCommand) ApplyRollback() {
+	panic("not support")
+}
+func (c *TxnRollbackCommand) ApplyCommit() {
+	return
+}
+func (c *TxnRollbackCommand) SetReplayTxn(txnif.AsyncTxn) {
+	return
+}
+func (c *TxnRollbackCommand) VerboseString() string { return c.String() }
+func (c *TxnRollbackCommand) Close()                {}
 
 func BuildCommandFrom(buf []byte) (cmd any, err error) {
 	head := objectio.DecodeIOEntryHeader(buf)

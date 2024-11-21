@@ -33,7 +33,9 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/wal"
 )
 
 type TxnCommitListener interface {
@@ -106,9 +108,11 @@ type TxnManager struct {
 	prevPrepareTS             types.TS
 	prevPrepareTSInPreparing  types.TS
 	prevPrepareTSInPrepareWAL types.TS
+
+	wal wal.Driver
 }
 
-func NewTxnManager(txnStoreFactory TxnStoreFactory, txnFactory TxnFactory, clock clock.Clock) *TxnManager {
+func NewTxnManager(txnStoreFactory TxnStoreFactory, txnFactory TxnFactory, clock clock.Clock, wal wal.Driver) *TxnManager {
 	if txnFactory == nil {
 		txnFactory = DefaultTxnFactory
 	}
@@ -120,6 +124,7 @@ func NewTxnManager(txnStoreFactory TxnStoreFactory, txnFactory TxnFactory, clock
 		Exception:       new(atomic.Value),
 		CommitListener:  newBatchCommitListener(),
 		wg:              sync.WaitGroup{},
+		wal:             wal,
 	}
 	mgr.ts.allocator = types.NewTsAlloctor(clock)
 	mgr.initMaxCommittedTS()
@@ -403,7 +408,25 @@ func (mgr *TxnManager) on1PCPrepared(op *OpTxn) {
 		isAbort = true
 		if err = op.Txn.ApplyRollback(); err != nil {
 			mgr.OnException(err)
-			logutil.Warn("[ApplyRollback]", TxnField(op.Txn), common.ErrorField(err))
+			logutil.Fatal("[ApplyRollback Failed]", TxnField(op.Txn), common.ErrorField(err))
+		}
+		cmd := NewTxnRollbackCommand(op.Txn.GetLSN())
+		buf, err := cmd.MarshalBinary()
+		if err != nil {
+			logutil.Fatal("[ApplyRollback Failed]", TxnField(op.Txn), common.ErrorField(err))
+		}
+		logEntry := entry.GetBase()
+		logEntry.SetType(IOET_WALTxnCommand_TxnRollback)
+		if err = logEntry.SetPayload(buf); err != nil {
+			return
+		}
+		info := &entry.Info{
+			Group: wal.GroupPrepare,
+		}
+		logEntry.SetInfo(info)
+		_, err = mgr.wal.AppendEntry(wal.GroupPrepare, logEntry)
+		if err != nil {
+			logutil.Fatal("[ApplyRollback Failed]", TxnField(op.Txn), common.ErrorField(err))
 		}
 	}
 	mgr.OnCommitTxn(op.Txn)
@@ -561,8 +584,8 @@ func (mgr *TxnManager) dequeuePrepared(items ...any) {
 		mgr.workers.Submit(func() {
 			//Notice that WaitPrepared do nothing when op is OpRollback
 			if err := op.Txn.WaitPrepared(op.ctx); err != nil {
-				// v0.6 TODO: Error handling
-				panic(err)
+				op.Txn.SetError(err)
+				op.Op = OpRollback
 			}
 
 			if op.Is2PC() {

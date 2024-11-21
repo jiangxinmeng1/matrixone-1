@@ -163,7 +163,26 @@ func (entry *ObjectEntry) ApplyCommit(tid string) error {
 	entry.table.getObjectList(entry.IsTombstone).Update(newNode, lastNode)
 	return nil
 }
-func (entry *ObjectEntry) ApplyRollback() error { panic("not support") }
+func (entry *ObjectEntry) ApplyRollback() (err error) {
+	lastNode := entry.table.getObjectList(entry.IsTombstone).GetLastestNode(entry.SortHint)
+	if lastNode == nil {
+		panic("logic error")
+	}
+	switch lastNode.ObjectState {
+	case ObjectState_Create_PrepareCommit:
+		entry.table.getObjectList(entry.IsTombstone).Delete(lastNode)
+	case ObjectState_Delete_PrepareCommit:
+		newEntry := entry.Clone()
+		newEntry.DeleteNode.Reset()
+		newEntry.ObjectState = ObjectState_Create_ApplyCommit
+		newEntry.DeletedAt = types.TS{}
+		entry.objData.UpdateMeta(newEntry)
+		entry.table.getObjectList(entry.IsTombstone).Update(newEntry, lastNode)
+	default:
+		panic(fmt.Sprintf("invalid object state %v", lastNode.ObjectState))
+	}
+	return
+}
 func (entry *ObjectEntry) PrepareCommit() error {
 	lastNode := entry.table.getObjectList(entry.IsTombstone).GetLastestNode(entry.SortHint)
 	if lastNode == nil {

@@ -286,9 +286,9 @@ func (b *TableLogtailRespBuilder) skipObjectData(e *catalog.ObjectEntry, objectM
 func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	var err error
 	if e.IsTombstone {
-		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataDelBatches, b.start, b.end, common.LogtailAllocator)
+		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataDelBatches, b.start, b.end, false, common.LogtailAllocator)
 	} else {
-		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataInsBatches, b.start, b.end, common.LogtailAllocator)
+		err = tables.RangeScanInMemoryByObject(b.ctx, e, b.dataInsBatches, b.start, b.end, false, common.LogtailAllocator)
 	}
 	if err != nil {
 		return err

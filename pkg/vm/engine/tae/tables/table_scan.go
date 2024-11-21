@@ -130,9 +130,10 @@ func RangeScanInMemoryByObject(
 	objEntry *catalog.ObjectEntry,
 	batches map[uint32]*containers.BatchWithVersion,
 	start, end types.TS,
+	withAbort bool,
 	mp *mpool.MPool,
 ) (err error) {
-	err = objEntry.GetObjectData().ScanInMemory(ctx, batches, start, end, mp)
+	err = objEntry.GetObjectData().ScanInMemory(ctx, batches, start, end, withAbort, mp)
 	return
 }
 

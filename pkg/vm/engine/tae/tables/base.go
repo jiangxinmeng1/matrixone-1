@@ -504,6 +504,7 @@ func (obj *baseObject) ScanInMemory(
 	ctx context.Context,
 	batches map[uint32]*containers.BatchWithVersion,
 	start, end types.TS,
+	withAbort bool,
 	mp *mpool.MPool,
 ) (err error) {
 	node := obj.PinNode()
@@ -512,7 +513,7 @@ func (obj *baseObject) ScanInMemory(
 		return nil
 	}
 	mnode := node.MustMNode()
-	return mnode.getDataWindowOnWriteSchema(ctx, batches, start, end, mp)
+	return mnode.getDataWindowOnWriteSchema(ctx, batches, withAbort, start, end, mp)
 }
 
 func (obj *baseObject) CollectObjectTombstoneInRange(

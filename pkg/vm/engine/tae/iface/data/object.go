@@ -140,6 +140,7 @@ type Object interface {
 		ctx context.Context,
 		batches map[uint32]*containers.BatchWithVersion,
 		start, end types.TS,
+		withAbort bool,
 		mp *mpool.MPool,
 	) (err error)
 	UpdateMeta(any)

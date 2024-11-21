@@ -774,7 +774,7 @@ func (task *flushTableTailTask) flushAObjsForSnapshot(ctx context.Context, isTom
 	for i, obj := range metas {
 		dataVers := make(map[uint32]*containers.BatchWithVersion)
 		if err = tables.RangeScanInMemoryByObject(
-			ctx, obj, dataVers, types.TS{}, task.txn.GetStartTS(), common.MergeAllocator,
+			ctx, obj, dataVers, types.TS{}, task.txn.GetStartTS(), true, common.MergeAllocator,
 		); err != nil {
 			return
 		}

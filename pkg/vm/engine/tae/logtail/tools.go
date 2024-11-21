@@ -139,6 +139,7 @@ func DataChangeToLogtailBatch(src *containers.BatchWithVersion) *containers.Batc
 		}
 		bat.AddVector(src.Attrs[i], src.Vecs[i].TryConvertConst())
 	}
+	bat.Compact()
 	return bat
 }
 
@@ -161,6 +162,8 @@ func TombstoneChangeToLogtailBatch(src *containers.BatchWithVersion) *containers
 	bat.AddVector(src.Attrs[3], src.Vecs[3]) // committs
 	bat.AddVector(src.Attrs[1], src.Vecs[1]) // pk
 	bat.AddVector(src.Attrs[2], src.Vecs[2]) // PhyAddrColumn
+	bat.Deletes = src.Deletes
+	bat.Compact()
 
 	return bat
 }

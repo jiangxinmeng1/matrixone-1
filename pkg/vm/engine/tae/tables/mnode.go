@@ -108,7 +108,7 @@ func (node *memoryNode) Contains(
 	node.object.RLock()
 	defer node.object.RUnlock()
 	blkID := objectio.NewBlockidWithObjectID(node.object.meta.Load().ID(), 0)
-	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting), mp)
+	return node.pkIndex.Contains(ctx, keys.GetDownstreamVector(), keysZM, blkID, node.checkConflictLocked(txn, isCommitting),node.isAbort, mp)
 }
 func (node *memoryNode) getDuplicatedRowsLocked(
 	ctx context.Context,
@@ -151,6 +151,7 @@ func (node *memoryNode) EstimateMemSizeLocked() int {
 func (node *memoryNode) getDataWindowOnWriteSchema(
 	ctx context.Context,
 	batches map[uint32]*containers.BatchWithVersion,
+	withAbort bool,
 	start, end types.TS, mp *mpool.MPool,
 ) (err error) {
 	node.object.RLock()
@@ -158,7 +159,7 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 	if node.data == nil {
 		return nil
 	}
-	from, to, commitTSVec, abort, _ :=
+	from, to, commitTSVec, abort, abortMap :=
 		node.object.appendMVCC.CollectAppendLocked(start, end, mp)
 	if abort != nil {
 		abort.Close()
@@ -167,7 +168,9 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 		return nil
 	}
 	dest, ok := batches[node.writeSchema.Version]
+	offset := 0
 	if ok {
+		offset = dest.Length()
 		dest.Extend(node.data.Window(int(from), int(to-from)))
 		dest.GetVectorByName(objectio.TombstoneAttr_CommitTs_Attr).Extend(commitTSVec)
 		commitTSVec.Close() // TODO no copy
@@ -182,6 +185,21 @@ func (node *memoryNode) getDataWindowOnWriteSchema(
 		inner.AddVector(objectio.TombstoneAttr_CommitTs_Attr, commitTSVec)
 		batWithVer.Seqnums = append(batWithVer.Seqnums, objectio.SEQNUM_COMMITTS)
 		batches[node.writeSchema.Version] = batWithVer
+		dest = batWithVer
+	}
+	if withAbort {
+		if ok {
+			dest.GetVectorByName(objectio.TombstoneAttr_Abort_Attr).Extend(abort)
+			abort.Close()
+		} else {
+			dest.AddVector(objectio.TombstoneAttr_Abort_Attr, abort)
+		}
+	} else {
+		iter := abortMap.GetBitmap().Iterator()
+		for iter.HasNext() {
+			row := iter.Next()
+			dest.Deletes.Add(row + uint64(offset))
+		}
 	}
 	return
 }

@@ -3951,7 +3951,7 @@ func TestCollectInsert(t *testing.T) {
 	objEntry := testutil.GetOneObject(rel).GetMeta().(*catalog.ObjectEntry)
 
 	batches := make(map[uint32]*containers.BatchWithVersion)
-	err := tables.RangeScanInMemoryByObject(ctx, objEntry, batches, types.TS{}, p1, common.DefaultAllocator)
+	err := tables.RangeScanInMemoryByObject(ctx, objEntry, batches, types.TS{}, p1, true, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batches[schema.Version].Attrs))
 	for _, vec := range batches[schema.Version].Vecs {
@@ -3961,7 +3961,7 @@ func TestCollectInsert(t *testing.T) {
 	batches[schema.Version].Close()
 
 	batches = make(map[uint32]*containers.BatchWithVersion)
-	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, types.TS{}, p2, common.DefaultAllocator)
+	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, types.TS{}, p2, true, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batches[schema.Version].Attrs))
 	for _, vec := range batches[schema.Version].Vecs {
@@ -3971,7 +3971,7 @@ func TestCollectInsert(t *testing.T) {
 	batches[schema.Version].Close()
 
 	batches = make(map[uint32]*containers.BatchWithVersion)
-	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, p1.Next(), p2, common.DefaultAllocator)
+	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, p1.Next(), p2, true, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batches[schema.Version].Attrs))
 	for _, vec := range batches[schema.Version].Vecs {
@@ -3981,7 +3981,7 @@ func TestCollectInsert(t *testing.T) {
 	batches[schema.Version].Close()
 
 	batches = make(map[uint32]*containers.BatchWithVersion)
-	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, p1.Next(), p3, common.DefaultAllocator)
+	err = tables.RangeScanInMemoryByObject(ctx, objEntry, batches, p1.Next(), p3, true, common.DefaultAllocator)
 	assert.NoError(t, err)
 	t.Log((batches[schema.Version].Attrs))
 	for _, vec := range batches[schema.Version].Vecs {
@@ -5146,7 +5146,7 @@ func TestCollectDeletesAfterCKP(t *testing.T) {
 		txn, rel := tae.GetRelation()
 		meta := testutil.GetOneTombstoneMeta(rel)
 		batches := make(map[uint32]*containers.BatchWithVersion)
-		err := tables.RangeScanInMemoryByObject(ctx, meta, batches, types.TS{}, types.MaxTs(), common.DefaultAllocator)
+		err := tables.RangeScanInMemoryByObject(ctx, meta, batches, types.TS{}, types.MaxTs(), true, common.DefaultAllocator)
 		assert.NoError(t, err)
 		bat = batches[schema.Version].Batch
 		assert.Equal(t, 10, bat.Length())

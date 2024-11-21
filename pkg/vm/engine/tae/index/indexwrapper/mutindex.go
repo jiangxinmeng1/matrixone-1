@@ -147,6 +147,7 @@ func (idx *MutIndex) GetDuplicatedRows(
 	rowIDs *vector.Vector,
 	maxVisibleRow uint32,
 	skipFn func(row uint32) error,
+	isAbort func(row uint32) bool,
 	skipCommittedBeforeTxnForAblk bool,
 	mp *mpool.MPool,
 ) (err error) {
@@ -180,7 +181,7 @@ func (idx *MutIndex) GetDuplicatedRows(
 		var maxRow uint32
 		exist := false
 		for i := len(rows) - 1; i >= 0; i-- {
-			if rows[i] < maxVisibleRow {
+			if rows[i] < maxVisibleRow && !isAbort(rows[i]) {
 				maxRow = rows[i]
 				exist = true
 				break
@@ -205,6 +206,7 @@ func (idx *MutIndex) Contains(
 	keysZM index.ZM,
 	blkID *types.Blockid,
 	skipFn func(row uint32) error,
+	isAbort func(row uint32) bool,
 	mp *mpool.MPool,
 ) (err error) {
 	if keysZM.Valid() {
@@ -231,6 +233,9 @@ func (idx *MutIndex) Contains(
 		err = skipFn(rows[0])
 		if err != nil {
 			return err
+		}
+		if isAbort(rows[0]) {
+			return nil
 		}
 		containers.UpdateValue(keys, uint32(offset), nil, true, mp)
 		return nil

@@ -129,6 +129,7 @@ func (node *memoryNode) getDuplicatedRowsLocked(
 		rowIDs.GetDownstreamVector(),
 		maxRow,
 		skipFn,
+		node.isAbort,
 		skipCommittedBeforeTxnForAblk,
 		mp)
 }
@@ -291,6 +292,11 @@ func (node *memoryNode) checkConflictLocked(
 		}
 		return appendnode.CheckConflict(txn)
 	}
+}
+
+func (node *memoryNode) isAbort(row uint32) bool {
+	appendnode := node.object.appendMVCC.GetAppendNodeByRowLocked(row)
+	return appendnode.Aborted
 }
 
 func (node *memoryNode) allRowsCommittedBefore(ts types.TS) bool {

@@ -835,12 +835,6 @@ func (tbl *txnTable) dedup(ctx context.Context, pk containers.Vector, isTombston
 		); err != nil {
 			return
 		}
-	} else {
-		if err = tbl.DedupSnapByPK(
-			ctx,
-			pk, true, isTombstone); err != nil {
-			return
-		}
 	}
 	return
 }

@@ -235,28 +235,19 @@ func (tbl *baseTable) preCommitGetRowsByPK(ctx context.Context, pks containers.V
 		pks.Length(),
 		common.WorkspaceAllocator,
 	)
-	dedupedAHint := tbl.dedupedAObjectHint
-	dedupedNAHint := tbl.dedupedNAObjectHint
-
-	var aobjDeduped, naobjDeduped bool
 	defer objIt.Release()
 	for ok := objIt.Last(); ok; ok = objIt.Prev() {
-		if aobjDeduped && naobjDeduped {
+		if pks.NullMask().IsEmpty() {
 			break
 		}
 		obj := objIt.Item()
-		if obj.IsAppendable() {
-			if obj.SortHint < dedupedAHint {
-				aobjDeduped = true
-				continue
-			}
-		} else {
-			if obj.SortHint <= dedupedNAHint {
-				naobjDeduped = true
-				continue
-			}
+		if !obj.IsAppendable() && obj.ObjectStats.GetCNCreated() {
+			continue
 		}
-		shouldSkip := obj.HasDropCommitted() || obj.IsCreatingOrAborted()
+		if obj.IsAppendable() && obj.DeleteBefore(tbl.txnTable.store.txn.GetStartTS()) {
+			break
+		}
+		shouldSkip := obj.IsCreatingOrAborted()
 		if shouldSkip {
 			continue
 		}

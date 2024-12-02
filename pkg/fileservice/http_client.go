@@ -37,17 +37,22 @@ var (
 )
 
 var dnsResolver = dns.NewCachingResolver(
-	net.DefaultResolver,
+	nil,
 	dns.MaxCacheEntries(128),
 )
+
+func init() {
+	net.DefaultResolver = dnsResolver
+	http.DefaultTransport = httpTransport
+}
 
 var httpDialer = &net.Dialer{
 	Timeout:  connectTimeout,
 	Resolver: dnsResolver,
 }
 
-var httpTransport = &http.Transport{
-	DialContext:           httpDialer.DialContext,
+var httpTransport = wrapRoundTripper(&http.Transport{
+	DialContext:           wrapDialContext(httpDialer.DialContext),
 	MaxIdleConns:          maxIdleConns,
 	IdleConnTimeout:       idleConnTimeout,
 	MaxIdleConnsPerHost:   maxIdleConnsPerHost,
@@ -58,7 +63,8 @@ var httpTransport = &http.Transport{
 		InsecureSkipVerify: true,
 		RootCAs:            caPool,
 	},
-}
+	Proxy: http.ProxyFromEnvironment,
+})
 
 var caPool = func() *x509.CertPool {
 	pool, err := x509.SystemCertPool()

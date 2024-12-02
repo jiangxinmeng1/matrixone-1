@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"reflect"
 	"sort"
@@ -80,6 +81,26 @@ const (
 	smallCheckpointSize            = 1024
 	defaultGlobalCheckpointTimeout = 10 * time.Second
 )
+
+func TestPrintVector(t *testing.T) {
+	defer testutils.AfterTest(t)()
+	testutils.EnsureNoLeak(t)
+
+	mp, err := mpool.NewMPool("test", 0, mpool.NoFixed)
+	assert.NoError(t, err)
+	vec1 := vector.NewVec(types.T_uint32.ToType())
+	defer vec1.Free(mp)
+	for i := 0; i < 10; i++ {
+		err = vector.AppendFixed[uint32](vec1, math.MaxUint32, false, mp)
+		assert.NoError(t, err)
+	}
+
+	vec1.Reset(types.T_varchar.ToType())
+	err = vector.AppendBytes(vec1, nil, true, mp)
+	require.NoError(t, err)
+	s := common.MoVectorToString(vec1, 10)
+	t.Log(s)
+}
 
 func TestAppend1(t *testing.T) {
 	defer testutils.AfterTest(t)()
@@ -2287,7 +2308,7 @@ func TestSnapshotIsolation1(t *testing.T) {
 	// Step 4
 	err = rel1.UpdateByFilter(context.Background(), filter, 3, int64(1111), false)
 	t.Log(err)
-	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict))
+	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrNotFound))
 	_ = txn1.Rollback(context.Background())
 
 	// Step 5
@@ -3446,10 +3467,10 @@ func TestImmutableIndexInAblk(t *testing.T) {
 		rowIDs.Append(nil, true)
 	}
 	err = meta.GetObjectData().GetDuplicatedRows(
-		context.Background(), txn, bat.Vecs[1], nil, false, true, false, rowIDs, common.DefaultAllocator,
+		context.Background(), txn, bat.Vecs[1], nil, types.TS{}, types.MaxTs(), rowIDs, common.DefaultAllocator,
 	)
 	assert.NoError(t, err)
-	err = meta.GetObjectData().Contains(context.Background(), txn, false, rowIDs, nil, common.DebugAllocator)
+	err = meta.GetObjectData().Contains(context.Background(), txn, rowIDs, nil, common.DebugAllocator)
 	assert.NoError(t, err)
 	duplicate := false
 	rowIDs.Foreach(func(v any, isNull bool, row int) error {
@@ -6661,7 +6682,6 @@ func TestSnapshotGC(t *testing.T) {
 	}
 	snapWG.Wait()
 	wg.Wait()
-	db.DiskCleaner.GetCleaner().EnableGC()
 	t.Log(tae.Catalog.SimplePPString(common.PPL1))
 	testutils.WaitExpect(10000, func() bool {
 		return db.Runtime.Scheduler.GetPenddingLSNCnt() == 0
@@ -6670,6 +6690,7 @@ func TestSnapshotGC(t *testing.T) {
 	testutils.WaitExpect(5000, func() bool {
 		return db.DiskCleaner.GetCleaner().GetMinMerged() != nil
 	})
+	db.DiskCleaner.GetCleaner().EnableGC()
 	minMerged := db.DiskCleaner.GetCleaner().GetMinMerged()
 	testutils.WaitExpect(5000, func() bool {
 		return db.DiskCleaner.GetCleaner().GetMinMerged() != nil
@@ -6748,6 +6769,8 @@ func TestSnapshotMeta(t *testing.T) {
 	opts := new(options.Options)
 	opts = config.WithQuickScanAndCKPOpts(opts)
 	options.WithDisableGCCheckpoint()(opts)
+	merge.StopMerge.Store(true)
+	defer merge.StopMerge.Store(false)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 	db := tae.DB
@@ -7960,8 +7983,6 @@ func TestSnapshotLag1(t *testing.T) {
 	bats := data.Split(4)
 	tae.CreateRelAndAppend(bats[0], true)
 
-	txn1, rel1 := tae.GetRelation()
-	assert.NoError(t, rel1.Append(context.Background(), bats[1]))
 	txn2, rel2 := tae.GetRelation()
 	assert.NoError(t, rel2.Append(context.Background(), bats[1]))
 
@@ -7971,9 +7992,11 @@ func TestSnapshotLag1(t *testing.T) {
 		assert.NoError(t, txn.Commit(context.Background()))
 	}
 
-	txn1.MockStartTS(tae.TxnMgr.Now())
-	err := txn1.Commit(context.Background())
+	txn1, rel1 := tae.GetRelation()
+	err := rel1.Append(context.Background(), bats[1])
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrDuplicateEntry))
+	err = txn1.Commit(context.Background())
+	assert.NoError(t, err)
 	err = txn2.Commit(context.Background())
 	assert.True(t, moerr.IsMoErrCode(err, moerr.ErrTxnWWConflict))
 }
@@ -10164,6 +10187,55 @@ func TestDeleteAndMerge(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 }
 
+func TestDeleteAndMerge2(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(3, 2)
+	schema.Extra.BlockMaxRows = 5
+	schema.Extra.ObjectMaxBlocks = 256
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 10)
+	bats := bat.Split(10)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+	tae.CompactBlocks(true)
+
+	txn, rel := tae.GetRelation()
+	var objs []*catalog.ObjectEntry
+	objIt := rel.MakeObjectIt(false)
+	for objIt.Next() {
+		obj := objIt.GetObject().GetMeta().(*catalog.ObjectEntry)
+		if !obj.IsAppendable() {
+			objs = append(objs, obj)
+		}
+	}
+	task, err := jobs.NewMergeObjectsTask(nil, txn, objs, tae.Runtime, 0, false)
+	assert.NoError(t, err)
+	err = task.OnExec(context.Background())
+	assert.NoError(t, err)
+	var appendTxn txnif.AsyncTxn
+	{
+		deleteTxn, deleteRel := tae.GetRelation()
+		v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(3)
+		filter := handle.NewEQFilter(v)
+		err := deleteRel.DeleteByFilter(context.Background(), filter)
+		assert.NoError(t, err)
+		err = deleteTxn.Commit(context.Background())
+		assert.NoError(t, err)
+		appendTxn, err = tae.StartTxn(nil)
+		assert.NoError(t, err)
+	}
+	assert.NoError(t, txn.Commit(context.Background()))
+	tae.CompactBlocks(true)
+	tae.DoAppendWithTxn(bats[3], appendTxn, false)
+
+	assert.NoError(t, appendTxn.Commit(ctx))
+	t.Log(tae.Catalog.SimplePPString(3))
+}
+
 func TestTransferInMerge2(t *testing.T) {
 	ctx := context.Background()
 
@@ -10369,4 +10441,42 @@ func TestFreezeTxnManganger2(t *testing.T) {
 	tae.CheckRowsByScan(int(success.Load()), false)
 
 	t.Log(success.Load())
+}
+
+func TestDedup5(t *testing.T) {
+	/*
+		delete start
+		insert start
+		delete end
+		aobj flush(no transfer)
+		insert end
+	*/
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(3, 2)
+	schema.Extra.BlockMaxRows = 5
+	schema.Extra.ObjectMaxBlocks = 256
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 5)
+	bats := bat.Split(5)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+
+	txn, rel := tae.GetRelation()
+	insertTxn, _ := tae.StartTxn(nil)
+	v := bat.Vecs[schema.GetSingleSortKeyIdx()].Get(0)
+	filter := handle.NewEQFilter(v)
+	err := rel.DeleteByFilter(context.Background(), filter)
+	assert.NoError(t, err)
+	err = txn.Commit(context.Background())
+	assert.NoError(t, err)
+
+	tae.CompactBlocks(true)
+
+	err = tae.DoAppendWithTxn(bats[0], insertTxn, true)
+	assert.Error(t, err)
+	assert.NoError(t, insertTxn.Commit(ctx))
 }

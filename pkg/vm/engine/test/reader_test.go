@@ -278,6 +278,12 @@ func Test_ReaderCanReadCommittedInMemInsertAndDeletes(t *testing.T) {
 
 	ctx = context.WithValue(ctx, defines.TenantIDKey{}, accountId)
 
+	fault.Enable()
+	defer fault.Disable()
+	rmFault, err := objectio.InjectPartitionStateLogging(objectio.FJ_EmptyDB, catalog.MO_TABLES, 0)
+	require.NoError(t, err)
+	defer rmFault()
+
 	// mock a schema with 4 columns and the 4th column as primary key
 	// the first column is the 9th column in the predefined columns in
 	// the mock function. Here we exepct the type of the primary key
@@ -424,6 +430,12 @@ func Test_ShardingHandler(t *testing.T) {
 		rpcAgent      *testutil.MockRPCAgent
 		disttaeEngine *testutil.TestDisttaeEngine
 	)
+
+	fault.Enable()
+	defer fault.Disable()
+	rmFault, err := objectio.InjectPartitionStateLogging(catalog.MO_CATALOG, catalog.MO_TABLES, 0)
+	require.NoError(t, err)
+	defer rmFault()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -617,6 +629,12 @@ func Test_ShardingRemoteReader(t *testing.T) {
 		rpcAgent      *testutil.MockRPCAgent
 		disttaeEngine *testutil.TestDisttaeEngine
 	)
+
+	fault.Enable()
+	defer fault.Disable()
+	rmFault, err := objectio.InjectPartitionStateLogging(catalog.MO_CATALOG, objectio.FJ_EmptyTBL, 0)
+	require.NoError(t, err)
+	defer rmFault()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -1059,6 +1077,9 @@ func Test_ShardingTableDelegate(t *testing.T) {
 	tomb, err := delegate.CollectTombstones(ctx, 0, engine.Policy_CollectAllTombstones)
 	require.NoError(t, err)
 	require.True(t, tomb.HasAnyInMemoryTombstone())
+
+	_, err = delegate.PrimaryKeysMayBeUpserted(ctx, types.TS{}, types.MaxTs(), vector.NewVec(types.T_int64.ToType()))
+	require.NoError(t, err)
 
 	_, err = delegate.BuildReaders(
 		ctx,

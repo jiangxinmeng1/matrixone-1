@@ -532,7 +532,6 @@ func dupOperator(sourceOp vm.Operator, index int, maxParallel int) vm.Operator {
 		op.ApplyType = t.ApplyType
 		op.Result = t.Result
 		op.Typs = t.Typs
-		op.ProjectList = t.ProjectList
 		op.TableFunction = table_function.NewArgument()
 		op.TableFunction.FuncName = t.TableFunction.FuncName
 		op.TableFunction.Args = t.TableFunction.Args
@@ -561,16 +560,20 @@ func dupOperator(sourceOp vm.Operator, index int, maxParallel int) vm.Operator {
 		op.Channel = t.Channel
 		op.NumCPU = uint64(maxParallel)
 		op.IsMerger = (index == 0)
-		op.Result = append(op.Result, t.Result...)
-		op.RightTypes = append(op.RightTypes, t.RightTypes...)
-		op.Conditions = append(op.Conditions, t.Conditions...)
+		op.Result = t.Result
+		op.LeftTypes = t.LeftTypes
+		op.RightTypes = t.RightTypes
+		op.Conditions = t.Conditions
 		op.IsShuffle = t.IsShuffle
 		op.ShuffleIdx = t.ShuffleIdx
-		op.RuntimeFilterSpecs = append(op.RuntimeFilterSpecs, t.RuntimeFilterSpecs...)
+		op.RuntimeFilterSpecs = t.RuntimeFilterSpecs
 		op.JoinMapTag = t.JoinMapTag
 		op.OnDuplicateAction = t.OnDuplicateAction
 		op.DedupColName = t.DedupColName
 		op.DedupColTypes = t.DedupColTypes
+		op.UpdateColIdxList = t.UpdateColIdxList
+		op.UpdateColExprList = t.UpdateColExprList
+
 		return op
 	case vm.PostDml:
 		t := sourceOp.(*postdml.PostDml)
@@ -836,7 +839,7 @@ func constructExternal(n *plan.Node, param *tree.ExternParam, ctx context.Contex
 
 	for _, col := range n.TableDef.Cols {
 		if !col.Hidden {
-			attrs = append(attrs, col.GetOriginCaseName())
+			attrs = append(attrs, col.Name)
 		}
 	}
 
@@ -885,6 +888,7 @@ func constructTableFunction(n *plan.Node) *table_function.TableFunction {
 	arg.Args = n.TblFuncExprList
 	arg.FuncName = n.TableDef.TblFunc.Name
 	arg.Params = n.TableDef.TblFunc.Param
+	arg.Limit = n.Limit
 	return arg
 }
 
@@ -1077,23 +1081,28 @@ func constructSingle(n *plan.Node, typs []types.Type, proc *process.Process) *si
 	return arg
 }
 
-func constructDedupJoin(n *plan.Node, right_typs []types.Type, proc *process.Process) *dedupjoin.DedupJoin {
-	result := make([]int32, len(n.ProjectList))
+func constructDedupJoin(n *plan.Node, leftTypes, rightTypes []types.Type, proc *process.Process) *dedupjoin.DedupJoin {
+	result := make([]colexec.ResultPos, len(n.ProjectList))
 	for i, expr := range n.ProjectList {
-		_, result[i] = constructJoinResult(expr, proc)
+		result[i].Rel, result[i].Pos = constructJoinResult(expr, proc)
 	}
 	cond, conds := extraJoinConditions(n.OnList)
 	if cond != nil {
 		panic("dedupjoin should not have non-equi join condition")
 	}
 	arg := dedupjoin.NewArgument()
-	arg.RightTypes = right_typs
+	arg.LeftTypes = leftTypes
+	arg.RightTypes = rightTypes
 	arg.Result = result
 	arg.Conditions = constructJoinConditions(conds, proc)
 	arg.RuntimeFilterSpecs = n.RuntimeFilterBuildList
 	arg.OnDuplicateAction = n.OnDuplicateAction
 	arg.DedupColName = n.DedupColName
 	arg.DedupColTypes = n.DedupColTypes
+	if n.DedupJoinCtx != nil {
+		arg.UpdateColIdxList = n.DedupJoinCtx.UpdateColIdxList
+		arg.UpdateColExprList = n.DedupJoinCtx.UpdateColExprList
+	}
 	arg.IsShuffle = n.Stats.HashmapStats != nil && n.Stats.HashmapStats.Shuffle
 	for i := range n.SendMsgList {
 		if n.SendMsgList[i].MsgType == int32(message.MsgJoinMap) {
@@ -1781,6 +1790,7 @@ func constructHashBuild(op vm.Operator, proc *process.Process, mcpu int32) *hash
 		ret.NeedHashMap = true
 		ret.Conditions = arg.Conditions[1]
 		ret.NeedBatches = true
+		ret.NeedAllocateSels = arg.OnDuplicateAction == plan.Node_UPDATE
 		ret.IsDedup = true
 		ret.OnDuplicateAction = arg.OnDuplicateAction
 		ret.DedupColName = arg.DedupColName
@@ -1912,7 +1922,7 @@ func constructShuffleBuild(op vm.Operator, proc *process.Process) *shufflebuild.
 		arg := op.(*dedupjoin.DedupJoin)
 		ret.Conditions = arg.Conditions[1]
 		ret.NeedBatches = true
-		ret.NeedBatches = true
+		ret.NeedAllocateSels = arg.OnDuplicateAction == plan.Node_UPDATE
 		ret.IsDedup = true
 		ret.OnDuplicateAction = arg.OnDuplicateAction
 		ret.DedupColName = arg.DedupColName

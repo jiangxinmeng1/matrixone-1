@@ -53,6 +53,8 @@ type localLockTable struct {
 
 	options struct {
 		beforeCloseFirstWaiter func(c *lockContext)
+		beforeWait             func(c *lockContext) func()
+		afterWait              func(c *lockContext) func()
 	}
 }
 
@@ -97,6 +99,7 @@ func (l *localLockTable) doLock(
 	c *lockContext,
 	blocked bool) {
 	var old *waiter
+	var oldOffset int
 	var err error
 	table := l.bind.Table
 	for {
@@ -108,7 +111,7 @@ func (l *localLockTable) doLock(
 				logLocalLockFailed(l.logger, c.txn, table, c.rows, c.opts, err)
 				if c.w != nil {
 					c.w.disableNotify()
-					c.w.close()
+					c.w.close("doLock, doAcquireLock err", l.logger)
 				}
 				c.done(err)
 				return
@@ -118,15 +121,23 @@ func (l *localLockTable) doLock(
 				v2.TxnAcquireLockWaitDurationHistogram.Observe(time.Since(c.createAt).Seconds())
 				if old != nil {
 					old.disableNotify()
-					old.close()
+					old.close("doLock, no waiter, all locks are added in doLock", l.logger)
 				}
-				c.txn.clearBlocked(old)
+				c.txn.clearBlocked(old, l.logger)
 				logLocalLockAdded(l.logger, c.txn, l.bind.Table, c.rows, c.opts)
 				if c.result.Timestamp.IsEmpty() {
 					c.result.Timestamp = c.lockedTS
 				}
 				c.done(nil)
 				return
+			}
+
+			if oldOffset != c.offset {
+				if old != nil {
+					old.disableNotify()
+					old.close("doLock, lock next row", l.logger)
+				}
+				c.txn.clearBlocked(old, l.logger)
 			}
 
 			// we handle remote lock on current rpc io read goroutine, so we can not wait here, otherwise
@@ -139,10 +150,21 @@ func (l *localLockTable) doLock(
 		// txn is locked by service.lock or service_remote.lock. We must unlock here. And lock again after
 		// wait result. Because during wait, deadlock detection may be triggered, and need call txn.fetchWhoWaitingMe,
 		// or other concurrent txn method.
+		oldOffset = c.offset
 		oldTxnID := c.txn.txnID
 		old = c.w
 		c.txn.Unlock()
+
+		if l.options.beforeWait != nil {
+			l.options.beforeWait(c)()
+		}
+
 		v := c.w.wait(c.ctx, l.logger)
+
+		if l.options.afterWait != nil {
+			l.options.afterWait(c)()
+		}
+
 		c.txn.Lock()
 
 		logLocalLockWaitOnResult(l.logger, c.txn, table, c.rows[c.idx], c.opts, c.w, v)
@@ -157,7 +179,7 @@ func (l *localLockTable) doLock(
 			c.txn.deadlockFound {
 			c.closed = true
 			if e != ErrTxnNotFound {
-				c.txn.closeBlockWaiters()
+				c.txn.closeBlockWaiters(l.logger)
 			}
 
 			ck := *c.w.conflictKey.Load()
@@ -173,13 +195,13 @@ func (l *localLockTable) doLock(
 				// by other txn and readd into store. So c.w.conflictWith is
 				// invalid.
 				conflictWith, ok := l.mu.store.Get(ck)
-				if ok && conflictWith.closeWaiter(c.w) {
+				if ok && conflictWith.closeWaiter(c.w, l.logger) {
 					l.mu.store.Delete(ck)
 				}
 				l.mu.Unlock()
 			}
 
-			c.w.close()
+			c.w.close("doLock, txn closed between Unlock and get Lock again", l.logger)
 			c.done(e)
 			return
 		}
@@ -398,9 +420,9 @@ func (l *localLockTable) acquireRowLockLocked(c *lockContext) error {
 				continue
 			}
 
-			// need wait for prev txn closed
+			// need wait for prev txn closed"
 			if c.w == nil {
-				c.w = acquireWaiter(c.waitTxn)
+				c.w = acquireWaiter(c.waitTxn, "acquireRowLockLocked", l.logger)
 			}
 
 			c.offset = idx
@@ -437,7 +459,7 @@ func (l *localLockTable) acquireRangeLockLocked(c *lockContext) error {
 		}
 		if len(conflict) > 0 {
 			if c.w == nil {
-				c.w = acquireWaiter(c.waitTxn)
+				c.w = acquireWaiter(c.waitTxn, "acquireRangeLockLocked", l.logger)
 			}
 
 			c.offset = i
@@ -474,7 +496,8 @@ func (l *localLockTable) addRowLockLocked(
 func (l *localLockTable) handleLockConflictLocked(
 	c *lockContext,
 	key []byte,
-	conflictWith Lock) error {
+	conflictWith Lock,
+) error {
 	if c.opts.Policy == pb.WaitPolicy_FastFail {
 		return ErrLockConflict
 	}
@@ -502,6 +525,21 @@ func (l *localLockTable) handleLockConflictLocked(
 	// waiter added, we need to active deadlock check.
 	c.txn.setBlocked(c.w, l.logger)
 	logLocalLockWaitOn(l.logger, c.txn, l.bind.Table, c.w, key, conflictWith)
+
+	if c.opts.Granularity != pb.Granularity_Range {
+		return nil
+	}
+
+	if len(c.rangeLastWaitKey) > 0 {
+		v, ok := l.mu.store.Get(c.rangeLastWaitKey)
+		if !ok {
+			panic("BUG: missing range last wait key")
+		}
+		if ok && v.closeWaiter(c.w, l.logger) {
+			l.mu.store.Delete(c.rangeLastWaitKey)
+		}
+	}
+	c.rangeLastWaitKey = key
 	return nil
 }
 
@@ -636,7 +674,7 @@ func (l *localLockTable) addRangeLockLocked(
 		break
 	}
 
-	mc.commit(l.bind, c.txn, l.mu.store)
+	mc.commit(l.bind, c.txn, l.mu.store, l.logger)
 	startLock, endLock := newRangeLock(l.logger, c)
 
 	wq.resetCommittedAt(l.mu.tableCommittedAt)
@@ -775,6 +813,7 @@ func (c *mergeContext) commit(
 	bind pb.LockTable,
 	txn *activeTxn,
 	s LockStorage,
+	logger *log.MOLogger,
 ) {
 	for k := range c.mergedLocks {
 		s.Delete(util.UnsafeStringToBytes(k))
@@ -789,7 +828,7 @@ func (c *mergeContext) commit(
 	for _, q := range c.mergedWaiters {
 		// release ref in merged waiters. The ref is moved to c.to.
 		q.iter(func(w *waiter) bool {
-			w.close()
+			w.close("mergeContext commit", logger)
 			return true
 		})
 		q.reset()

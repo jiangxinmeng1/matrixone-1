@@ -15,8 +15,10 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"math"
 	"runtime/debug"
 	"sync"
@@ -336,15 +338,11 @@ func (client *txnClient) doCreateTxn(
 		cb(op)
 	}
 
-	ts, err := client.determineTxnSnapshot(minTS)
-	if err != nil {
-		_ = op.Rollback(ctx)
-		return nil, err
-	}
+	ts := client.determineTxnSnapshot(minTS)
 	if !op.opts.skipWaitPushClient {
 		if err := op.UpdateSnapshot(ctx, ts); err != nil {
 			_ = op.Rollback(ctx)
-			return nil, err
+			return nil, errors.Join(err, moerr.NewTxnError(ctx, "update txn snapshot"))
 		}
 	}
 
@@ -356,7 +354,7 @@ func (client *txnClient) doCreateTxn(
 
 	if err := op.waitActive(ctx); err != nil {
 		_ = op.Rollback(ctx)
-		return nil, err
+		return nil, errors.Join(err, moerr.NewTxnError(ctx, "wait active"))
 	}
 	return op, nil
 }
@@ -440,7 +438,7 @@ func (client *txnClient) updateLastCommitTS(event TxnEvent) {
 // determineTxnSnapshot assuming we determine the timestamp to be ts, the final timestamp
 // returned will be ts+1. This is because we need to see the submitted data for ts, and the
 // timestamp for all things is ts+1.
-func (client *txnClient) determineTxnSnapshot(minTS timestamp.Timestamp) (timestamp.Timestamp, error) {
+func (client *txnClient) determineTxnSnapshot(minTS timestamp.Timestamp) timestamp.Timestamp {
 	start := time.Now()
 	defer func() {
 		v2.TxnDetermineSnapshotDurationHistogram.Observe(time.Since(start).Seconds())
@@ -457,7 +455,7 @@ func (client *txnClient) determineTxnSnapshot(minTS timestamp.Timestamp) (timest
 		minTS = client.adjustTimestamp(minTS)
 	}
 
-	return minTS, nil
+	return minTS
 }
 
 func (client *txnClient) adjustTimestamp(ts timestamp.Timestamp) timestamp.Timestamp {
@@ -585,6 +583,8 @@ func (client *txnClient) closeTxn(event TxnEvent) {
 				op.notifyActive()
 			}
 		}
+	} else if ok = client.removeFromWaitActiveLocked(txn.ID); ok {
+		client.removeFromLeakCheck(txn.ID)
 	} else {
 		client.logger.Warn("txn closed",
 			zap.String("txn ID", hex.EncodeToString(txn.ID)),
@@ -630,51 +630,24 @@ func (client *txnClient) Resume() {
 	}
 }
 
-// NodeRunningPipelineManager to avoid packages import cycles.
-type NodeRunningPipelineManager interface {
-	PauseService()
-	KillAllQueriesWithError()
-	ResumeService()
-}
-
-var runningPipelines NodeRunningPipelineManager
-
-func SetRunningPipelineManagement(m NodeRunningPipelineManager) {
-	runningPipelines = m
-}
-
 func (client *txnClient) AbortAllRunningTxn() {
 	client.mu.Lock()
-	runningPipelines.PauseService()
-
-	ops := make([]*txnOperator, 0, len(client.mu.activeTxns))
+	actives := make([]*txnOperator, 0, len(client.mu.activeTxns))
 	for _, op := range client.mu.activeTxns {
-		ops = append(ops, op)
+		actives = append(actives, op)
 	}
-	waitOps := append(([]*txnOperator)(nil), client.mu.waitActiveTxns...)
-	client.mu.waitActiveTxns = client.mu.waitActiveTxns[:0]
 
 	if client.timestampWaiter != nil {
 		// Cancel all waiters, means that all waiters do not need to wait for
 		// the newer timestamp from logtail consumer.
 		client.timestampWaiter.Pause()
 	}
-	runningPipelines.KillAllQueriesWithError()
 
 	client.mu.Unlock()
 
-	for _, op := range ops {
-		op.reset.cannotCleanWorkspace = true
-		_ = op.Rollback(context.Background())
-		op.reset.cannotCleanWorkspace = false
+	for _, op := range actives {
+		op.addFlag(AbortedFlag)
 	}
-	for _, op := range waitOps {
-		op.reset.cannotCleanWorkspace = true
-		_ = op.Rollback(context.Background())
-		op.reset.cannotCleanWorkspace = false
-		op.notifyActive()
-	}
-	runningPipelines.ResumeService()
 
 	if client.timestampWaiter != nil {
 		// After rollback all transactions, resume the timestamp waiter channel.
@@ -778,4 +751,18 @@ func (client *txnClient) handleMarkActiveTxnAborted(
 			)
 		}
 	}
+}
+
+func (client *txnClient) removeFromWaitActiveLocked(txnID []byte) bool {
+	var ok bool
+	values := client.mu.waitActiveTxns[:0]
+	for _, op := range client.mu.waitActiveTxns {
+		if bytes.Equal(op.reset.txnID, txnID) {
+			ok = true
+			continue
+		}
+		values = append(values, op)
+	}
+	client.mu.waitActiveTxns = values
+	return ok
 }

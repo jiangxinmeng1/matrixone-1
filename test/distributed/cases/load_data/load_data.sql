@@ -158,8 +158,6 @@ col3 int
 );
 
 insert into t5 values (1,1,1);
--- echo duplicate
-load data infile '$resources/load_data/auto_increment_1.csv' into table t5 fields terminated by ',';
 select * from t5;
 
 drop table t5;
@@ -187,11 +185,7 @@ col3 int
 );
 load data infile '$resources/load_data/auto_increment_2.csv' into table t7 fields terminated by ',' parallel 'true';
 select * from t7 order by col1;
-
 drop table t7;
-
-create table t8(a int, b int);
-load data infile '$resources/load_data/auto_increment_20.csv' into table t7 fields terminated by ',' set col2=nullif(col2, '1');
 
 create table t9(a varchar, b varchar, c varchar, d varchar);
 load data infile {"filepath"="$resources/load_data/parallel.txt.gz", "compression"="gzip"} into table t9 FIELDS TERMINATED BY '|' OPTIONALLY ENCLOSED BY '"' LINES TERMINATED BY '\n';

@@ -26,7 +26,6 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/compute"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
 	"go.uber.org/zap"
 )
 
@@ -135,8 +134,8 @@ func parseNAContainsArgs(args ...any) (vec *vector.Vector, rowIDs containers.Vec
 }
 
 func parseAGetDuplicateRowIDsArgs(args ...any) (
-	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid, maxRow uint32,
-	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, skipCommittedBeforeTxnForAblk bool,
+	vec containers.Vector, rowIDs containers.Vector, blkID *types.Blockid,
+	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, from, to types.TS,
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -146,23 +145,23 @@ func parseAGetDuplicateRowIDsArgs(args ...any) (
 		blkID = args[2].(*types.Blockid)
 	}
 	if args[3] != nil {
-		maxRow = args[3].(uint32)
+		scanFn = args[3].(func(bid uint16) (vec containers.Vector, err error))
 	}
 	if args[4] != nil {
-		scanFn = args[4].(func(bid uint16) (vec containers.Vector, err error))
+		txn = args[4].(txnif.TxnReader)
 	}
 	if args[5] != nil {
-		txn = args[5].(txnif.TxnReader)
+		from = args[5].(types.TS)
 	}
 	if args[6] != nil {
-		skipCommittedBeforeTxnForAblk = args[6].(bool)
+		to = args[6].(types.TS)
 	}
 	return
 }
 
 func parseAContainsArgs(args ...any) (
 	vec containers.Vector, rowIDs containers.Vector,
-	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, delsFn func(rowID any) *model.TransDels,
+	scanFn func(uint16) (vec containers.Vector, err error), txn txnif.TxnReader, delsFn func(rowID any, ts types.TS) (types.TS, error),
 ) {
 	vec = args[0].(containers.Vector)
 	if args[1] != nil {
@@ -175,7 +174,7 @@ func parseAContainsArgs(args ...any) (
 		txn = args[3].(txnif.TxnReader)
 	}
 	if args[4] != nil {
-		delsFn = args[4].(func(rowID any) *model.TransDels)
+		delsFn = args[4].(func(rowID any, ts types.TS) (types.TS, error))
 	}
 	return
 }
@@ -265,7 +264,7 @@ func getDuplicatedRowIDNABlkOrderedFunc[T types.OrderedT](args ...any) func(T, b
 }
 
 func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error {
-	vec, rowIDs, blkID, maxRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
+	vec, rowIDs, blkID, scanFn, txn, from, to := parseAGetDuplicateRowIDsArgs(args...)
 	return func(v1 []byte, _ bool, rowOffset int) error {
 		if !rowIDs.IsNull(rowOffset) {
 			return nil
@@ -284,9 +283,6 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 			true,
 			func(v2 []byte, _ bool, row int) (err error) {
 				// logutil.Infof("row=%d,v1=%v,v2=%v", row, v1, v2)
-				if row > int(maxRow) {
-					return
-				}
 				if !rowIDs.IsNull(rowOffset) {
 					return nil
 				}
@@ -301,6 +297,12 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 				}
 				commitTS := vector.GetFixedAtNoTypeCheck[types.TS](tsVec.GetDownstreamVector(), row)
 				startTS := txn.GetStartTS()
+				if commitTS.LE(&from) {
+					return nil
+				}
+				if commitTS.GT(&to) {
+					return nil
+				}
 				if commitTS.GT(&startTS) {
 					logutil.Info("Dedup-WW",
 						zap.String("txn", txn.Repr()),
@@ -308,9 +310,6 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 						zap.String("commit ts", commitTS.ToString()),
 					)
 					return txnif.ErrTxnWWConflict
-				}
-				if skip && commitTS.LT(&startTS) {
-					return nil
 				}
 				rowID := objectio.NewRowid(blkID, uint32(row))
 				rowIDs.Update(rowOffset, *rowID, false)
@@ -321,7 +320,7 @@ func getDuplicatedRowIDABlkBytesFunc(args ...any) func([]byte, bool, int) error 
 
 func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args ...any) func(T, bool, int) error {
 	return func(args ...any) func(T, bool, int) error {
-		vec, rowIDs, blkID, maxVisibleRow, scanFn, txn, skip := parseAGetDuplicateRowIDsArgs(args...)
+		vec, rowIDs, blkID, scanFn, txn, from, to := parseAGetDuplicateRowIDsArgs(args...)
 		return func(v1 T, _ bool, rowOffset int) error {
 			if !rowIDs.IsNull(rowOffset) {
 				return nil
@@ -339,9 +338,6 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 				vec.Length(),
 				true,
 				func(v2 T, _ bool, row int) (err error) {
-					if row > int(maxVisibleRow) {
-						return
-					}
 					if !rowIDs.IsNull(rowOffset) {
 						return nil
 					}
@@ -355,6 +351,12 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 						}
 					}
 					commitTS := tsVec.Get(row).(types.TS)
+					if commitTS.LE(&from) {
+						return nil
+					}
+					if commitTS.GT(&to) {
+						return nil
+					}
 					startTS := txn.GetStartTS()
 					if commitTS.GT(&startTS) {
 						logutil.Info("Dedup-WW",
@@ -363,9 +365,6 @@ func getDuplicatedRowIDABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) 
 							zap.String("commit ts", commitTS.ToString()),
 						)
 						return txnif.ErrTxnWWConflict
-					}
-					if skip && commitTS.LT(&startTS) {
-						return nil
 					}
 					rowID := objectio.NewRowid(blkID, uint32(row))
 					rowIDs.Update(rowOffset, *rowID, false)
@@ -407,21 +406,16 @@ func containsABlkFuncFactory[T types.FixedSizeT](comp func(T, T) int) func(args 
 				commitTS := tsVec.Get(row).(types.TS)
 				startTS := txn.GetStartTS()
 				if commitTS.GT(&startTS) {
-					dels := delsFn(v1)
-					ts, ok := dels.Mapping[row]
-					if !ok {
-						logutil.Info("Dedup-WW",
-							zap.String("txn", txn.Repr()),
-							zap.Int("row offset", row),
-							zap.String("commit ts", commitTS.ToString()),
-						)
-						return txnif.ErrTxnWWConflict
+					ts, err := delsFn(v1, commitTS)
+					if err != nil {
+						return err
 					}
 					if ts.GT(&startTS) {
 						logutil.Info("Dedup-WW",
 							zap.String("txn", txn.Repr()),
 							zap.Int("row offset", row),
 							zap.String("commit ts", commitTS.ToString()),
+							zap.String("original commit ts", ts.ToString()),
 						)
 						return txnif.ErrTxnWWConflict
 					}

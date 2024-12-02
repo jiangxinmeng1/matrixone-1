@@ -1322,6 +1322,21 @@ func (mr *MockRelationMockRecorder) PrimaryKeysMayBeModified(ctx, from, to, keyV
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrimaryKeysMayBeModified", reflect.TypeOf((*MockRelation)(nil).PrimaryKeysMayBeModified), ctx, from, to, keyVector)
 }
 
+// PrimaryKeysMayBeUpserted mocks base method.
+func (m *MockRelation) PrimaryKeysMayBeUpserted(ctx context.Context, from, to types.TS, keyVector *vector.Vector) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PrimaryKeysMayBeUpserted", ctx, from, to, keyVector)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// PrimaryKeysMayBeUpserted indicates an expected call of PrimaryKeysMayBeUpserted.
+func (mr *MockRelationMockRecorder) PrimaryKeysMayBeUpserted(ctx, from, to, keyVector interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrimaryKeysMayBeUpserted", reflect.TypeOf((*MockRelation)(nil).PrimaryKeysMayBeUpserted), ctx, from, to, keyVector)
+}
+
 // Ranges mocks base method.
 func (m *MockRelation) Ranges(arg0 context.Context, arg1 []*plan.Expr, arg2, arg3 int, arg4 engine.DataCollectPolicy) (engine.RelData, error) {
 	m.ctrl.T.Helper()
@@ -1716,6 +1731,21 @@ func (m *MockDatabase) Relation(arg0 context.Context, arg1 string, arg2 any) (en
 func (mr *MockDatabaseMockRecorder) Relation(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Relation", reflect.TypeOf((*MockDatabase)(nil).Relation), arg0, arg1, arg2)
+}
+
+// RelationExists mocks base method.
+func (m *MockDatabase) RelationExists(arg0 context.Context, arg1 string, arg2 any) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RelationExists", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RelationExists indicates an expected call of RelationExists.
+func (mr *MockDatabaseMockRecorder) RelationExists(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RelationExists", reflect.TypeOf((*MockDatabase)(nil).RelationExists), arg0, arg1, arg2)
 }
 
 // Relations mocks base method.

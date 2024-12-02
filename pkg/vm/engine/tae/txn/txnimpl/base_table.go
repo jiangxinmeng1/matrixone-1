@@ -16,17 +16,20 @@ package txnimpl
 
 import (
 	"context"
+	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
+	"go.uber.org/zap"
 )
 
 var (
@@ -219,11 +222,16 @@ func (tbl *baseTable) incrementalGetRowsByPK(ctx context.Context, pks containers
 		common.WorkspaceAllocator,
 	)
 	var aobjDeduped, naobjDeduped bool
+	t0 := time.Now()
+	var scanobj, waitaobj, waitnaobj, dedupaobj, dedupnaobj int
+	var total, wait, visibility, dedup time.Duration
 	defer objIt.Release()
 	for ok := objIt.Last(); ok; ok = objIt.Prev() {
+		tTotal := time.Now()
 		if aobjDeduped && naobjDeduped {
 			break
 		}
+		scanobj++
 		obj := objIt.Item()
 		if !inQueue {
 			if tbl.lastInvisibleNOBJSortHint == 0 {
@@ -237,18 +245,22 @@ func (tbl *baseTable) incrementalGetRowsByPK(ctx context.Context, pks containers
 		}
 		if obj.IsAppendable() {
 			if aobjDeduped {
+				total += time.Since(tTotal)
 				continue
 			}
 		} else {
 			if naobjDeduped {
+				total += time.Since(tTotal)
 				continue
 			}
 			if !inQueue && obj.DeleteBefore(from) {
 				naobjDeduped = true
+				total += time.Since(tTotal)
 				continue
 			}
 		}
 
+		tWait := time.Now()
 		needWait, txn := obj.CreateNode.NeedWaitCommitting(to)
 		if needWait {
 			txn.GetTxnState(true)
@@ -259,21 +271,39 @@ func (tbl *baseTable) incrementalGetRowsByPK(ctx context.Context, pks containers
 		}
 		if needWait || needWait2 {
 			obj = obj.GetLatestNode()
+			if obj.IsAppendable() {
+				waitaobj++
+			} else {
+				waitnaobj++
+			}
 		}
 		if obj.IsAppendable() && obj.CreatedAt.LT(&from) {
 			aobjDeduped = true
 		}
+		wait += time.Since(tWait)
+		tVisible := time.Now()
 		visible := obj.VisibleByTS(to)
 		if !visible {
 			if !inQueue && !obj.IsAppendable() && obj.IsCreating() {
 				tbl.lastInvisibleNOBJSortHint = obj.SortHint
 			}
+			total += time.Since(tTotal)
+			visibility += time.Since(tVisible)
 			continue
 		}
 		if !obj.IsAppendable() && obj.CreatedAt.LT(&from) {
+			total += time.Since(tTotal)
+			visibility += time.Since(tVisible)
 			continue
 		}
+		visibility += time.Since(tVisible)
+		tDedup := time.Now()
 		objData := obj.GetObjectData()
+		if obj.IsAppendable() {
+			dedupaobj++
+		} else {
+			dedupnaobj++
+		}
 		err = objData.GetDuplicatedRows(
 			ctx,
 			tbl.txnTable.store.txn,
@@ -283,9 +313,25 @@ func (tbl *baseTable) incrementalGetRowsByPK(ctx context.Context, pks containers
 			rowIDs,
 			common.WorkspaceAllocator,
 		)
+		dedup += time.Since(tDedup)
+		total += time.Since(tTotal)
 		if err != nil {
 			return
 		}
+	}
+	if inQueue && time.Since(t0) > time.Millisecond*100 {
+		logutil.Info("slow dedup",
+			zap.Any("takes", time.Since(t0)),
+			zap.Any("total", total),
+			zap.Int("scan", scanobj),
+			zap.Any("wait", wait),
+			zap.Int("wait aobj", waitaobj),
+			zap.Int("wait naobj", waitnaobj),
+			zap.Any("visible", visibility),
+			zap.Any("dedpu", dedup),
+			zap.Int("dedup aobj", dedupaobj),
+			zap.Int("dedup naobj", dedupnaobj),
+		)
 	}
 	return
 }

@@ -80,6 +80,13 @@ func (bl *batchTxnCommitListener) OnEndPrepareWAL(txn txnif.AsyncTxn) {
 
 type TxnStoreFactory = func() txnif.TxnStore
 type TxnFactory = func(*TxnManager, txnif.TxnStore, []byte, types.TS, types.TS) txnif.AsyncTxn
+type TxnMangerState int32
+
+const (
+	TxnMangerState_Write TxnMangerState = iota
+	TxnMangerState_Freeze
+	TxnMangerState_ReplayOnly
+)
 
 type TxnManager struct {
 	sm.ClosedState
@@ -108,7 +115,7 @@ type TxnManager struct {
 	prevPrepareTSInPrepareWAL types.TS
 
 	doneCond       sync.Cond
-	freeze         atomic.Bool
+	state          atomic.Int32
 	activeTxnCount atomic.Int32
 }
 
@@ -137,32 +144,76 @@ func NewTxnManager(txnStoreFactory TxnStoreFactory, txnFactory TxnFactory, clock
 	mgr.workers, _ = ants.NewPool(runtime.GOMAXPROCS(0))
 	return mgr
 }
-func (mgr *TxnManager) Freeze() {
-	if mgr.freeze.Load() && mgr.getActiveTxnCount() == 0 {
+func (mgr *TxnManager) checkNewTxn() bool {
+	state := mgr.state.Load()
+	return state == int32(TxnMangerState_Write)
+}
+func (mgr *TxnManager) isReplayOnly() bool {
+	state := mgr.state.Load()
+	return state == int32(TxnMangerState_Write) || state == int32(TxnMangerState_ReplayOnly)
+}
+func (mgr *TxnManager) isFreeze() bool {
+	state := mgr.state.Load()
+	return state == int32(TxnMangerState_Freeze)
+}
+func (mgr *TxnManager) setFreeze() {
+	mgr.state.Store(int32(TxnMangerState_Freeze))
+}
+func (mgr *TxnManager) setReplayOnly() {
+	mgr.state.Store(int32(TxnMangerState_ReplayOnly))
+}
+func (mgr *TxnManager) FreezeAll(ctx context.Context) {
+	if mgr.isFreeze() && mgr.getActiveTxnCount() == 0 {
 		return
 	}
-	mgr.freeze.Store(true)
+	mgr.setFreeze()
 	count := mgr.getActiveTxnCount()
 	logutil.Infof("TXN Mananger Freeze Start, active TXN count %d", count)
-	t0 := time.Now()
-	mgr.waitAllTxnCommit()
-	logutil.Infof("TXN Mananger Freeze End, active TXN count %d, takes %v", count, time.Since(t0))
 }
-func (mgr *TxnManager) waitAllTxnCommit() {
+
+func (mgr *TxnManager) WaitFreezeDone(ctx context.Context) {
+	if !mgr.isFreeze() {
+		panic("logic error")
+	}
+	count := mgr.getActiveTxnCount()
+	t0 := time.Now()
 	mgr.doneCond.L.Lock()
 	defer mgr.doneCond.L.Unlock()
 	for {
-		if mgr.getActiveTxnCount() == 0 {
-			return
+		select {
+		case <-ctx.Done():
+			logutil.Infof("TXN Mananger Freeze Cancel, active TXN count %d, takes %v", count, time.Since(t0))
+		default:
+			if mgr.getActiveTxnCount() == 0 {
+				logutil.Infof("TXN Mananger Freeze End, active TXN count %d, takes %v", count, time.Since(t0))
+				return
+			}
+			mgr.doneCond.Wait()
 		}
-		mgr.doneCond.Wait()
 	}
+}
+func (mgr *TxnManager) ResetForReplay(ctx context.Context) {
+	if mgr.checkNewTxn() {
+		panic("logic error")
+	}
+	if mgr.getActiveTxnCount() != 0 {
+		panic("logic error")
+	}
+	mgr.setReplayOnly()
+	logutil.Infof("TXN Mananger ReplayOnly")
+}
+func (mgr *TxnManager) ResetForWite(ctx context.Context) {
+	mgr.state.Store(int32(TxnMangerState_Write))
+	logutil.Infof("TXN Mananger Write")
+}
+func (mgr *TxnManager) ChangeWriter(ctx context.Context) (err error) {
+	panic("todo")
 }
 func (mgr *TxnManager) getActiveTxnCount() int32 {
 	return mgr.activeTxnCount.Load()
 }
 func (mgr *TxnManager) addTxn() error {
-	if mgr.freeze.Load() {
+	if mgr.checkNewTxn() {
 		return moerr.NewInternalErrorNoCtx("txn mananger is frozen")
 	}
 	mgr.activeTxnCount.Add(1)
@@ -191,7 +242,7 @@ func (mgr *TxnManager) Init(prevTs types.TS) error {
 
 // Note: Replay should always runs in a single thread
 func (mgr *TxnManager) OnReplayTxn(txn txnif.AsyncTxn) (err error) {
-	if mgr.freeze.Load() {
+	if mgr.isFreeze() {
 		return moerr.NewInternalErrorNoCtx("txn mananger is frozen")
 	}
 	mgr.IDMap.Store(txn.GetID(), txn)
@@ -205,7 +256,7 @@ func (mgr *TxnManager) StartTxn(info []byte) (txn txnif.AsyncTxn, err error) {
 		logutil.Warnf("StartTxn: %v", err)
 		return
 	}
-	if mgr.freeze.Load() {
+	if mgr.checkNewTxn() {
 		return nil, moerr.NewInternalErrorNoCtx("txn mananger is frozen")
 	}
 	txnId := mgr.IdAlloc.Alloc()
@@ -227,7 +278,7 @@ func (mgr *TxnManager) StartTxnWithStartTSAndSnapshotTS(
 		logutil.Warnf("StartTxn: %v", err)
 		return
 	}
-	if mgr.freeze.Load() {
+	if mgr.checkNewTxn() {
 		return nil, moerr.NewInternalErrorNoCtx("txn mananger is frozen")
 	}
 	store := mgr.TxnStoreFactory()
@@ -248,7 +299,7 @@ func (mgr *TxnManager) GetOrCreateTxnWithMeta(
 		logutil.Warnf("StartTxn: %v", err)
 		return
 	}
-	if mgr.freeze.Load() {
+	if mgr.checkNewTxn() {
 		return nil, moerr.NewInternalErrorNoCtx("txn mananger is frozen")
 	}
 	if value, ok := mgr.IDMap.Load(util.UnsafeBytesToString(id)); ok {
@@ -301,6 +352,9 @@ func (mgr *TxnManager) heartbeat(ctx context.Context) {
 		case <-mgr.ctx.Done():
 			return
 		case <-heartbeatTicker.C:
+			if mgr.isReplayOnly() {
+				continue
+			}
 			op := mgr.newHeartbeatOpTxn(ctx)
 			op.Txn.(*Txn).Add(1)
 			_, err := mgr.PreparingSM.EnqueueReceived(op)
@@ -559,6 +613,11 @@ func (mgr *TxnManager) onPrepareWAL(items ...any) {
 		var t1, t2, t3, t4, t5 time.Time
 		t1 = time.Now()
 		if op.Txn.GetError() == nil && op.Op == OpCommit || op.Op == OpPrepare {
+			if !op.Txn.IsReplay() {
+				if mgr.isReplayOnly() {
+					panic("logic error, wrong txn manager mode")
+				}
+			}
 			if err := op.Txn.PrepareWAL(); err != nil {
 				panic(err)
 			}

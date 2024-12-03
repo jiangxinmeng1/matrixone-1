@@ -10381,7 +10381,8 @@ func TestFreezeTxnManganger(t *testing.T) {
 	defer bat.Close()
 	tae.CreateRelAndAppend(bat, true)
 
-	tae.TxnMgr.Freeze()
+	tae.TxnMgr.FreezeAll(ctx)
+	tae.TxnMgr.WaitFreezeDone(ctx)
 
 	_, err := tae.StartTxn(nil)
 	assert.Error(t, err)
@@ -10430,8 +10431,9 @@ func TestFreezeTxnManganger2(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	tae.TxnMgr.Freeze()
+	tae.TxnMgr.FreezeAll(ctx)
 	wg.Wait()
+	tae.TxnMgr.WaitFreezeDone(ctx)
 
 	_, err := tae.StartTxn(nil)
 	assert.Error(t, err)

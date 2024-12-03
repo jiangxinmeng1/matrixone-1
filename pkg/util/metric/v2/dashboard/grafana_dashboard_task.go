@@ -41,6 +41,7 @@ func (c *DashboardCreator) initTaskDashboard() error {
 			c.initTaskCheckpointRow(),
 			c.initTaskSelectivityRow(),
 			c.initTaskStorageUsageRow(),
+			c.initTaskHeartBeatError(),
 		)...)
 
 	if err != nil {
@@ -305,6 +306,23 @@ func (c *DashboardCreator) initTaskSelectivityRow() dashboard.Option {
 			timeseries.Axis(tsaxis.Unit("")),
 			timeseries.Span(4),
 			SpanNulls(true),
+		),
+	)
+}
+
+func (c *DashboardCreator) initTaskHeartBeatError() dashboard.Option {
+	return dashboard.Row(
+		"TXN Manager Heart Beat",
+		c.getTimeSeries(
+			"Heart Beat Error",
+			[]string{
+				fmt.Sprintf(
+					"sum (increase(%s[$interval]))",
+					c.getMetricWithFilter(`mo_task_txn_manager_by_total`, `type="heart_beat_error"`)),
+			},
+			[]string{
+				"Error Count",
+			},
 		),
 	)
 }

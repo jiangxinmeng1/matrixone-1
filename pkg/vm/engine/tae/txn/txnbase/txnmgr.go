@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	metricV2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/zap"
 
@@ -254,14 +255,13 @@ func (mgr *TxnManager) heartbeat(ctx context.Context) {
 		case <-mgr.ctx.Done():
 			return
 		case <-heartbeatTicker.C:
-			op := mgr.newHeartbeatOpTxn(ctx)
-			op.Txn.(*Txn).Add(1)
-			if err := mgr.OnOpTxn(op); err != nil {
+			txn := mgr.newHeartbeatOpTxn()
+			if err := txn.Commit(ctx); err != nil {
 				if err == CommitInReplayModeErr {
 					continue
 				}
 
-				// TODO: Add metrics alarm here
+				metricV2.HeartBeatErrorScheduledByCounter.Inc()
 				if time.Since(prevErrReportTS) > time.Second*10 {
 					logutil.Warn(
 						"Txn-HeartBeat-Error",
@@ -274,7 +274,7 @@ func (mgr *TxnManager) heartbeat(ctx context.Context) {
 	}
 }
 
-func (mgr *TxnManager) newHeartbeatOpTxn(ctx context.Context) *OpTxn {
+func (mgr *TxnManager) newHeartbeatOpTxn() txnif.AsyncTxn {
 	if exp := mgr.Exception.Load(); exp != nil {
 		err := exp.(error)
 		logutil.Warnf("StartTxn: %v", err)
@@ -285,11 +285,7 @@ func (mgr *TxnManager) newHeartbeatOpTxn(ctx context.Context) *OpTxn {
 	store := &heartbeatStore{}
 	txn := DefaultTxnFactory(mgr, store, txnId, startTs, types.TS{})
 	store.BindTxn(txn)
-	return &OpTxn{
-		ctx: ctx,
-		Txn: txn,
-		Op:  OpCommit,
-	}
+	return txn
 }
 
 func (mgr *TxnManager) OnOpTxn(op *OpTxn) (err error) {

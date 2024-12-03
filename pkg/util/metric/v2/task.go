@@ -176,3 +176,14 @@ var (
 
 	TransferMemLatencyHistogram = transferShortDurationHistogram.WithLabelValues("mem_latency")
 )
+
+var (
+	txnManagerByCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "mo",
+			Subsystem: "task",
+			Name:      "txn_manager_by_total",
+			Help:      "Total number of task have been scheduled.",
+		}, []string{"type", "nodetype"})
+	HeartBeatErrorScheduledByCounter = txnManagerByCounter.WithLabelValues("heart_beat_error", "dn")
+)

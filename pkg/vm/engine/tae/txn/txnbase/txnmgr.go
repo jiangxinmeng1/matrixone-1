@@ -28,13 +28,17 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/util"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
+	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/txn/clock"
+	"github.com/matrixorigin/matrixone/pkg/util/fault"
 
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
 )
+
+var CommitInReplayModeErr = moerr.NewInternalErrorNoCtx("commit in replay mode")
 
 type TxnCommitListener interface {
 	OnBeginPrePrepare(txnif.AsyncTxn)
@@ -242,7 +246,9 @@ func (mgr *TxnManager) EnqueueFlushing(op any) (err error) {
 
 func (mgr *TxnManager) heartbeat(ctx context.Context) {
 	defer mgr.wg.Done()
-	heartbeatTicker := time.NewTicker(time.Millisecond * 2)
+	interval := time.Millisecond * 2
+	heartbeatTicker := time.NewTicker(interval)
+	prevErrReportTS := time.Now()
 	for {
 		select {
 		case <-mgr.ctx.Done():
@@ -250,9 +256,19 @@ func (mgr *TxnManager) heartbeat(ctx context.Context) {
 		case <-heartbeatTicker.C:
 			op := mgr.newHeartbeatOpTxn(ctx)
 			op.Txn.(*Txn).Add(1)
-			_, err := mgr.PreparingSM.EnqueueReceived(op)
-			if err != nil {
-				panic(err)
+			if err := mgr.OnOpTxn(op); err != nil {
+				if err == CommitInReplayModeErr {
+					continue
+				}
+
+				// TODO: Add metrics alarm here
+				if time.Since(prevErrReportTS) > time.Second*10 {
+					logutil.Warn(
+						"Txn-HeartBeat-Error",
+						zap.Error(err),
+					)
+					prevErrReportTS = time.Now()
+				}
 			}
 		}
 	}
@@ -277,6 +293,21 @@ func (mgr *TxnManager) newHeartbeatOpTxn(ctx context.Context) *OpTxn {
 }
 
 func (mgr *TxnManager) OnOpTxn(op *OpTxn) (err error) {
+	// sarg: "hb" for heartbeat and other for normal txn
+	// iarg: 0 for `CommitInReplayModeErr` and other for `sm.ErrClose`
+	if iarg, sarg, injected := fault.TriggerFault(objectio.FJ_TxnMgrCommit); injected {
+		if sarg == "hb" && op.Txn.GetStore().GetTransactionType() != txnif.TxnType_Heartbeat {
+			injected = false
+		}
+		if injected {
+			switch iarg {
+			case 0:
+				return CommitInReplayModeErr
+			default:
+				return sm.ErrClose
+			}
+		}
+	}
 	_, err = mgr.PreparingSM.EnqueueReceived(op)
 	return
 }

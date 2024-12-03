@@ -40,6 +40,8 @@ const (
 
 	FJ_LogReader    = "fj/log/reader"
 	FJ_LogWorkspace = "fj/log/workspace"
+
+	FJ_TxnMgrCommit = "fj/txnmgr/commit"
 )
 
 const (
@@ -297,4 +299,22 @@ func PartitionStateInjected(dbName, tableName string) (bool, int) {
 		return false, 0
 	}
 	return checkLoggingArgs(int(iarg), sarg, dbName, tableName)
+}
+
+func InjectTxnMgrCommitError(iarg int, sarg string) (rmFault func(), err error) {
+	rmFault = func() {}
+	if err = fault.AddFaultPoint(
+		context.Background(),
+		FJ_TxnMgrCommit,
+		":::",
+		"echo",
+		int64(iarg),
+		sarg,
+	); err != nil {
+		return
+	}
+	rmFault = func() {
+		fault.RemoveFaultPoint(context.Background(), FJ_TxnMgrCommit)
+	}
+	return
 }

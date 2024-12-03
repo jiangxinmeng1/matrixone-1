@@ -256,6 +256,7 @@ func (mgr *TxnManager) heartbeat(ctx context.Context) {
 			return
 		case <-heartbeatTicker.C:
 			txn := mgr.newHeartbeatOpTxn()
+			metricV2.HeartBeatErrorScheduledByCounter.Inc()
 			if err := txn.Commit(ctx); err != nil {
 				if err == CommitInReplayModeErr {
 					continue

@@ -73,6 +73,9 @@ func newReplayer(dataFactory *tables.DataFactory, db *DB, ckpedTS types.TS, lsn 
 }
 
 func (replayer *Replayer) PreReplayWal() {
+	if !replayer.maxTs.IsEmpty(){
+		return
+	}
 	processor := new(catalog.LoopProcessor)
 	processor.ObjectFn = func(entry *catalog.ObjectEntry) (err error) {
 		if entry.GetTable().IsVirtual() {

@@ -10431,7 +10431,7 @@ func TestLogserviceDriver(t *testing.T) {
 
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
-	tae2 := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	tae2 := testutil.NewTestEngineWithDir(ctx, tae.Dir, t, opts)
 	defer tae2.Close()
 
 	schema := catalog.MockSchemaAll(3, 2)
@@ -10453,4 +10453,17 @@ func TestLogserviceDriver(t *testing.T) {
 
 	tae.RunTimeReplay(ts)
 	tae.CheckRowsByScan(2, false)
+
+	ts = tae.TxnMgr.Now()
+	tae.CompactBlocks(false)
+
+	tae2.RunTimeReplay(ts)
+	tae2.CheckRowsByScan(2, false)
+	t.Log(tae2.Catalog.SimplePPString(3))
+
+	ts = tae2.TxnMgr.Now()
+	tae2.DeleteAll(true)
+
+	tae.RunTimeReplay(ts)
+	tae.CheckRowsByScan(0, true)
 }

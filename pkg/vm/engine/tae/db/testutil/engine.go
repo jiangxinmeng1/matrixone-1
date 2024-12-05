@@ -41,6 +41,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/options"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/testutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,6 +94,15 @@ func NewLogService(t *testing.T) (*logservice.Service, *logservice.ClientConfig)
 	service, ccfg, err := logservice.NewTestService(fs)
 	assert.NoError(t, err)
 	return service, &ccfg
+}
+
+func (e *TestEngine) RunTimeReplay() {
+	dataFactory := tables.NewDataFactory(
+		e.Runtime, e.Dir,
+	)
+	maxTS := e.TxnMgr.MaxCommittedTS.Load()
+	maxLSN := e.LogtailMgr.GetReader(types.TS{}, types.MaxTs()).GetMaxLSN()
+	e.Replay(dataFactory, *maxTS, maxLSN, false)
 }
 
 func (e *TestEngine) BindSchema(schema *catalog.Schema) { e.schema = schema }

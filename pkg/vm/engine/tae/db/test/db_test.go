@@ -10406,6 +10406,18 @@ func TestDedup5(t *testing.T) {
 	assert.NoError(t, insertTxn.Commit(ctx))
 }
 
+/*
+tae 1 append
+tae 2 replay
+
+tae 2 append
+tae 1 replay
+
+replay:
+update log service driver
+update store info
+update mem table
+*/
 func TestLogserviceDriver(t *testing.T) {
 
 	ctx := context.Background()
@@ -10419,14 +10431,24 @@ func TestLogserviceDriver(t *testing.T) {
 
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
+	tae2 := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae2.Close()
 
 	schema := catalog.MockSchemaAll(3, 2)
 	schema.Extra.BlockMaxRows = 5
 	schema.Extra.ObjectMaxBlocks = 256
 	tae.BindSchema(schema)
+	tae2.BindSchema(schema)
 	bat := catalog.MockBatch(schema, 5)
 	defer bat.Close()
-	tae.CreateRelAndAppend(bat, true)
+	bats := bat.Split(5)
+	tae.CreateRelAndAppend(bats[0], true)
 
-	tae.Restart(ctx)
+	tae2.RunTimeReplay()
+	tae2.CheckRowsByScan(1, false)
+
+	tae2.DoAppend(bats[1])
+	
+	tae.RunTimeReplay()
+	tae.CheckRowsByScan(2, false)
 }

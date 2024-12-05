@@ -28,6 +28,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
+	"go.uber.org/zap"
 )
 
 type replayer struct {
@@ -60,13 +61,23 @@ type replayer struct {
 
 func newReplayer(h driver.ApplyHandle, readmaxsize int, d *LogServiceDriver) *replayer {
 	truncated := d.getLogserviceTruncate()
-	logutil.Infof("truncated %d", truncated)
+	var nextToReadLSN uint64
+	if d.validLsn.IsEmpty() {
+		nextToReadLSN = truncated + 1
+	} else {
+		nextToReadLSN = d.validLsn.Maximum() + 1
+	}
+	logutil.Info(
+		"LogServise Driver Replay Start,",
+		zap.Uint64("start lsn", nextToReadLSN),
+		zap.Uint64("truncated", truncated),
+	)
 	return &replayer{
 		minDriverLsn:              math.MaxUint64,
 		driverLsnLogserviceLsnMap: make(map[uint64]uint64),
 		replayHandle:              h,
 		readMaxSize:               readmaxsize,
-		nextToReadLsn:             truncated + 1,
+		nextToReadLsn:             nextToReadLSN,
 		replayedLsn:               math.MaxUint64,
 		d:                         d,
 		appended:                  make([]uint64, 0),

@@ -10442,13 +10442,15 @@ func TestLogserviceDriver(t *testing.T) {
 	bat := catalog.MockBatch(schema, 5)
 	defer bat.Close()
 	bats := bat.Split(5)
+	ts := tae.TxnMgr.Now()
 	tae.CreateRelAndAppend(bats[0], true)
 
-	tae2.RunTimeReplay()
+	tae2.RunTimeReplay(ts)
 	tae2.CheckRowsByScan(1, false)
 
+	ts = tae2.TxnMgr.Now()
 	tae2.DoAppend(bats[1])
-	
-	tae.RunTimeReplay()
+
+	tae.RunTimeReplay(ts)
 	tae.CheckRowsByScan(2, false)
 }

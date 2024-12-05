@@ -96,13 +96,12 @@ func NewLogService(t *testing.T) (*logservice.Service, *logservice.ClientConfig)
 	return service, &ccfg
 }
 
-func (e *TestEngine) RunTimeReplay() {
+func (e *TestEngine) RunTimeReplay(maxTS types.TS) {
 	dataFactory := tables.NewDataFactory(
 		e.Runtime, e.Dir,
 	)
-	maxTS := e.TxnMgr.MaxCommittedTS.Load()
 	maxLSN := e.LogtailMgr.GetReader(types.TS{}, types.MaxTs()).GetMaxLSN()
-	e.Replay(dataFactory, *maxTS, maxLSN, false)
+	e.Replay(dataFactory, maxTS, maxLSN, false)
 }
 
 func (e *TestEngine) BindSchema(schema *catalog.Schema) { e.schema = schema }

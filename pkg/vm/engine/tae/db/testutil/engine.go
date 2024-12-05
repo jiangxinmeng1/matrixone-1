@@ -16,11 +16,15 @@ package testutil
 
 import (
 	"context"
-	"github.com/matrixorigin/matrixone/pkg/vm/engine/cmd_util"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lni/vfs"
+	"github.com/matrixorigin/matrixone/pkg/common/runtime"
+	"github.com/matrixorigin/matrixone/pkg/logservice"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/cmd_util"
 
 	"github.com/matrixorigin/matrixone/pkg/container/batch"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
@@ -81,6 +85,14 @@ func NewTestEngine(
 		DB: db,
 		T:  t,
 	}
+}
+
+func NewLogService(t *testing.T) (*logservice.Service, *logservice.ClientConfig) {
+	runtime.SetupServiceBasedRuntime("", runtime.DefaultRuntime())
+	fs := vfs.NewStrictMem()
+	service, ccfg, err := logservice.NewTestService(fs)
+	assert.NoError(t, err)
+	return service, &ccfg
 }
 
 func (e *TestEngine) BindSchema(schema *catalog.Schema) { e.schema = schema }

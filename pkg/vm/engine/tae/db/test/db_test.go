@@ -31,6 +31,7 @@ import (
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/logservicedriver"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/store"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
@@ -10403,4 +10404,29 @@ func TestDedup5(t *testing.T) {
 	err = tae.DoAppendWithTxn(bats[0], insertTxn, true)
 	assert.Error(t, err)
 	assert.NoError(t, insertTxn.Commit(ctx))
+}
+
+func TestLogserviceDriver(t *testing.T) {
+
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	logService, clientCfg := testutil.NewLogService(t)
+	defer logService.Close()
+	clientFactory := logservicedriver.NewClientFactoryWithClientConfig("", clientCfg, time.Second)
+	opts.LogStoreT = options.LogstoreLogservice
+	opts.Lc = clientFactory
+
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+
+	schema := catalog.MockSchemaAll(3, 2)
+	schema.Extra.BlockMaxRows = 5
+	schema.Extra.ObjectMaxBlocks = 256
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 5)
+	defer bat.Close()
+	tae.CreateRelAndAppend(bat, true)
+
+	tae.Restart(ctx)
 }

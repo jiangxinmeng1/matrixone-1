@@ -77,12 +77,16 @@ func NewTestConfig(sid string, ccfg *logservice.ClientConfig) *Config {
 		GetTruncateDuration:  time.Second,
 		ReadDuration:         time.Second,
 	}
-	cfg.ClientFactory = func() (logservice.Client, error) {
-		ctx, cancel := context.WithTimeoutCause(context.Background(), cfg.NewClientDuration, moerr.CauseNewTestConfig)
+	cfg.ClientFactory = NewClientFactoryWithClientConfig(sid, ccfg, cfg.NewClientDuration)
+	return cfg
+}
+
+func NewClientFactoryWithClientConfig(sid string, ccfg *logservice.ClientConfig, newClientDuration time.Duration) LogServiceClientFactory {
+	return func() (logservice.Client, error) {
+		ctx, cancel := context.WithTimeoutCause(context.Background(), newClientDuration, moerr.CauseNewTestConfig)
 		logserviceClient, err := logservice.NewClient(ctx, sid, *ccfg)
 		err = moerr.AttachCause(ctx, err)
 		cancel()
 		return logserviceClient, err
 	}
-	return cfg
 }

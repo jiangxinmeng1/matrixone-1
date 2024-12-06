@@ -14,7 +14,11 @@
 
 package driver
 
-import "github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
+import (
+	"context"
+
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
+)
 
 type Driver interface {
 	Append(*entry.Entry) error
@@ -23,6 +27,7 @@ type Driver interface {
 	Read(lsn uint64) (*entry.Entry, error)
 	Close() error
 	Replay(h ApplyHandle) error
+	StopReplay(ctx context.Context) (err error)
 	GetCurrSeqNum() uint64
 }
 

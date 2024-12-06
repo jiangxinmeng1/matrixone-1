@@ -15,6 +15,8 @@
 package wal
 
 import (
+	"context"
+
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/store"
@@ -39,6 +41,7 @@ type Driver interface {
 	GetCurrSeqNum() uint64
 	GetPenddingCnt() uint64
 	Replay(handle store.ApplyHandle) error
+	StopReplay(ctx context.Context) (err error)
 	Start()
 	Close() error
 

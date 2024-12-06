@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -73,7 +74,7 @@ func newReplayer(dataFactory *tables.DataFactory, db *DB, ckpedTS types.TS, lsn 
 }
 
 func (replayer *Replayer) PreReplayWal() {
-	if !replayer.maxTs.IsEmpty(){
+	if !replayer.maxTs.IsEmpty() {
 		return
 	}
 	processor := new(catalog.LoopProcessor)
@@ -116,7 +117,13 @@ func (replayer *Replayer) postReplayWal() {
 func (replayer *Replayer) Replay() {
 	replayer.wg.Add(1)
 	go replayer.applyTxnCmds()
-	if err := replayer.db.Wal.Replay(replayer.OnReplayEntry); err != nil {
+	go func() {
+		if err := replayer.db.Wal.Replay(replayer.OnReplayEntry); err != nil {
+			panic(err)
+		}
+	}()
+	err := replayer.db.Wal.StopReplay(context.Background())
+	if err != nil {
 		panic(err)
 	}
 	replayer.txnCmdChan <- txnbase.NewLastTxnCmd()

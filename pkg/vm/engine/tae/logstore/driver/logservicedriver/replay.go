@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -29,6 +30,10 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
 	"go.uber.org/zap"
+)
+
+const (
+	PrintDuration time.Duration = time.Second * 10
 )
 
 type replayer struct {
@@ -57,6 +62,10 @@ type replayer struct {
 	applyCount    int
 
 	wg sync.WaitGroup
+
+	tPrint time.Time
+
+	stopReplay atomic.Bool
 }
 
 func newReplayer(h driver.ApplyHandle, readmaxsize int, d *LogServiceDriver) *replayer {
@@ -91,7 +100,14 @@ func (r *replayer) replay() {
 	var err error
 	r.wg.Add(1)
 	go r.replayRecords()
-	for !r.readRecords() {
+	for {
+		readEnd, stop := r.readRecords()
+		if stop {
+			break
+		}
+		if readEnd {
+			continue
+		}
 		for r.replayedLsn < r.safeLsn {
 			err := r.replayLogserviceEntry(r.replayedLsn+1, true)
 			if err != nil {
@@ -110,7 +126,7 @@ func (r *replayer) replay() {
 	close(r.recordChan)
 }
 
-func (r *replayer) readRecords() (readEnd bool) {
+func (r *replayer) readRecords() (readEnd, stop bool) {
 	nextLsn, safeLsn := r.d.readFromLogServiceInReplay(r.nextToReadLsn, r.readMaxSize, func(lsn uint64, record *recordEntry) {
 		r.readCount++
 		if record.Meta.metaType == TReplay {
@@ -129,14 +145,22 @@ func (r *replayer) readRecords() (readEnd bool) {
 			r.replayedLsn = drlsn - 1
 		}
 	})
-	if nextLsn == r.nextToReadLsn {
-		return true
+	if nextLsn == r.nextToReadLsn && r.stopReplay.Load() {
+		if r.stopReplay.Load() {
+			return true, true
+		} else {
+			if time.Since(r.tPrint) > PrintDuration {
+				r.tPrint = time.Now()
+				logutil.Infof("Log Service Driver, read all records")
+			}
+			return true, false
+		}
 	}
 	r.nextToReadLsn = nextLsn
 	if safeLsn > r.safeLsn {
 		r.safeLsn = safeLsn
 	}
-	return false
+	return false, false
 }
 func (r *replayer) removeEntries(skipMap map[uint64]uint64) {
 	for lsn := range skipMap {

@@ -202,6 +202,9 @@ func (bs *baseStore) onEntries(entries ...any) {
 //	checkpointing, syncing map[uint32]uint64
 //}
 
+func (bs *baseStore) StopReplay(ctx context.Context) (err error) {
+	return nil
+}
 func (bs *baseStore) Close() error {
 	if !bs.TryClose() {
 		return nil

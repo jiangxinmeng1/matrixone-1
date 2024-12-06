@@ -16,6 +16,7 @@ package logservicedriver
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/panjf2000/ants/v2"
@@ -32,6 +33,8 @@ const (
 	ReplayReadSize = mpool.MB * 64
 	MaxReadSize    = mpool.MB * 64
 )
+
+var ErrLogServiceDriverIsNotOnReplay = moerr.NewInternalErrorNoCtx("LogService Driver is not on replay")
 
 func RetryWithTimeout(timeoutDuration time.Duration, fn func() (shouldReturn bool)) error {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), timeoutDuration, moerr.CauseRetryWithTimeout)
@@ -72,6 +75,8 @@ type LogServiceDriver struct {
 	appendtimes int
 
 	readDuration time.Duration
+
+	replayer atomic.Pointer[replayer]
 }
 
 func NewLogServiceDriver(cfg *Config) *LogServiceDriver {
@@ -132,6 +137,7 @@ func (d *LogServiceDriver) Close() error {
 func (d *LogServiceDriver) Replay(h driver.ApplyHandle) error {
 	d.PreReplay()
 	r := newReplayer(h, ReplayReadSize, d)
+	d.replayer.Store(r)
 	r.replay()
 	d.onReplay(r)
 	r.d.resetReadCache()
@@ -147,4 +153,24 @@ func (d *LogServiceDriver) Replay(h driver.ApplyHandle) error {
 	)
 
 	return nil
+}
+
+func (d *LogServiceDriver) StopReplay(ctx context.Context) (err error) {
+	logutil.Infof("Log Service Driver Try Stop Replay")
+	replayer := d.replayer.Load()
+	if replayer == nil {
+		return ErrLogServiceDriverIsNotOnReplay
+	}
+	replayer.stopReplay.Store(true)
+	c := make(chan struct{})
+	go func() {
+		replayer.wg.Wait()
+		close(c)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c:
+		return
+	}
 }

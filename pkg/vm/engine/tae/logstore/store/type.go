@@ -15,6 +15,8 @@
 package store
 
 import (
+	"context"
+
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/entry"
 )
 
@@ -36,6 +38,7 @@ type Store interface {
 	GetTruncated() uint64
 
 	Replay(h ApplyHandle) error
+	StopReplay(ctx context.Context) (err error) 
 	Close() error
 }
 

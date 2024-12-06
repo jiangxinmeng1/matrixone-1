@@ -15,6 +15,7 @@
 package store
 
 import (
+	"context"
 	"sync"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
@@ -176,4 +177,8 @@ func (w *StoreImpl) onLogInfoQueue(items ...any) {
 		w.logDriverLsn(e)
 	}
 	w.onAppend()
+}
+
+func (w *StoreImpl) StopReplay(ctx context.Context) (err error) {
+	return w.driver.StopReplay(ctx)
 }

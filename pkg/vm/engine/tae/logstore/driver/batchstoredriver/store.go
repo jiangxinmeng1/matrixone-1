@@ -212,6 +212,7 @@ func (bs *baseStore) StopReplay(ctx context.Context) (err error) {
 		return moerr.NewInternalErrorNoCtx("WAL is not on replay")
 	}
 	replayer.wg.Wait()
+	bs.replayer.Store(nil)
 	return nil
 }
 func (bs *baseStore) Close() error {
@@ -282,6 +283,7 @@ func (bs *baseStore) Append(e *entry.Entry) error {
 func (bs *baseStore) Replay(h driver.ApplyHandle) error {
 	r := newReplayer(h)
 	bs.addrs = r.addrs
+	bs.replayer.Store(r)
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()

@@ -17,8 +17,10 @@ package batchstoredriver
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver"
@@ -55,6 +57,8 @@ type baseStore struct {
 	truncateQueue   sm.Queue
 	file            File
 	mu              *sync.RWMutex
+
+	replayer atomic.Pointer[replayer]
 }
 
 func NewBaseStore(dir, name string, cfg *StoreCfg) (*baseStore, error) {
@@ -203,6 +207,11 @@ func (bs *baseStore) onEntries(entries ...any) {
 //}
 
 func (bs *baseStore) StopReplay(ctx context.Context) (err error) {
+	replayer := bs.replayer.Load()
+	if replayer == nil {
+		return moerr.NewInternalErrorNoCtx("WAL is not on replay")
+	}
+	replayer.wg.Wait()
 	return nil
 }
 func (bs *baseStore) Close() error {
@@ -273,16 +282,20 @@ func (bs *baseStore) Append(e *entry.Entry) error {
 func (bs *baseStore) Replay(h driver.ApplyHandle) error {
 	r := newReplayer(h)
 	bs.addrs = r.addrs
-	err := bs.file.Replay(r)
-	if err != nil {
-		return err
-	}
-	bs.onReplay(r)
-	logutil.Info("open-tae", common.OperationField("replay"),
-		common.OperandField("wal"),
-		common.AnyField("backend", "batchstore"),
-		common.AnyField("apply cost", r.applyDuration),
-		common.AnyField("read cost", r.readDuration))
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		err := bs.file.Replay(r)
+		if err != nil {
+			panic(err)
+		}
+		bs.onReplay(r)
+		logutil.Info("open-tae", common.OperationField("replay"),
+			common.OperandField("wal"),
+			common.AnyField("backend", "batchstore"),
+			common.AnyField("apply cost", r.applyDuration),
+			common.AnyField("read cost", r.readDuration))
+	}()
 	return nil
 }
 

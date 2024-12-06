@@ -16,6 +16,7 @@ package batchstoredriver
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
@@ -38,6 +39,8 @@ type replayer struct {
 
 	readDuration  time.Duration
 	applyDuration time.Duration
+
+	wg sync.WaitGroup
 }
 
 func newReplayer(h driver.ApplyHandle) *replayer {

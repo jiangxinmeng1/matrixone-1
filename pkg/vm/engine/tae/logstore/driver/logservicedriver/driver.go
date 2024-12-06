@@ -138,19 +138,21 @@ func (d *LogServiceDriver) Replay(h driver.ApplyHandle) error {
 	d.PreReplay()
 	r := newReplayer(h, ReplayReadSize, d)
 	d.replayer.Store(r)
-	r.replay()
-	d.onReplay(r)
-	r.d.resetReadCache()
-	d.PostReplay()
-	logutil.Info("open-tae", common.OperationField("replay"),
-		common.OperandField("wal"),
-		common.AnyField("backend", "logservice"),
-		common.AnyField("apply cost", r.applyDuration),
-		common.AnyField("read cost", d.readDuration),
-		common.AnyField("read count", r.readCount),
-		common.AnyField("internal count", r.internalCount),
-		common.AnyField("apply count", r.applyCount),
-	)
+	go func() {
+		r.replay()
+		d.onReplay(r)
+		r.d.resetReadCache()
+		d.PostReplay()
+		logutil.Info("open-tae", common.OperationField("replay"),
+			common.OperandField("wal"),
+			common.AnyField("backend", "logservice"),
+			common.AnyField("apply cost", r.applyDuration),
+			common.AnyField("read cost", d.readDuration),
+			common.AnyField("read count", r.readCount),
+			common.AnyField("internal count", r.internalCount),
+			common.AnyField("apply count", r.applyCount),
+		)
+	}()
 
 	return nil
 }

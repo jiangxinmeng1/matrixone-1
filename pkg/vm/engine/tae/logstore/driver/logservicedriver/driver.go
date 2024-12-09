@@ -138,6 +138,7 @@ func (d *LogServiceDriver) Replay(h driver.ApplyHandle) error {
 	d.PreReplay()
 	r := newReplayer(h, ReplayReadSize, d)
 	d.replayer.Store(r)
+	r.wg.Add(1)
 	go func() {
 		r.replay()
 		d.onReplay(r)

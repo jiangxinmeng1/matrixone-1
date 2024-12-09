@@ -98,7 +98,6 @@ func newReplayer(h driver.ApplyHandle, readmaxsize int, d *LogServiceDriver) *re
 
 func (r *replayer) replay() {
 	var err error
-	r.wg.Add(1)
 	go r.replayRecords()
 	for {
 		readEnd, stop := r.readRecords()

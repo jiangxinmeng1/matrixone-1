@@ -236,6 +236,9 @@ func Open(
 
 	now = time.Now()
 	db.Replay(dataFactory, checkpointed, ckpLSN, valid)
+	if err = db.StopReplay(); err != nil {
+		panic(err)
+	}
 	db.Catalog.ReplayTableRows()
 
 	// checkObjectState(db)

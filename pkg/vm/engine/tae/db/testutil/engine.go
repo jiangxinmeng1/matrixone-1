@@ -102,6 +102,8 @@ func (e *TestEngine) RunTimeReplay(maxTS types.TS) {
 	)
 	maxLSN := e.LogtailMgr.GetReader(types.TS{}, types.MaxTs()).GetMaxLSN()
 	e.Replay(dataFactory, maxTS, maxLSN, false)
+	err := e.StopReplay()
+	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) BindSchema(schema *catalog.Schema) { e.schema = schema }

@@ -120,6 +120,9 @@ func (replayer *Replayer) Replay() {
 	if err := replayer.db.Wal.Replay(replayer.OnReplayEntry); err != nil {
 		panic(err)
 	}
+	replayer.db.replayer.Store(replayer)
+}
+func (replayer *Replayer) StopReplay(){
 	err := replayer.db.Wal.StopReplay(context.Background())
 	if err != nil {
 		panic(err)
@@ -134,7 +137,6 @@ func (replayer *Replayer) Replay() {
 		common.AnyField("read count", replayer.readCount),
 		common.AnyField("apply count", replayer.applyCount))
 }
-
 func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte, typ uint16, info any) {
 	replayer.once.Do(replayer.PreReplayWal)
 	if group != wal.GroupPrepare && group != wal.GroupC {

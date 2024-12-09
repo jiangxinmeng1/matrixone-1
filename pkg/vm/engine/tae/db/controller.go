@@ -22,8 +22,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"go.uber.org/zap"
 )
 
@@ -179,6 +181,12 @@ func (c *Controller) handleToReplayCmd(cmd *controlCmd) {
 	// 11.1 switch the txn mode to replay mode
 	c.db.TxnMgr.ToReplayMode()
 	// 11.2 TODO: replay the log entries
+	maxTS := *c.db.TxnMgr.MaxCommittedTS.Load()
+	dataFactory := tables.NewDataFactory(
+		c.db.Runtime, c.db.Dir,
+	)
+	maxLSN := c.db.LogtailMgr.GetReader(types.TS{}, types.MaxTs()).GetMaxLSN()
+	c.db.Replay(dataFactory, maxTS, maxLSN, true)
 
 	WithTxnMode(DBTxnMode_Replay)(c.db)
 }

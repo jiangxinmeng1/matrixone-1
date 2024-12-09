@@ -44,7 +44,8 @@ import (
 )
 
 var (
-	ErrClosed = moerr.NewInternalErrorNoCtx("tae: closed")
+	ErrClosed          = moerr.NewInternalErrorNoCtx("tae: closed")
+	ErrDBIsNotOnReplay = moerr.NewInternalErrorNoCtx("tae: not on replay")
 )
 
 type DBTxnMode uint32
@@ -91,6 +92,8 @@ type DB struct {
 	DBLocker io.Closer
 
 	Closed *atomic.Value
+
+	replayer atomic.Pointer[Replayer]
 }
 
 func (db *DB) GetTxnMode() DBTxnMode {
@@ -243,13 +246,24 @@ func (db *DB) Replay(dataFactory *tables.DataFactory, maxTs types.TS, lsn uint64
 	replayer := newReplayer(dataFactory, db, maxTs, lsn, valid)
 	replayer.OnTimeStamp(maxTs)
 	replayer.Replay()
+}
 
-	err := db.TxnMgr.Init(replayer.GetMaxTS())
+func (db *DB) StopReplay() (err error) {
+	replayer := db.replayer.Load()
+
+	if replayer == nil {
+		return ErrDBIsNotOnReplay
+	}
+	replayer.StopReplay()
+
+	err = db.TxnMgr.Init(replayer.GetMaxTS())
 
 	db.usageMemo.EstablishFromCKPs(db.Catalog)
 	if err != nil {
 		panic(err)
 	}
+	db.replayer.Store(nil)
+	return nil
 }
 
 func (db *DB) AddFaultPoint(ctx context.Context, name string, freq string, action string, iarg int64, sarg string) error {

@@ -285,7 +285,7 @@ func (mgr *TxnManager) StartTxn(info []byte) (txn txnif.AsyncTxn, err error) {
 	store := mgr.TxnStoreFactory()
 	txn = mgr.TxnFactory(mgr, store, txnId, startTs, types.TS{})
 	store.BindTxn(txn)
-	mgr.storeTxn(txn, TxnFlag_Normal)
+	err = mgr.storeTxn(txn, TxnFlag_Normal)
 	return
 }
 

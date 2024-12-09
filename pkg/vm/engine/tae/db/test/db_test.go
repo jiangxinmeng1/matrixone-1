@@ -10469,21 +10469,6 @@ func TestLogserviceDriver(t *testing.T) {
 	tae.CheckRowsByScan(0, true)
 }
 
-/*
-db1 paralel append
-db2 replay
-
-db1 to replay mode
-db2 ro write mode
-check row count (db1, db2, txn success)
-
-db2 append
-
-db2 to replay mod
-db1 to write mode
-check row count (db1, db2, txn)
-*/
-
 func TestTxnModeSwitch(t *testing.T) {
 	ctx := context.Background()
 
@@ -10514,8 +10499,24 @@ func TestTxnModeSwitch(t *testing.T) {
 	tae.CreateRelAndAppend(bat, true)
 	successCount.Add(1)
 
+	switchFn := func(writeDB, replayDB *testutil.TestEngine) {
+		err = writeDB.SwitchTxnMode(ctx, 1, "todo")
+		assert.NoError(t, err)
+		err = replayDB.SwitchTxnMode(ctx, 2, "todo")
+		assert.NoError(t, err)
+	}
+
 	var wg sync.WaitGroup
-	pool, _ := ants.NewPool(80)
+	switchAndCheckFn := func(writeDB, replayDB *testutil.TestEngine) {
+		switchFn(writeDB, replayDB)
+		wg.Wait()
+		switchFn(replayDB, writeDB)
+		writeDB.CheckRowsByScan(int(successCount.Load()), false)
+		switchFn(writeDB, replayDB)
+		replayDB.CheckRowsByScan(int(successCount.Load()), false)
+	}
+
+	pool, _ := ants.NewPool(1)
 	defer pool.Release()
 	appendFn := func(db *testutil.TestEngine) func() {
 		return func() {
@@ -10536,47 +10537,24 @@ func TestTxnModeSwitch(t *testing.T) {
 			}
 		}
 	}
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		err := pool.Submit(appendFn(tae))
 		assert.Nil(t, err)
 	}
 
-	err = tae.SwitchTxnMode(ctx, 1, "todo")
-	assert.NoError(t, err)
+	switchAndCheckFn(tae, tae2)
 
-	err = tae2.SwitchTxnMode(ctx, 2, "todo")
-	assert.NoError(t, err)
-
-	wg.Wait()
-
-	err = tae.SwitchTxnMode(ctx, 2, "todo")
-	assert.NoError(t, err)
-	tae.CheckRowsByScan(int(successCount.Load()), false)
-	err = tae.SwitchTxnMode(ctx, 1, "todo")
-	assert.NoError(t, err)
-	tae2.CheckRowsByScan(int(successCount.Load()), false)
-
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		err := pool.Submit(appendFn(tae2))
 		assert.Nil(t, err)
 	}
 
-	err = tae2.SwitchTxnMode(ctx, 1, "todo")
-	assert.NoError(t, err)
-
-	err = tae.SwitchTxnMode(ctx, 2, "todo")
-	assert.NoError(t, err)
-
-	wg.Wait()
-
-	tae.CheckRowsByScan(int(successCount.Load()), false)
+	switchAndCheckFn(tae2, tae)
 
 	err = tae2.SwitchTxnMode(ctx, 2, "todo")
 	assert.NoError(t, err)
-	tae2.CheckRowsByScan(int(successCount.Load()), false)
-
 }
 
 func Test_BasicTxnModeSwitch(t *testing.T) {

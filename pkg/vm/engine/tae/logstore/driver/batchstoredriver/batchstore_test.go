@@ -15,6 +15,7 @@
 package batchstoredriver
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -60,10 +61,12 @@ func restartStore(s *baseStore, t *testing.T) *baseStore {
 			panic(moerr.NewInternalErrorNoCtxf("logic error %d<%d", e.Lsn, tempLsn))
 		}
 		tempLsn = e.Lsn
-		_, err = s.Read(e.Lsn)
+		_, err := s.Read(e.Lsn)
 		assert.NoError(t, err)
 		// logutil.Infof("lsn is %d",e.Lsn)
 	})
+	assert.NoError(t, err)
+	err = s.StopReplay(context.TODO())
 	assert.NoError(t, err)
 	assert.Equal(t, maxlsn, s.GetCurrSeqNum())
 	assert.Equal(t, maxlsn, s.synced)

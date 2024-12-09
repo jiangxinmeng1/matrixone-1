@@ -10510,12 +10510,13 @@ func TestTxnModeSwitch(t *testing.T) {
 	err := tae2.SwitchTxnMode(ctx, 1, "todo")
 	assert.NoError(t, err)
 
+	var successCount atomic.Int32
 	tae.CreateRelAndAppend(bat, true)
+	successCount.Add(1)
 
 	var wg sync.WaitGroup
 	pool, _ := ants.NewPool(80)
 	defer pool.Release()
-	var successCount atomic.Int32
 	appendFn := func(db *testutil.TestEngine) func() {
 		return func() {
 			defer wg.Done()
@@ -10549,7 +10550,11 @@ func TestTxnModeSwitch(t *testing.T) {
 
 	wg.Wait()
 
+	err = tae.SwitchTxnMode(ctx, 2, "todo")
+	assert.NoError(t, err)
 	tae.CheckRowsByScan(int(successCount.Load()), false)
+	err = tae.SwitchTxnMode(ctx, 1, "todo")
+	assert.NoError(t, err)
 	tae2.CheckRowsByScan(int(successCount.Load()), false)
 
 	for i := 0; i < 500; i++ {
@@ -10567,6 +10572,9 @@ func TestTxnModeSwitch(t *testing.T) {
 	wg.Wait()
 
 	tae.CheckRowsByScan(int(successCount.Load()), false)
+
+	err = tae2.SwitchTxnMode(ctx, 2, "todo")
+	assert.NoError(t, err)
 	tae2.CheckRowsByScan(int(successCount.Load()), false)
 
 }

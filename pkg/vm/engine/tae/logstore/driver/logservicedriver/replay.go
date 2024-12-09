@@ -144,7 +144,7 @@ func (r *replayer) readRecords() (readEnd, stop bool) {
 			r.replayedLsn = drlsn - 1
 		}
 	})
-	if nextLsn == r.nextToReadLsn && r.stopReplay.Load() {
+	if nextLsn == r.nextToReadLsn {
 		if r.stopReplay.Load() {
 			return true, true
 		} else {

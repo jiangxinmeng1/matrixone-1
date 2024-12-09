@@ -20,7 +20,6 @@ import (
 	"time"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
@@ -48,7 +47,6 @@ type Replayer struct {
 	DataFactory   *tables.DataFactory
 	db            *DB
 	maxTs         types.TS
-	once          sync.Once
 	ckpedTS       types.TS
 	wg            sync.WaitGroup
 	applyDuration time.Duration
@@ -70,32 +68,6 @@ func newReplayer(dataFactory *tables.DataFactory, db *DB, ckpedTS types.TS, lsn 
 		enableLSNCheck: enableLSNCheck,
 		wg:             sync.WaitGroup{},
 		txnCmdChan:     make(chan *txnbase.TxnCmd, 100),
-	}
-}
-
-func (replayer *Replayer) PreReplayWal() {
-	if !replayer.maxTs.IsEmpty() {
-		return
-	}
-	processor := new(catalog.LoopProcessor)
-	processor.ObjectFn = func(entry *catalog.ObjectEntry) (err error) {
-		if entry.GetTable().IsVirtual() {
-			return moerr.GetOkStopCurrRecur()
-		}
-		dropCommit, obj := entry.TreeMaxDropCommitEntry()
-		if dropCommit != nil && dropCommit.DeleteBeforeLocked(replayer.ckpedTS) {
-			return moerr.GetOkStopCurrRecur()
-		}
-		if obj != nil && obj.DeleteBefore(replayer.ckpedTS) {
-			return moerr.GetOkStopCurrRecur()
-		}
-		entry.InitData(replayer.DataFactory)
-		return
-	}
-	if err := replayer.db.Catalog.RecurLoop(processor); err != nil {
-		if !moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
-			panic(err)
-		}
 	}
 }
 
@@ -138,7 +110,6 @@ func (replayer *Replayer) StopReplay(){
 		common.AnyField("apply count", replayer.applyCount))
 }
 func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte, typ uint16, info any) {
-	replayer.once.Do(replayer.PreReplayWal)
 	if group != wal.GroupPrepare && group != wal.GroupC {
 		return
 	}

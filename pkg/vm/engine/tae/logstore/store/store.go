@@ -180,5 +180,36 @@ func (w *StoreImpl) onLogInfoQueue(items ...any) {
 }
 
 func (w *StoreImpl) StopReplay(ctx context.Context) (err error) {
-	return w.driver.StopReplay(ctx)
+	err = w.driver.StopReplay(ctx)
+	if err!=nil{
+		return
+	}
+	lsn, err := w.driver.GetTruncated()
+	if err != nil {
+		panic(err)
+	}
+	w.StoreInfo.onCheckpoint()
+	w.driverCheckpointed.Store(lsn)
+	w.driverCheckpointing.Store(lsn)
+	for g, lsn := range w.syncing {
+		w.walCurrentLsn[g] = lsn
+		w.synced[g] = lsn
+	}
+	for g, ckped := range w.checkpointed {
+		if w.walCurrentLsn[g] == 0 {
+			w.walCurrentLsn[g] = ckped
+			w.synced[g] = ckped
+		}
+		if w.minLsn[g] <= w.driverCheckpointed.Load() {
+			minLsn := w.minLsn[g]
+			for ; minLsn <= ckped+1; minLsn++ {
+				drLsn, err := w.getDriverLsn(g, minLsn)
+				if err == nil && drLsn > w.driverCheckpointed.Load() {
+					break
+				}
+			}
+			w.minLsn[g] = minLsn
+		}
+	}
+	return nil
 }

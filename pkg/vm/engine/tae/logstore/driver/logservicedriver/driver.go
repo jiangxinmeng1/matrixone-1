@@ -120,6 +120,9 @@ func NewLogServiceDriver(cfg *Config) *LogServiceDriver {
 }
 
 func (d *LogServiceDriver) Close() error {
+	if d.replayer.Load()!=nil{
+		panic("debug")
+	}
 	logutil.Infof("append%d,flush%d", d.appendtimes, d.flushtimes)
 	d.clientPool.Close()
 	d.closeCancel()
@@ -168,6 +171,7 @@ func (d *LogServiceDriver) StopReplay(ctx context.Context) (err error) {
 	c := make(chan struct{})
 	go func() {
 		replayer.wg.Wait()
+		d.replayer.Store(nil)
 		close(c)
 	}()
 	select {

@@ -15,6 +15,7 @@
 package logservicedriver
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -61,6 +62,8 @@ func restartDriver(t *testing.T, d *LogServiceDriver, h func(*entry.Entry)) *Log
 			h(e)
 		}
 	})
+	assert.NoError(t, err)
+	err = d.StopReplay(context.TODO())
 	assert.NoError(t, err)
 	t.Log("Addr:")
 	for lsn, intervals := range d.addr {

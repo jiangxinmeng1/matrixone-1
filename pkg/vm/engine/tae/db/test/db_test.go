@@ -10469,6 +10469,108 @@ func TestLogserviceDriver(t *testing.T) {
 	tae.CheckRowsByScan(0, true)
 }
 
+/*
+db1 paralel append
+db2 replay
+
+db1 to replay mode
+db2 ro write mode
+check row count (db1, db2, txn success)
+
+db2 append
+
+db2 to replay mod
+db1 to write mode
+check row count (db1, db2, txn)
+*/
+
+func TestTxnModeSwitch(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	logService, clientCfg := testutil.NewLogService(t)
+	defer logService.Close()
+	clientFactory := logservicedriver.NewClientFactoryWithClientConfig("", clientCfg, time.Second)
+	opts.LogStoreT = options.LogstoreLogservice
+	opts.Lc = clientFactory
+
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	tae2 := testutil.NewTestEngineWithDir(ctx, tae.Dir, t, opts)
+	defer tae2.Close()
+
+	schema := catalog.MockSchemaAll(3, -1)
+	schema.Extra.BlockMaxRows = 5
+	schema.Extra.ObjectMaxBlocks = 256
+	tae.BindSchema(schema)
+	tae2.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 1)
+	defer bat.Close()
+
+	err := tae2.SwitchTxnMode(ctx, 1, "todo")
+	assert.NoError(t, err)
+
+	tae.CreateRelAndAppend(bat, true)
+
+	var wg sync.WaitGroup
+	pool, _ := ants.NewPool(80)
+	defer pool.Release()
+	var successCount atomic.Int32
+	appendFn := func(db *testutil.TestEngine) func() {
+		return func() {
+			defer wg.Done()
+			txn, err := db.StartTxn(nil)
+			if err != nil {
+				return
+			}
+			database, _ := txn.GetDatabase("db")
+			rel, _ := database.GetRelationByName(schema.Name)
+			err = rel.Append(context.Background(), bat)
+			if err != nil {
+				return
+			}
+			err = txn.Commit(context.Background())
+			if err == nil {
+				successCount.Add(1)
+			}
+		}
+	}
+	for i := 0; i < 500; i++ {
+		wg.Add(1)
+		err := pool.Submit(appendFn(tae))
+		assert.Nil(t, err)
+	}
+
+	err = tae.SwitchTxnMode(ctx, 1, "todo")
+	assert.NoError(t, err)
+
+	err = tae2.SwitchTxnMode(ctx, 2, "todo")
+	assert.NoError(t, err)
+
+	wg.Wait()
+
+	tae.CheckRowsByScan(int(successCount.Load()), false)
+	tae2.CheckRowsByScan(int(successCount.Load()), false)
+
+	for i := 0; i < 500; i++ {
+		wg.Add(1)
+		err := pool.Submit(appendFn(tae2))
+		assert.Nil(t, err)
+	}
+
+	err = tae2.SwitchTxnMode(ctx, 1, "todo")
+	assert.NoError(t, err)
+
+	err = tae.SwitchTxnMode(ctx, 2, "todo")
+	assert.NoError(t, err)
+
+	wg.Wait()
+
+	tae.CheckRowsByScan(int(successCount.Load()), false)
+	tae2.CheckRowsByScan(int(successCount.Load()), false)
+
+}
+
 func Test_BasicTxnModeSwitch(t *testing.T) {
 	ctx := context.Background()
 	opts := config.WithLongScanAndCKPOpts(nil)

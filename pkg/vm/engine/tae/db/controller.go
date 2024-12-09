@@ -227,7 +227,6 @@ func (c *Controller) handleToWriteCmd(cmd *controlCmd) {
 	// 2. stop replaying the log entries
 	// TODO
 	err = c.db.Wal.StopReplay(cmd.ctx)
-	cmd.setError(err)
 
 	// 3. switch the txnmgr to write mode
 	c.db.TxnMgr.ToWriteMode()

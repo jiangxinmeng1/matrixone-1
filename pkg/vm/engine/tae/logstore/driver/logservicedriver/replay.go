@@ -70,6 +70,7 @@ type replayer struct {
 
 func newReplayer(h driver.ApplyHandle, readmaxsize int, d *LogServiceDriver) *replayer {
 	truncated := d.getLogserviceTruncate()
+	d.waitPostAppend()
 	var nextToReadLSN uint64
 	if d.validLsn.IsEmpty() {
 		nextToReadLSN = truncated + 1

@@ -16,6 +16,7 @@ package logservicedriver
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -120,7 +121,7 @@ func NewLogServiceDriver(cfg *Config) *LogServiceDriver {
 }
 
 func (d *LogServiceDriver) Close() error {
-	if d.replayer.Load()!=nil{
+	if d.replayer.Load() != nil {
 		panic("debug")
 	}
 	logutil.Infof("append%d,flush%d", d.appendtimes, d.flushtimes)
@@ -180,4 +181,11 @@ func (d *LogServiceDriver) StopReplay(ctx context.Context) (err error) {
 	case <-c:
 		return
 	}
+}
+
+func (d *LogServiceDriver) waitPostAppend() {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	d.postAppendQueue <- &wg
+	wg.Wait()
 }

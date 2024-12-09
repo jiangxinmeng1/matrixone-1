@@ -162,8 +162,8 @@ func (w *StoreImpl) onDoneWithErrQueue(items ...any) {
 		if err != nil {
 			panic(err)
 		}
-		e.Entry.DoneWithErr(nil)
 		_, err = w.logInfoQueue.Enqueue(e)
+		e.Entry.DoneWithErr(nil)
 		if err != nil {
 			panic(err)
 		}
@@ -172,16 +172,31 @@ func (w *StoreImpl) onDoneWithErrQueue(items ...any) {
 }
 
 func (w *StoreImpl) onLogInfoQueue(items ...any) {
+	var wg *sync.WaitGroup
 	for _, item := range items {
+		wg2, ok := item.(*sync.WaitGroup)
+		if ok {
+			wg = wg2
+			continue
+		}
 		e := item.(*driverEntry.Entry)
 		w.logDriverLsn(e)
 	}
 	w.onAppend()
+	if wg != nil {
+		wg.Done()
+	}
 }
 
+func (w *StoreImpl) WaitLogInfoQueue() {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	w.logInfoQueue.Enqueue(&wg)
+	wg.Wait()
+}
 func (w *StoreImpl) StopReplay(ctx context.Context) (err error) {
 	err = w.driver.StopReplay(ctx)
-	if err!=nil{
+	if err != nil {
 		return
 	}
 	lsn, err := w.driver.GetTruncated()

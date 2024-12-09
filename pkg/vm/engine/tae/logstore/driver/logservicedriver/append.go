@@ -15,6 +15,7 @@
 package logservicedriver
 
 import (
+	"sync"
 	"time"
 
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -102,7 +103,13 @@ func (d *LogServiceDriver) onAppendedQueue(items []any, q chan any) {
 
 func (d *LogServiceDriver) onPostAppendQueue(items []any, _ chan any) {
 	appended := make([]uint64, 0)
+	var wg *sync.WaitGroup
 	for _, v := range items {
+		wg2, ok := v.(*sync.WaitGroup)
+		if ok {
+			wg = wg2
+			continue
+		}
 		batch := v.([]*driverAppender)
 		for _, appender := range batch {
 			d.logAppend(appender)
@@ -110,4 +117,7 @@ func (d *LogServiceDriver) onPostAppendQueue(items []any, _ chan any) {
 		}
 	}
 	d.onAppend(appended)
+	if wg != nil {
+		wg.Done()
+	}
 }

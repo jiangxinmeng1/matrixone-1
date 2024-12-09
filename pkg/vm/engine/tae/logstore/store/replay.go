@@ -19,6 +19,7 @@ import (
 )
 
 func (w *StoreImpl) Replay(h ApplyHandle) error {
+	w.WaitLogInfoQueue()
 	err := w.driver.Replay(func(e *entry.Entry) {
 		err := w.replayEntry(e, h)
 		if err != nil {

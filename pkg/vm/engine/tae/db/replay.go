@@ -111,7 +111,7 @@ func (replayer *Replayer) Replay() {
 	replayer.wg.Wait()
 	replayer.postReplayWal()
 	if replayer.walEntriesBatch != nil {
-		name := fmt.Sprintf("2.0 WAL entry %v", time.Now())
+		name := fmt.Sprintf("2.0_WAL_entry_%v", objectio.NewSegmentid().ToString())
 		logutil.Infof("open-tae, 2.0 WAL entry count %d, file name %v", replayer.walEntriesBatch.Length(), name)
 		writer, err := blockio.NewBlockWriter(replayer.db.Runtime.Fs.Service, name)
 		if err != nil {

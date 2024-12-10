@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -25,8 +26,10 @@ import (
 
 	"sync"
 
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/blockio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/tables"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
@@ -48,6 +51,8 @@ type Replayer struct {
 
 	lsn            uint64
 	enableLSNCheck bool
+
+	walEntriesBatch *containers.Batch
 }
 
 func newReplayer(dataFactory *tables.DataFactory, db *DB, ckpedTS types.TS, lsn uint64, enableLSNCheck bool) *Replayer {
@@ -105,6 +110,23 @@ func (replayer *Replayer) Replay() {
 	close(replayer.txnCmdChan)
 	replayer.wg.Wait()
 	replayer.postReplayWal()
+	if replayer.walEntriesBatch != nil {
+		name := fmt.Sprintf("2.0 WAL entry %v", time.Now())
+		logutil.Infof("open-tae, 2.0 WAL entry count %d, file name %v", replayer.walEntriesBatch.Length(), name)
+		writer, err := blockio.NewBlockWriter(replayer.db.Runtime.Fs.Service, name)
+		if err != nil {
+			panic(err)
+		}
+		cnBatch := containers.ToCNBatch(replayer.walEntriesBatch)
+		_, err = writer.WriteBatch(cnBatch)
+		if err != nil {
+			panic(err)
+		}
+		_, _, err = writer.Sync(context.TODO())
+		if err != nil {
+			panic(err)
+		}
+	}
 	logutil.Info("open-tae", common.OperationField("replay"),
 		common.OperandField("wal"),
 		common.AnyField("apply logentries cost", replayer.applyDuration),
@@ -112,7 +134,7 @@ func (replayer *Replayer) Replay() {
 		common.AnyField("apply count", replayer.applyCount))
 }
 
-func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte, typ uint16, info any) {
+func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte, _ uint16, _ any) {
 	replayer.once.Do(replayer.PreReplayWal)
 	if group != wal.GroupPrepare && group != wal.GroupC {
 		return
@@ -121,6 +143,21 @@ func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte
 		return
 	}
 	head := objectio.DecodeIOEntryHeader(payload)
+	if head.Version > txnbase.IOET_WALTxnEntry_V3 {
+		if replayer.walEntriesBatch == nil {
+			replayer.walEntriesBatch = containers.NewBatch()
+			groupVector := containers.NewVector(types.T_uint32.ToType())
+			replayer.walEntriesBatch.AddVector("group", groupVector)
+			lsnVector := containers.NewVector(types.T_uint64.ToType())
+			replayer.walEntriesBatch.AddVector("lsn", lsnVector)
+			payloadVector := containers.NewVector(types.T_varchar.ToType())
+			replayer.walEntriesBatch.AddVector("payload", payloadVector)
+		}
+		replayer.walEntriesBatch.GetVectorByName("group").Append(group, false)
+		replayer.walEntriesBatch.GetVectorByName("lsn").Append(lsn, false)
+		replayer.walEntriesBatch.GetVectorByName("payload").Append(payload, false)
+		return
+	}
 	codec := objectio.GetIOEntryCodec(*head)
 	entry, err := codec.Decode(payload[4:])
 	txnCmd := entry.(*txnbase.TxnCmd)

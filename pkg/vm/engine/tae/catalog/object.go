@@ -274,6 +274,45 @@ func NewReplayObjectEntry() *ObjectEntry {
 	return e
 }
 
+func NewTestObjectEntry(table *TableEntry, createTS types.TS, stats objectio.ObjectStats) *ObjectEntry {
+	e := &ObjectEntry{
+		table: table,
+		ObjectNode: ObjectNode{
+			SortHint:    table.GetDB().catalog.NextObject(),
+			IsTombstone: false,
+		},
+		EntryMVCCNode: EntryMVCCNode{
+			CreatedAt: createTS,
+		},
+		CreateNode:  *txnbase.NewTxnMVCCNodeWithTS(createTS),
+		ObjectState: ObjectState_Create_ApplyCommit,
+		ObjectMVCCNode: ObjectMVCCNode{
+			ObjectStats: stats,
+		},
+	}
+	return e
+}
+func NewTestAObjectEntry(table *TableEntry, createTS, deleteTS types.TS, stats objectio.ObjectStats) *ObjectEntry {
+	e := &ObjectEntry{
+		table: table,
+		ObjectNode: ObjectNode{
+			SortHint:    table.GetDB().catalog.NextObject(),
+			IsTombstone: false,
+		},
+		EntryMVCCNode: EntryMVCCNode{
+			CreatedAt: createTS,
+			DeletedAt: deleteTS,
+		},
+		CreateNode:  *txnbase.NewTxnMVCCNodeWithTS(createTS),
+		DeleteNode:  *txnbase.NewTxnMVCCNodeWithTS(deleteTS),
+		ObjectState: ObjectState_Delete_ApplyCommit,
+		ObjectMVCCNode: ObjectMVCCNode{
+			ObjectStats: stats,
+		},
+	}
+	return e
+}
+
 func NewStandaloneObject(table *TableEntry, ts types.TS, isTombstone bool) *ObjectEntry {
 	stats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
 	e := &ObjectEntry{

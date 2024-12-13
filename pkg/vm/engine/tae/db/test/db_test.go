@@ -10532,3 +10532,68 @@ func Test_BasicTxnModeSwitch(t *testing.T) {
 	assert.Equal(t, db.DBTxnMode_Write, tae.GetTxnMode())
 	assert.True(t, tae.TxnMgr.IsWriteMode())
 }
+
+func TestCheckpointObjectList(t *testing.T) {
+	ctx := context.Background()
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	txn, _ := tae.StartTxn(nil)
+	txn.CreateDatabase("db", "create database db", "")
+	txn.Commit(ctx)
+
+	var wg sync.WaitGroup
+	pool, _ := ants.NewPool(80)
+	defer pool.Release()
+	var appended atomic.Int32
+
+	createRelAndAppend := func() {
+		defer wg.Done()
+		schema := catalog.MockSchemaAll(3, -1)
+		schema.Name = objectio.NewSegmentid().String()
+		schema.Extra.BlockMaxRows = 1
+		schema.Extra.ObjectMaxBlocks = 256
+		tae.BindSchema(schema)
+		bat := catalog.MockBatch(schema, 1)
+		testutil.CreateRelationAndAppend(t, 0, tae.DB, "db", schema, bat, false)
+
+		txn, rel := testutil.GetRelation(t, 0, tae.DB, "db", schema.Name)
+		tblEntry := rel.GetMeta().(*catalog.TableEntry)
+		txn.Commit(ctx)
+		for i := 0; i < 100; i++ {
+			createTS := tae.TxnMgr.Now()
+			deleteTS := tae.TxnMgr.Now()
+			aobjStats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)
+			naobjStats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), false, false, false)
+			aobj := catalog.NewTestAObjectEntry(tblEntry, createTS, deleteTS, *aobjStats)
+			tblEntry.AddEntryLocked(aobj)
+			new := appended.Add(1)
+			if new%100000 == 0 {
+				logutil.Infof("lalala append %d", new)
+			}
+			naobj := catalog.NewTestObjectEntry(tblEntry, deleteTS, *naobjStats)
+			tblEntry.AddEntryLocked(naobj)
+			new = appended.Add(1)
+			if new%100000 == 0 {
+				logutil.Infof("lalala append %d", new)
+			}
+		}
+		bat.Close()
+	}
+
+	for i := 0; i < 10; i++ {
+		for i := 0; i < 500; i++ {
+			wg.Add(1)
+			pool.Submit(createRelAndAppend)
+		}
+
+		wg.Wait()
+
+		tae.BGCheckpointRunner.ForceIncrementalCheckpoint(tae.TxnMgr.Now(), false)
+	}
+
+	// t.Log(tae.Catalog.SimplePPString(3))
+	tae.Restart(ctx)
+	// t.Log(tae.Catalog.SimplePPString(3))
+}

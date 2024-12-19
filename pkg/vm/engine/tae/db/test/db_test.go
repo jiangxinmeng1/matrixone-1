@@ -29,6 +29,9 @@ import (
 	"testing"
 	"time"
 
+    "net/http"
+    _ "net/http/pprof"
+
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/store"
@@ -81,6 +84,10 @@ const (
 	smallCheckpointSize            = 1024
 	defaultGlobalCheckpointTimeout = 10 * time.Second
 )
+
+func init() {
+    go http.ListenAndServe("0.0.0.0:6060", nil)
+}
 
 func TestCancelableJob(t *testing.T) {
 	defer testutils.AfterTest(t)()
@@ -10581,7 +10588,7 @@ func Test_BasicTxnModeSwitch(t *testing.T) {
 	assert.True(t, tae.TxnMgr.IsWriteMode())
 }
 
-func TestCheckpointObjectList(t *testing.T) {
+func TestCheckpointObjectList2(t *testing.T) {
 	ctx := context.Background()
 
 	opts := config.WithLongScanAndCKPOpts(nil)
@@ -10609,7 +10616,7 @@ func TestCheckpointObjectList(t *testing.T) {
 		txn, rel := testutil.GetRelation(t, 0, tae.DB, "db", schema.Name)
 		tblEntry := rel.GetMeta().(*catalog.TableEntry)
 		txn.Commit(ctx)
-		for i := 0; i < 100; i++ {
+		for i := 0; i < 1000; i++ {
 			createTS := tae.TxnMgr.Now()
 			deleteTS := tae.TxnMgr.Now()
 			aobjStats := objectio.NewObjectStatsWithObjectID(objectio.NewObjectid(), true, false, false)

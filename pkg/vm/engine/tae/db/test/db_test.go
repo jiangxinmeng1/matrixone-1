@@ -31,6 +31,7 @@ import (
 
     "net/http"
     _ "net/http/pprof"
+	goruntime "runtime"
 
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
 
@@ -88,7 +89,7 @@ const (
 )
 
 func init() {
-    go http.ListenAndServe("0.0.0.0:6060", nil)
+    go http.ListenAndServe("0.0.0.0:60618", nil)
 }
 
 func TestCancelableJob(t *testing.T) {
@@ -10618,6 +10619,12 @@ func TestCheckpointObjectList2(t *testing.T) {
 	opts := config.WithLongScanAndCKPOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
+	defer time.Sleep(time.Minute*5)
+	defer goruntime.GC()
+	defer goruntime.GC()
+	defer goruntime.GC()
+	defer goruntime.GC()
+
 	txn, _ := tae.StartTxn(nil)
 	txn.CreateDatabase("db", "create database db", "")
 	txn.Commit(ctx)

@@ -82,17 +82,20 @@ func (a *driverAppender) append(retryTimout, appendTimeout time.Duration) {
 
 	v2.LogTailBytesHistogram.Observe(float64(size))
 	logutil.Debugf("Log Service Driver: append start %p", a.client.record.Data)
-	lsn, err := a.client.c.Append(ctx, record)
-	if err != nil {
-		err = moerr.AttachCause(ctx, err)
-		logutil.Error(
-			"WAL-Append-Error",
-			zap.Error(err),
-			zap.Uint64("append-lsn", a.appendlsn),
-			zap.Int("client-id", a.client.id),
-			zap.Int("size", size),
-		)
-	}
+	var err error
+	var lsn uint64
+	time.Sleep(time.Millisecond*10)
+	// lsn, err := a.client.c.Append(ctx, record)
+	// if err != nil {
+	// 	err = moerr.AttachCause(ctx, err)
+	// 	logutil.Error(
+	// 		"WAL-Append-Error",
+	// 		zap.Error(err),
+	// 		zap.Uint64("append-lsn", a.appendlsn),
+	// 		zap.Int("client-id", a.client.id),
+	// 		zap.Int("size", size),
+	// 	)
+	// }
 	cancel()
 	if err != nil {
 		retryTimes := 0

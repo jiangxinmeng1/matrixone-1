@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lni/vfs"
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -38,6 +39,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/fileservice"
+	"github.com/matrixorigin/matrixone/pkg/logservice"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
@@ -74,8 +76,14 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+    "net/http"
+    _ "net/http/pprof"
 )
 
+func init() {
+    go http.ListenAndServe("0.0.0.0:6060", nil)
+}
 const (
 	ModuleName                     = "TAEDB"
 	smallCheckpointBlockRows       = 10
@@ -10567,33 +10575,36 @@ func Test_OpenReplayDB1(t *testing.T) {
 }
 
 func TestXxx(t *testing.T) {
-	entryCount := 1000000
-	var prepare, totalDuration, enqueue1, enqueue2, queue1Duration time.Duration
+	entryCount := 100000
+	parallel := 100
+	entryPerWorker := entryCount / parallel
+	var totalDuration, enqueue1, enqueue2, queue1Duration time.Duration
 	var queue1BatchCount uint64
 	var q1EntryCount, q2EntryCount atomic.Int32
 	var maxQ1Count, maxQ2Count int32
 	var maxQ1BatchCount int
 	var wg sync.WaitGroup
-	appendPool, _ := ants.NewPool(60)
-	clientPool, _ := ants.NewPool(50)
+	appendPool, _ := ants.NewPool(parallel)
+	clientPool, _ := ants.NewPool(100)
 	type entry struct {
-		startTS time.Time
-		wg      *sync.WaitGroup
+		startTS  time.Time
+		appendWg *sync.WaitGroup
+		wg       sync.WaitGroup
 	}
 	var queue1, queue2 sm.Queue
-	queue1 = sm.NewSafeQueue(30, 30, func(vitems ...any) {
+	queue1 = sm.NewSafeQueue(10000, 30, func(vitems ...any) {
 		t0 := time.Now()
 		items := make([]*entry, 0)
 		var wg2 sync.WaitGroup
 		for _, item := range vitems {
 			e := item.(*entry)
 			enqueue1 += time.Since(e.startTS)
-			e.wg = &wg2
+			e.appendWg = &wg2
 			items = append(items, e)
 		}
 		wg2.Add(1)
 		clientPool.Submit(func() {
-			time.Sleep(time.Millisecond * 5)
+			time.Sleep(time.Millisecond * 10)
 			wg2.Done()
 		})
 		queue2.Enqueue(items)
@@ -10609,13 +10620,13 @@ func TestXxx(t *testing.T) {
 			maxQ1BatchCount = len(vitems)
 		}
 	})
-	queue2 = sm.NewSafeQueue(10000, 500, func(items ...any) {
+	queue2 = sm.NewSafeQueue(10000, 1, func(items ...any) {
 		for _, ventries := range items {
 			entries := ventries.([]*entry)
 			for _, e := range entries {
 				enqueue2 += time.Since(e.startTS)
-				e.wg.Wait()
-				wg.Done()
+				e.appendWg.Wait()
+				e.wg.Done()
 				totalDuration += time.Since(e.startTS)
 			}
 		}
@@ -10629,26 +10640,84 @@ func TestXxx(t *testing.T) {
 	defer queue1.Stop()
 	queue2.Start()
 	defer queue2.Stop()
-	for i := 0; i < entryCount; i++ {
+	for i := 0; i < parallel; i++ {
 		wg.Add(1)
-		tStart := time.Now()
 		appendPool.Submit(func() {
-			t0 := time.Now()
-			e := &entry{
-				startTS: t0,
+			defer wg.Done()
+			for i := 0; i < entryPerWorker; i++ {
+				t0 := time.Now()
+				e := &entry{
+					startTS: t0,
+				}
+				e.wg.Add(1)
+				queue1.Enqueue(e)
+				e.wg.Wait()
 			}
-			q1EntryCount.Add(1)
-			queue1.Enqueue(e)
-			prepare += time.Since(tStart)
 		})
 	}
 	wg.Wait()
 	batchCount, collectDuration := sm.GetBatchCountAndCollectDuration(queue1)
-	t.Logf("q1 batch count %d, collect duration %v, average %v", batchCount, collectDuration,collectDuration/time.Duration(batchCount))
+	t.Logf("q1 batch count %d, collect duration %v, average %v", batchCount, collectDuration, collectDuration/time.Duration(batchCount))
 	t.Logf("q1 entry count %d, q2 entry count %d, average q1 batch length %d, max q1 batch length %d",
 		maxQ1Count, maxQ2Count, entryCount/int(queue1BatchCount), maxQ1BatchCount)
-	t.Logf("prepare takes %v", prepare/time.Duration(entryCount))
 	t.Logf("total %v\nenqueue 1 %v\nenqueue 2 %v\nwait append %v\n",
 		totalDuration/time.Duration(entryCount), enqueue1/time.Duration(entryCount), (enqueue2-enqueue1)/time.Duration(entryCount), (totalDuration-enqueue2)/time.Duration(entryCount))
 	t.Logf("queue 1 batch %v", queue1Duration/time.Duration(queue1BatchCount))
+}
+
+func TestXxx2(t *testing.T) {
+	ctx := context.Background()
+	entryCount := 1000
+	parallel := 100
+	entryPerWorker := entryCount / parallel
+	var totalDuration time.Duration
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	opts := config.WithLongScanAndCKPOpts(nil)
+	runtime.SetupServiceBasedRuntime("", runtime.DefaultRuntime())
+	fs := vfs.NewStrictMem()
+	service, ccfg, err := logservice.NewTestService(fs)
+	defer service.Close()
+	assert.NoError(t, err)
+	opts.LogStoreT = options.LogstoreLogservice
+	opts.Lc = func() (logservice.Client, error) {
+		ctx, cancel := context.WithTimeoutCause(context.Background(), time.Second, moerr.CauseNewTestConfig)
+		logserviceClient, err := logservice.NewClient(ctx, "", ccfg)
+		err = moerr.AttachCause(ctx, err)
+		cancel()
+		return logserviceClient, err
+	}
+
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+	schema := catalog.MockSchemaAll(1, -1)
+	schema.Extra.BlockMaxRows = 5
+	schema.Extra.ObjectMaxBlocks = 256
+	tae.BindSchema(schema)
+	bat := catalog.MockBatch(schema, 1)
+	tae.CreateRelAndAppend(bat, true)
+
+	appendPool, _ := ants.NewPool(parallel)
+	logutil.Infof("lalala start append")
+	for i := 0; i < parallel; i++ {
+		wg.Add(1)
+		appendPool.Submit(func() {
+			defer wg.Done()
+			for i := 0; i < entryPerWorker; i++ {
+				txn, rel := tae.GetRelation()
+				rel.Append(ctx, bat)
+				t0 := time.Now()
+				txn.Commit(ctx)
+				mu.Lock()
+				totalDuration += time.Since(t0)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	logutil.Infof("lalala stop append")
+
+	t.Logf("lalala average latency %v", totalDuration/time.Duration(entryCount))
+	t.Logf("lalala wait wal %v", txnbase.WaitWal/time.Duration(txnbase.WaitCount))
 }

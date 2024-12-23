@@ -731,8 +731,12 @@ func (mgr *TxnManager) onPrepareWAL(items ...any) {
 	})
 }
 
+var WaitWal time.Duration
+var WaitCount int
+
 // 1PC and 2PC
 func (mgr *TxnManager) dequeuePrepared(items ...any) {
+	t0 := time.Now()
 	now := time.Now()
 	for _, item := range items {
 		op := item.(*OpTxn)
@@ -758,6 +762,8 @@ func (mgr *TxnManager) dequeuePrepared(items ...any) {
 			common.CountField(len(items)),
 			common.DurationField(time.Since(now)))
 	})
+	WaitWal += time.Since(t0)
+	WaitCount++
 }
 
 func (mgr *TxnManager) OnException(new error) {

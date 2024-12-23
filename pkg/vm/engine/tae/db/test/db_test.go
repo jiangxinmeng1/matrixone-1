@@ -10567,36 +10567,62 @@ func Test_OpenReplayDB1(t *testing.T) {
 }
 
 func TestXxx(t *testing.T) {
-	entryCount := 100000
-	var totalDuration time.Duration
+	entryCount := 1000000
+	var prepare, totalDuration, enqueue1, enqueue2, queue1Duration time.Duration
+	var queue1BatchCount uint64
+	var q1EntryCount, q2EntryCount atomic.Int32
+	var maxQ1Count, maxQ2Count int32
+	var maxQ1BatchCount int
 	var wg sync.WaitGroup
-	appendPool, _ := ants.NewPool(500)
+	appendPool, _ := ants.NewPool(60)
 	clientPool, _ := ants.NewPool(50)
 	type entry struct {
 		startTS time.Time
+		wg      *sync.WaitGroup
 	}
 	var queue1, queue2 sm.Queue
-	queue1 = sm.NewSafeQueue(10000, 30, func(vitems ...any) {
+	queue1 = sm.NewSafeQueue(30, 30, func(vitems ...any) {
+		t0 := time.Now()
 		items := make([]*entry, 0)
-		for _, item := range vitems {
-			items = append(items, item.(*entry))
-		}
-		queue2.Enqueue(items)
-	})
-	queue2 = sm.NewSafeQueue(10000, 500, func(items ...any) {
 		var wg2 sync.WaitGroup
+		for _, item := range vitems {
+			e := item.(*entry)
+			enqueue1 += time.Since(e.startTS)
+			e.wg = &wg2
+			items = append(items, e)
+		}
 		wg2.Add(1)
 		clientPool.Submit(func() {
-			time.Sleep(time.Millisecond*5)
+			time.Sleep(time.Millisecond * 5)
 			wg2.Done()
 		})
-		wg2.Wait()
+		queue2.Enqueue(items)
+		q2EntryCount.Add(1)
+		queue1Duration += time.Since(t0)
+		queue1BatchCount++
+		new := q1EntryCount.Add(int32(-len(vitems)))
+		origin := new + int32(len(vitems))
+		if origin > maxQ1Count {
+			maxQ1Count = origin
+		}
+		if len(vitems) > maxQ1BatchCount {
+			maxQ1BatchCount = len(vitems)
+		}
+	})
+	queue2 = sm.NewSafeQueue(10000, 500, func(items ...any) {
 		for _, ventries := range items {
 			entries := ventries.([]*entry)
 			for _, e := range entries {
+				enqueue2 += time.Since(e.startTS)
+				e.wg.Wait()
 				wg.Done()
 				totalDuration += time.Since(e.startTS)
 			}
+		}
+		new := q2EntryCount.Add(int32(-len(items)))
+		origin := new + int32(len(items))
+		if origin > maxQ2Count {
+			maxQ2Count = origin
 		}
 	})
 	queue1.Start()
@@ -10605,14 +10631,24 @@ func TestXxx(t *testing.T) {
 	defer queue2.Stop()
 	for i := 0; i < entryCount; i++ {
 		wg.Add(1)
-		t0 := time.Now()
+		tStart := time.Now()
 		appendPool.Submit(func() {
+			t0 := time.Now()
 			e := &entry{
 				startTS: t0,
 			}
+			q1EntryCount.Add(1)
 			queue1.Enqueue(e)
+			prepare += time.Since(tStart)
 		})
 	}
 	wg.Wait()
-	t.Logf("lalala average latency is %v", totalDuration/time.Duration(entryCount))
+	batchCount, collectDuration := sm.GetBatchCountAndCollectDuration(queue1)
+	t.Logf("q1 batch count %d, collect duration %v, average %v", batchCount, collectDuration,collectDuration/time.Duration(batchCount))
+	t.Logf("q1 entry count %d, q2 entry count %d, average q1 batch length %d, max q1 batch length %d",
+		maxQ1Count, maxQ2Count, entryCount/int(queue1BatchCount), maxQ1BatchCount)
+	t.Logf("prepare takes %v", prepare/time.Duration(entryCount))
+	t.Logf("total %v\nenqueue 1 %v\nenqueue 2 %v\nwait append %v\n",
+		totalDuration/time.Duration(entryCount), enqueue1/time.Duration(entryCount), (enqueue2-enqueue1)/time.Duration(entryCount), (totalDuration-enqueue2)/time.Duration(entryCount))
+	t.Logf("queue 1 batch %v", queue1Duration/time.Duration(queue1BatchCount))
 }

@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -40,6 +41,9 @@ type safeQueue struct {
 	onItemsCB OnItemsCB
 	// value is true by default
 	blocking bool
+
+	collectBatchDuration time.Duration
+	batchCount           int
 }
 
 // NewSafeQueue is blocking queue by default
@@ -75,6 +79,7 @@ func (q *safeQueue) Start() {
 				if q.onItemsCB == nil {
 					continue
 				}
+				t0 := time.Now()
 				items = append(items, item)
 			Left:
 				for i := 0; i < q.batchSize-1; i++ {
@@ -85,6 +90,8 @@ func (q *safeQueue) Start() {
 						break Left
 					}
 				}
+				q.collectBatchDuration += time.Since(t0)
+				q.batchCount++
 				cnt := len(items)
 				q.onItemsCB(items...)
 				items = items[:0]
@@ -92,6 +99,11 @@ func (q *safeQueue) Start() {
 			}
 		}
 	}()
+}
+
+func GetBatchCountAndCollectDuration(sq Queue) (count int, dur time.Duration) {
+	q := sq.(*safeQueue)
+	return q.batchCount, q.collectBatchDuration
 }
 
 func (q *safeQueue) Stop() {

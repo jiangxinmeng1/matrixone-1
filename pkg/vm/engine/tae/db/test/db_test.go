@@ -58,6 +58,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/testutil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/handle"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/iface/txnif"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/sm"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/store"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/model"
@@ -10563,4 +10564,55 @@ func Test_OpenReplayDB1(t *testing.T) {
 	}
 	assert.Error(t, db.AddCronJob(tae.DB, "unknown", false))
 	assert.Error(t, db.CheckCronJobs(tae.DB, db.DBTxnMode_Write))
+}
+
+func TestXxx(t *testing.T) {
+	entryCount := 100000
+	var totalDuration time.Duration
+	var wg sync.WaitGroup
+	appendPool, _ := ants.NewPool(500)
+	clientPool, _ := ants.NewPool(50)
+	type entry struct {
+		startTS time.Time
+	}
+	var queue1, queue2 sm.Queue
+	queue1 = sm.NewSafeQueue(10000, 30, func(vitems ...any) {
+		items := make([]*entry, 0)
+		for _, item := range vitems {
+			items = append(items, item.(*entry))
+		}
+		queue2.Enqueue(items)
+	})
+	queue2 = sm.NewSafeQueue(10000, 500, func(items ...any) {
+		var wg2 sync.WaitGroup
+		wg2.Add(1)
+		clientPool.Submit(func() {
+			time.Sleep(time.Millisecond*5)
+			wg2.Done()
+		})
+		wg2.Wait()
+		for _, ventries := range items {
+			entries := ventries.([]*entry)
+			for _, e := range entries {
+				wg.Done()
+				totalDuration += time.Since(e.startTS)
+			}
+		}
+	})
+	queue1.Start()
+	defer queue1.Stop()
+	queue2.Start()
+	defer queue2.Stop()
+	for i := 0; i < entryCount; i++ {
+		wg.Add(1)
+		t0 := time.Now()
+		appendPool.Submit(func() {
+			e := &entry{
+				startTS: t0,
+			}
+			queue1.Enqueue(e)
+		})
+	}
+	wg.Wait()
+	t.Logf("lalala average latency is %v", totalDuration/time.Duration(entryCount))
 }

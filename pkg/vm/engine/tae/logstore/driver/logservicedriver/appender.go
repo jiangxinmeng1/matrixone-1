@@ -22,10 +22,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/matrixorigin/matrixone/pkg/common/moerr"
+	// "github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/logutil"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
-	"github.com/matrixorigin/matrixone/pkg/util/trace"
+	// "github.com/matrixorigin/matrixone/pkg/util/trace"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logstore/driver/entry"
 )
 
@@ -69,21 +69,21 @@ func (a *driverAppender) append(retryTimout, appendTimeout time.Duration) {
 	copy(record.Payload(), a.entry.payload)
 	record.ResizePayload(size)
 	defer logSlowAppend(size, a.appendlsn)()
-	ctx, cancel := context.WithTimeoutCause(context.Background(), appendTimeout, moerr.CauseDriverAppender1)
+	// ctx, cancel := context.WithTimeoutCause(context.Background(), appendTimeout, moerr.CauseDriverAppender1)
 
-	var timeoutSpan trace.Span
+	// var timeoutSpan trace.Span
 	// Before issue#10467 is resolved, we skip this span,
 	// avoiding creating too many goroutines, which affects the performance.
-	ctx, timeoutSpan = trace.Debug(ctx, "appender",
-		trace.WithProfileGoroutine(),
-		trace.WithProfileHeap(),
-		trace.WithProfileCpuSecs(time.Second*10))
-	defer timeoutSpan.End()
+	// ctx, timeoutSpan = trace.Debug(ctx, "appender",
+	// 	trace.WithProfileGoroutine(),
+	// 	trace.WithProfileHeap(),
+	// 	trace.WithProfileCpuSecs(time.Second*10))
+	// defer timeoutSpan.End()
 
 	v2.LogTailBytesHistogram.Observe(float64(size))
 	logutil.Debugf("Log Service Driver: append start %p", a.client.record.Data)
-	var err error
-	var lsn uint64
+	// var err error
+	// var lsn uint64
 	time.Sleep(time.Millisecond*10)
 	// lsn, err := a.client.c.Append(ctx, record)
 	// if err != nil {
@@ -96,44 +96,44 @@ func (a *driverAppender) append(retryTimout, appendTimeout time.Duration) {
 	// 		zap.Int("size", size),
 	// 	)
 	// }
-	cancel()
-	if err != nil {
-		retryTimes := 0
-		err = RetryWithTimeout(retryTimout, func() (shouldReturn bool) {
-			retryTimes++
-			ctx, cancel := context.WithTimeoutCause(context.Background(), appendTimeout, moerr.CauseDriverAppender2)
-			ctx, timeoutSpan = trace.Debug(ctx, "appender retry",
-				trace.WithProfileGoroutine(),
-				trace.WithProfileHeap(),
-				trace.WithProfileCpuSecs(time.Second*10))
-			defer timeoutSpan.End()
-			lsn, err = a.client.c.Append(ctx, record)
-			err = moerr.AttachCause(ctx, err)
-			cancel()
-			if err != nil {
-				logutil.Error(
-					"WAL-Append-Error",
-					zap.Error(err),
-					zap.Uint64("append-lsn", a.appendlsn),
-					zap.Int("client-id", a.client.id),
-					zap.Int("size", size),
-					zap.Int("retry", retryTimes),
-				)
-			}
-			return err == nil
-		})
-	}
-	if err != nil {
-		logutil.Error(
-			"WAL-Append-Error",
-			zap.Error(err),
-			zap.Uint64("append-lsn", a.appendlsn),
-			zap.Int("client-id", a.client.id),
-			zap.Int("size", size),
-		)
-		logutil.Panic(err.Error())
-	}
-	a.logserviceLsn = lsn
+	// cancel()
+	// if err != nil {
+	// 	retryTimes := 0
+	// 	err = RetryWithTimeout(retryTimout, func() (shouldReturn bool) {
+	// 		retryTimes++
+	// 		ctx, cancel := context.WithTimeoutCause(context.Background(), appendTimeout, moerr.CauseDriverAppender2)
+	// 		ctx, timeoutSpan = trace.Debug(ctx, "appender retry",
+	// 			trace.WithProfileGoroutine(),
+	// 			trace.WithProfileHeap(),
+	// 			trace.WithProfileCpuSecs(time.Second*10))
+	// 		defer timeoutSpan.End()
+	// 		lsn, err = a.client.c.Append(ctx, record)
+	// 		err = moerr.AttachCause(ctx, err)
+	// 		cancel()
+	// 		if err != nil {
+	// 			logutil.Error(
+	// 				"WAL-Append-Error",
+	// 				zap.Error(err),
+	// 				zap.Uint64("append-lsn", a.appendlsn),
+	// 				zap.Int("client-id", a.client.id),
+	// 				zap.Int("size", size),
+	// 				zap.Int("retry", retryTimes),
+	// 			)
+	// 		}
+	// 		return err == nil
+	// 	})
+	// }
+	// if err != nil {
+	// 	logutil.Error(
+	// 		"WAL-Append-Error",
+	// 		zap.Error(err),
+	// 		zap.Uint64("append-lsn", a.appendlsn),
+	// 		zap.Int("client-id", a.client.id),
+	// 		zap.Int("size", size),
+	// 	)
+	// 	logutil.Panic(err.Error())
+	// }
+	a.logserviceLsn = 0
 	a.wg.Done()
 }
 

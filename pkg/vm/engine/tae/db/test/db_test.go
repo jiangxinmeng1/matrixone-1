@@ -77,13 +77,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-    "net/http"
-    _ "net/http/pprof"
+	"net/http"
+	_ "net/http/pprof"
 )
 
 func init() {
-    go http.ListenAndServe("0.0.0.0:6060", nil)
+	go http.ListenAndServe("0.0.0.0:6060", nil)
 }
+
 const (
 	ModuleName                     = "TAEDB"
 	smallCheckpointBlockRows       = 10
@@ -10667,7 +10668,7 @@ func TestXxx(t *testing.T) {
 
 func TestXxx2(t *testing.T) {
 	ctx := context.Background()
-	entryCount := 1000
+	entryCount := 10000
 	parallel := 100
 	entryPerWorker := entryCount / parallel
 	var totalDuration time.Duration
@@ -10691,12 +10692,9 @@ func TestXxx2(t *testing.T) {
 
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
-	schema := catalog.MockSchemaAll(1, -1)
-	schema.Extra.BlockMaxRows = 5
-	schema.Extra.ObjectMaxBlocks = 256
-	tae.BindSchema(schema)
-	bat := catalog.MockBatch(schema, 1)
-	tae.CreateRelAndAppend(bat, true)
+	txn, _ := tae.StartTxn(nil)
+	txn.CreateDatabase("db", "", "")
+	txn.Commit(ctx)
 
 	appendPool, _ := ants.NewPool(parallel)
 	logutil.Infof("lalala start append")
@@ -10704,8 +10702,20 @@ func TestXxx2(t *testing.T) {
 		wg.Add(1)
 		appendPool.Submit(func() {
 			defer wg.Done()
+			txn, _ := tae.StartTxn(nil)
+			db, _ := txn.GetDatabase("db")
+			schema := catalog.MockSchemaAll(1, -1)
+			schema.Extra.BlockMaxRows = 5
+			schema.Extra.ObjectMaxBlocks = 256
+			schema.Name=fmt.Sprintf("tbl%d",i)
+			tae.BindSchema(schema)
+			bat := catalog.MockBatch(schema, 1)
+			db.CreateRelation(schema)
+			txn.Commit(ctx)
 			for i := 0; i < entryPerWorker; i++ {
-				txn, rel := tae.GetRelation()
+				txn, _ := tae.StartTxn(nil)
+				db, _ := txn.GetDatabase("db")
+				rel, _ := db.GetRelationByName(schema.Name)
 				rel.Append(ctx, bat)
 				t0 := time.Now()
 				txn.Commit(ctx)

@@ -162,21 +162,43 @@ func (e *TestEngine) CheckRowsByScan(exp int, applyDelete bool) {
 	assert.NoError(e.T, txn.Commit(context.Background()))
 }
 func (e *TestEngine) ForceCheckpoint() {
+<<<<<<< Updated upstream
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	err := e.DB.ForceCheckpoint(ctx, e.TxnMgr.Now(), 0)
+=======
+	err := e.BGFlusher.ForceFlushWithInterval(e.TxnMgr.Now(), context.Background(), time.Second*2, time.Millisecond*10)
+	assert.NoError(e.T, err)
+	ts := e.TxnMgr.Now()
+	err = e.BGCheckpointRunner.ForceICKP(context.Background(), &ts)
+>>>>>>> Stashed changes
 	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) ForceLongCheckpoint() {
+<<<<<<< Updated upstream
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 	err := e.DB.ForceCheckpoint(ctx, e.TxnMgr.Now(), 0)
+=======
+	err := e.BGFlusher.ForceFlush(e.TxnMgr.Now(), context.Background(), 20*time.Second)
+	assert.NoError(e.T, err)
+	ts := e.TxnMgr.Now()
+	err = e.BGCheckpointRunner.ForceICKP(context.Background(), &ts)
+>>>>>>> Stashed changes
 	assert.NoError(e.T, err)
 }
 
 func (e *TestEngine) ForceLongCheckpointTruncate() {
+<<<<<<< Updated upstream
 	e.ForceLongCheckpoint()
+=======
+	err := e.BGFlusher.ForceFlush(e.TxnMgr.Now(), context.Background(), 20*time.Second)
+	assert.NoError(e.T, err)
+	ts := e.TxnMgr.Now()
+	err = e.BGCheckpointRunner.ForceICKP(context.Background(), &ts)
+	assert.NoError(e.T, err)
+>>>>>>> Stashed changes
 }
 
 func (e *TestEngine) DropRelation(t *testing.T) {
@@ -296,6 +318,42 @@ func (e *TestEngine) AllFlushExpected(ts types.TS, timeoutMS int) {
 	require.True(e.T, flushed)
 }
 
+<<<<<<< Updated upstream
+=======
+func (e *TestEngine) IncrementalCheckpoint(
+	end types.TS,
+	enableAndCleanBGCheckpoint bool,
+	waitFlush bool,
+	truncate bool,
+) error {
+	if enableAndCleanBGCheckpoint {
+		e.DB.BGCheckpointRunner.DisableCheckpoint()
+		defer e.DB.BGCheckpointRunner.EnableCheckpoint()
+		e.DB.BGCheckpointRunner.CleanPenddingCheckpoint()
+	}
+	if waitFlush {
+		testutils.WaitExpect(4000, func() bool {
+			flushed := e.DB.BGFlusher.IsAllChangesFlushed(types.TS{}, end, false)
+			return flushed
+		})
+		flushed := e.DB.BGFlusher.IsAllChangesFlushed(types.TS{}, end, true)
+		require.True(e.T, flushed)
+	}
+	err := e.BGCheckpointRunner.ForceICKP(context.Background(), &end)
+	require.NoError(e.T, err)
+	if truncate {
+		lsn := e.DB.BGCheckpointRunner.MaxLSNInRange(end)
+		entry, err := e.DB.Wal.RangeCheckpoint(1, lsn)
+		require.NoError(e.T, err)
+		require.NoError(e.T, entry.WaitDone())
+		testutils.WaitExpect(1000, func() bool {
+			return e.Runtime.Scheduler.GetPenddingLSNCnt() == 0
+		})
+	}
+	return nil
+}
+
+>>>>>>> Stashed changes
 func (e *TestEngine) TryDeleteByDeltaloc(vals []any) (ok bool, err error) {
 	txn, err := e.StartTxn(nil)
 	assert.NoError(e.T, err)

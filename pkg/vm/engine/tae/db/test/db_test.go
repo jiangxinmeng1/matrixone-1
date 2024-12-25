@@ -10488,10 +10488,6 @@ func TestReplayDebugLog(t *testing.T) {
 	tae.Restart(ctx)
 }
 
-/*
-////
-||||
-*/
 func Test_BasicTxnModeSwitch(t *testing.T) {
 	ctx := context.Background()
 	opts := config.WithLongScanAndCKPOpts(nil)

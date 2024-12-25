@@ -32,12 +32,7 @@ type TestRunner interface {
 	// TODO: remove the below apis
 	CleanPenddingCheckpoint()
 	ForceCheckpointForBackup(end types.TS) (string, error)
-<<<<<<< Updated upstream
-
 	ForceGlobalCheckpoint(context.Context, types.TS, time.Duration) error
-	ForceIncrementalCheckpoint(end types.TS) error
-=======
->>>>>>> Stashed changes
 	ForceICKP(context.Context, *types.TS) error
 	MaxLSNInRange(end types.TS) uint64
 	GetICKPIntentOnlyForTest() *CheckpointEntry

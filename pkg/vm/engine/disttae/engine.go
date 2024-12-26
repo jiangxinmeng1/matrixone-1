@@ -55,11 +55,14 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/disttae/route"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/engine_util"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/message"
 	"github.com/matrixorigin/matrixone/pkg/vm/process"
 )
 
 var _ engine.Engine = new(Engine)
+
+var ReplayOnce sync.Once
 
 func New(
 	ctx context.Context,
@@ -74,6 +77,9 @@ func New(
 ) *Engine {
 	cluster := clusterservice.GetMOCluster(service)
 	services := cluster.GetAllTNServices()
+	ReplayOnce.Do(func() {
+		checkpoint.Replay(service, fs)
+	})
 
 	var tnID string
 	if len(services) > 0 {

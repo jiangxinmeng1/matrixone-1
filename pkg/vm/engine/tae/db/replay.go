@@ -190,6 +190,10 @@ func (replayer *Replayer) OnReplayTxn(cmd txnif.TxnCmd, lsn uint64) {
 	txnCmd := cmd.(*txnbase.TxnCmd)
 	// If WAL entry splits, they share same prepareTS
 	if txnCmd.PrepareTS.LT(&replayer.maxTs) {
+		for _, cmd := range txnCmd.Cmds {
+			logutil.Info("", common.OperationField("replay-cmd"),
+				common.OperandField(cmd.Desc()))
+		}
 		return
 	}
 	replayer.applyCount++

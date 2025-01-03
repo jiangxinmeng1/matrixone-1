@@ -197,7 +197,7 @@ func (replayer *Replayer) OnReplayTxn(cmd txnif.TxnCmd, lsn uint64) {
 		}
 		return
 	}
-	logutil.Infof("lalala lsn %d",lsn)
+	logutil.Infof("lalala lsn %d, ts %v",lsn,txnCmd.PrepareTS.ToString())
 	replayer.applyCount++
 	txn := txnimpl.MakeReplayTxn(replayer.db.Runtime.Options.Ctx, replayer.db.TxnMgr, txnCmd.TxnCtx, lsn,
 		txnCmd, replayer, replayer.db.Catalog, replayer.DataFactory, replayer.db.Wal)

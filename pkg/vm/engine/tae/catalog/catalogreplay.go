@@ -102,6 +102,9 @@ func (catalog *Catalog) onReplayUpdateDatabase(cmd *EntryCommand[*EmptyMVCCNode,
 }
 
 func (catalog *Catalog) onReplayUpdateTable(cmd *EntryCommand[*TableMVCCNode, *TableNode], dataFactory DataFactory, _ wal.ReplayObserver) {
+	if cmd.ID.TableID == 272903 {
+		defer logutil.Infof("lalala replay tbl 272903 %p", catalog)
+	}
 	catalog.OnReplayTableID(cmd.ID.TableID)
 	// prepareTS := cmd.GetTs()
 	// if prepareTS.LessEq(catalog.GetCheckpointed().MaxTS) {
@@ -364,10 +367,16 @@ func (catalog *Catalog) ReplayMOTables(ctx context.Context, txnNode *txnbase.Txn
 			panic(err)
 		}
 		catalog.onReplayCreateTable(dbid, tid, schema, txnNode, dataF)
+		if tid == 272903 {
+			logutil.Infof("lalala, replay tbl 272903")
+		}
 	}
 }
 
 func (catalog *Catalog) onReplayCreateTable(dbid, tid uint64, schema *Schema, txnNode *txnbase.TxnMVCCNode, dataFactory DataFactory) {
+	if tid == 272903 {
+		defer logutil.Infof("lalala replay tbl 272903, ctlg %p", catalog)
+	}
 	catalog.OnReplayTableID(tid)
 	db, err := catalog.GetDatabaseByID(dbid)
 	if err != nil {

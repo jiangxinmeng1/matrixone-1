@@ -199,7 +199,7 @@ func (store *replayTxnStore) replayAppendData(cmd *AppendCmd, observer wal.Repla
 		bat.Compact()
 		defer bat.Close()
 		if err = blk.GetObjectData().OnReplayAppendPayload(bat); err != nil || sarg != "" {
-			logutil.Infof("cmd %v\ncatalog: %v", cmd.String(), store.catalog.SimplePPString(3))
+			logutil.Infof("cmd %v\ncatalog: %p %v", cmd.String(), store.catalog, store.catalog.SimplePPString(3))
 			if sarg == "" {
 				panic(err)
 			}
@@ -235,7 +235,8 @@ func (store *replayTxnStore) replayAppend(cmd *updates.UpdateCmd, observer wal.R
 		err = ErrDebugReplay
 	}
 	if err != nil {
-		logutil.Infof("cmd %v\ncatalog: %v", cmd.String(), store.catalog.SimplePPString(3))
+		logutil.Infof("cmd %v\ncatalog: %p", cmd.String(), store.catalog)
+		logutil.Infof("db %v", database.PPString(3, 0, ""))
 		if err != ErrDebugReplay {
 			panic(err)
 		}

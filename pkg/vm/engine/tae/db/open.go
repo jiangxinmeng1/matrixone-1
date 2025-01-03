@@ -359,6 +359,7 @@ func Open(ctx context.Context, dirname string, opts *options.Options) (db *DB, e
 
 	// For debug or test
 	//fmt.Println(db.Catalog.SimplePPString(common.PPL3))
+	panic("debug")
 	return
 }
 

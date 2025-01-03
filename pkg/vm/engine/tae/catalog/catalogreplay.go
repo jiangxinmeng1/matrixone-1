@@ -16,6 +16,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -176,6 +177,9 @@ func (catalog *Catalog) onReplayUpdateObject(
 			return
 		}
 		panic(err)
+	}
+	if strings.Contains(cmd.ID.ObjectID().String(), "766a08d43d21") {
+		logutil.Infof("lalala createTS %v, deleteTS %v", cmd.mvccNode.CreatedAt.ToString(), cmd.mvccNode.DeletedAt.ToString())
 	}
 	var obj *ObjectEntry
 	if cmd.mvccNode.CreatedAt.Equal(&txnif.UncommitTS) {

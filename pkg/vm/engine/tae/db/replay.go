@@ -132,9 +132,9 @@ func (replayer *Replayer) OnReplayEntry(group uint32, lsn uint64, payload []byte
 	if group != wal.GroupPrepare && group != wal.GroupC {
 		return
 	}
-	if !replayer.checkLSN(lsn) {
-		return
-	}
+	// if !replayer.checkLSN(lsn) {
+	// 	return
+	// }
 	head := objectio.DecodeIOEntryHeader(payload)
 	if head.Version < txnbase.IOET_WALTxnEntry_V4 {
 		return

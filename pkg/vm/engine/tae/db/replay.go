@@ -193,6 +193,7 @@ func (replayer *Replayer) OnReplayTxn(cmd txnif.TxnCmd, lsn uint64) {
 		for _, cmd := range txnCmd.Cmds {
 			logutil.Info("", common.OperationField("replay-cmd"),
 				common.OperandField(cmd.Desc()))
+			logutil.Infof("lalala lsn %d", lsn)
 		}
 		return
 	}

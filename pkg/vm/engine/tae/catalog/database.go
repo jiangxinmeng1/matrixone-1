@@ -212,6 +212,7 @@ func (e *DBEntry) GetObjectEntryByID(id *common.ID, isTombstone bool) (obj *Obje
 	table, err := e.GetTableEntryByID(id.TableID)
 	e.RUnlock()
 	if err != nil {
+		logutil.Infof("lalala err %v", err)
 		return
 	}
 	obj, err = table.GetObjectByID(id.ObjectID(), isTombstone)

@@ -161,6 +161,9 @@ func (catalog *Catalog) onReplayUpdateObject(
 	_ wal.ReplayObserver) {
 	catalog.OnReplayObjectID(cmd.node.SortHint)
 
+	if strings.Contains(cmd.ID.ObjectID().String(), "766a08d43d21") {
+		defer logutil.Infof("lalala createTS %v, deleteTS %v", cmd.mvccNode.CreatedAt.ToString(), cmd.mvccNode.DeletedAt.ToString())
+	}
 	db, err := catalog.GetDatabaseByID(cmd.ID.DbID)
 	if err != nil {
 		// a db is dropped before checkpoint end
@@ -471,6 +474,9 @@ func (catalog *Catalog) onReplayCheckpointObject(
 	isTombstone bool,
 	dataFactory DataFactory,
 ) {
+	if strings.Contains(objid.String(), "766a08d43d21") {
+		defer logutil.Infof("lalala createTS %v, deleteTS %v, end %v", createTS.ToString(), deleteTS.ToString(), end.ToString())
+	}
 	db, err := catalog.GetDatabaseByID(dbid)
 	if err != nil {
 		// As replaying only the catalog view at the end time of lastest checkpoint

@@ -104,7 +104,7 @@ func (store *replayTxnStore) prepareRollback(txn txnif.AsyncTxn) (err error) {
 
 func (store *replayTxnStore) prepareCmd(txncmd txnif.TxnCmd) {
 	if txncmd.GetType() != txnbase.IOET_WALTxnEntry {
-		logutil.Debug("", common.OperationField("replay-cmd"),
+		logutil.Info("", common.OperationField("replay-cmd"),
 			common.OperandField(txncmd.Desc()))
 	}
 	switch cmd := txncmd.(type) {

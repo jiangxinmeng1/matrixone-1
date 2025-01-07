@@ -239,7 +239,7 @@ func (executor *checkpointExecutor) doIncrementalCheckpoint(
 	entry *CheckpointEntry,
 ) (fields []zap.Field, files []string, err error) {
 	factory := logtail.IncrementalCheckpointDataFactory(
-		executor.runner.rt.SID(), entry.start, entry.end, true,
+		executor.runner.rt.SID(), executor.runner.rt.Fs.Service, entry.start, entry.end, true,
 	)
 	data, err := factory(executor.runner.catalog)
 	if err != nil {

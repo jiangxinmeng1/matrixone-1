@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"path"
 	"sort"
 	"sync/atomic"
 	"testing"
@@ -27,6 +28,7 @@ import (
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/objectio/ioutil"
+
 	// "github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
@@ -202,6 +204,7 @@ func mockDeletesAndInserts(
 }
 
 func Test_FillUsageBatOfIncremental(t *testing.T) {
+	fs := objectio.TmpNewFileservice(context.TODO(), path.Join("/tmp/", "data"))
 	ioutil.RunPipelineTest(
 		func() {
 			allocator := atomic.Uint64{}
@@ -247,7 +250,7 @@ func Test_FillUsageBatOfIncremental(t *testing.T) {
 			deletes, segDeletes, segInserts := mockDeletesAndInserts(
 				usages, delDbIds, delTblIds, delSegIdxes, insSegIdxes)
 
-			iCollector := logtail.NewIncrementalCollector("", types.TS{}, types.MaxTs())
+			iCollector := logtail.NewIncrementalCollector("", fs, types.TS{}, types.MaxTs())
 			iCollector.UsageMemo = memo
 			defer iCollector.Close()
 
@@ -342,6 +345,7 @@ func Test_FillUsageBatOfIncremental(t *testing.T) {
 }
 
 func Test_FillUsageBatOfGlobal(t *testing.T) {
+	fs := objectio.TmpNewFileservice(context.TODO(), path.Join("/tmp/", "data"))
 	ioutil.RunPipelineTest(
 		func() {
 			allocator := atomic.Uint64{}
@@ -353,7 +357,7 @@ func Test_FillUsageBatOfGlobal(t *testing.T) {
 			memo := logtail.NewTNUsageMemo(nil)
 			memo.Clear()
 
-			gCollector := logtail.NewGlobalCollector("", types.TS{}, time.Second)
+			gCollector := logtail.NewGlobalCollector("", types.TS{}, fs, time.Second)
 			gCollector.UsageMemo = memo
 			defer gCollector.Close()
 
@@ -487,6 +491,7 @@ func Test_EstablishFromCheckpoints(t *testing.T) {
 }
 
 func Test_RemoveStaleAccounts(t *testing.T) {
+	fs := objectio.TmpNewFileservice(context.TODO(), path.Join("/tmp/", "data"))
 	ioutil.RunPipelineTest(
 		func() {
 			// clear stale accounts happens in global ckp
@@ -496,7 +501,7 @@ func Test_RemoveStaleAccounts(t *testing.T) {
 			accCnt, dbCnt, tblCnt := 10000, 2, 2
 			usages := logtail.MockUsageData(accCnt, dbCnt, tblCnt, &allocator)
 
-			gCollector := logtail.NewGlobalCollector("", types.TS{}, time.Second)
+			gCollector := logtail.NewGlobalCollector("", types.TS{}, fs, time.Second)
 			gCollector.UsageMemo = logtail.NewTNUsageMemo(nil)
 			defer gCollector.Close()
 
@@ -524,6 +529,7 @@ func Test_RemoveStaleAccounts(t *testing.T) {
 }
 
 func Test_GatherSpecialSize(t *testing.T) {
+	fs := objectio.TmpNewFileservice(context.TODO(), path.Join("/tmp/", "data"))
 	ioutil.RunPipelineTest(
 		func() {
 			cc := catalog.MockCatalog()
@@ -563,7 +569,7 @@ func Test_GatherSpecialSize(t *testing.T) {
 
 			txn.Commit(ctx)
 
-			iCollector := logtail.NewIncrementalCollector("", types.TS{}, types.MaxTs())
+			iCollector := logtail.NewIncrementalCollector("", fs, types.TS{}, types.MaxTs())
 			iCollector.UsageMemo = memo
 			defer iCollector.Close()
 

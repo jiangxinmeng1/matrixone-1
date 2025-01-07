@@ -114,7 +114,7 @@ func (job *checkpointJob) doGlobalCheckpoint(
 	}
 
 	var data *logtail.CheckpointData
-	factory := logtail.GlobalCheckpointDataFactory(runner.rt.SID(), entry.end, interval)
+	factory := logtail.GlobalCheckpointDataFactory(runner.rt.SID(), runner.rt.Fs.Service, entry.end, interval)
 
 	if data, err = factory(runner.catalog); err != nil {
 		runner.store.RemoveGCKPIntent()

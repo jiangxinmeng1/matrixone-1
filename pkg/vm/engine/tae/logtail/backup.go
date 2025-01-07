@@ -301,7 +301,7 @@ func GetCheckpointData(
 	default:
 	}
 
-	data := NewCheckpointData(sid, common.CheckpointAllocator)
+	data := NewCheckpointData(sid, fs, common.CheckpointAllocator)
 	reader, err := ioutil.NewObjectReader(fs, location)
 	if err != nil {
 		return nil, err

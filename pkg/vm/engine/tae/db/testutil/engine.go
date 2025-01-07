@@ -400,7 +400,7 @@ func writeIncrementalCheckpoint(
 	checkpointSize int,
 	fs fileservice.FileService,
 ) (objectio.Location, objectio.Location) {
-	factory := logtail.IncrementalCheckpointDataFactory("", start, end, false)
+	factory := logtail.IncrementalCheckpointDataFactory("", fs, start, end, false)
 	data, err := factory(c)
 	assert.NoError(t, err)
 	defer data.Close()
@@ -412,7 +412,7 @@ func writeIncrementalCheckpoint(
 func tnReadCheckpoint(t *testing.T, location objectio.Location, fs fileservice.FileService) *logtail.CheckpointData {
 	reader, err := ioutil.NewObjectReader(fs, location)
 	assert.NoError(t, err)
-	data := logtail.NewCheckpointData("", common.CheckpointAllocator)
+	data := logtail.NewCheckpointData("", fs, common.CheckpointAllocator)
 	err = data.ReadFrom(
 		context.Background(),
 		logtail.CheckpointCurrentVersion,
@@ -475,9 +475,10 @@ func checkTNCheckpointData(
 	t *testing.T,
 	data *logtail.CheckpointData,
 	start, end types.TS,
+	fs fileservice.FileService,
 	c *catalog.Catalog,
 ) {
-	factory := logtail.IncrementalCheckpointDataFactory("", start, end, false)
+	factory := logtail.IncrementalCheckpointDataFactory("", fs, start, end, false)
 	data2, err := factory(c)
 	assert.NoError(t, err)
 	defer data2.Close()
@@ -537,12 +538,12 @@ func isProtoTNBatchEqual(ctx context.Context, t *testing.T, bat1 *api.Batch, bat
 	}
 }
 
-func checkCNCheckpointData(ctx context.Context, t *testing.T, tid uint64, ins, del, cnIns, segDel *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	checkUserTables(ctx, t, tid, ins, del, cnIns, segDel, start, end, c)
+func checkCNCheckpointData(ctx context.Context, fs fileservice.FileService, t *testing.T, tid uint64, ins, del, cnIns, segDel *api.Batch, start, end types.TS, c *catalog.Catalog) {
+	checkUserTables(ctx, fs, t, tid, ins, del, cnIns, segDel, start, end, c)
 }
 
-func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, dataObject, tombstoneObject *api.Batch, start, end types.TS, c *catalog.Catalog) {
-	collector := logtail.NewIncrementalCollector("", start, end)
+func checkUserTables(ctx context.Context, fs fileservice.FileService, t *testing.T, tid uint64, ins, del, dataObject, tombstoneObject *api.Batch, start, end types.TS, c *catalog.Catalog) {
+	collector := logtail.NewIncrementalCollector("", fs, start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
 		if be.GetTable().ID != tid {
@@ -567,8 +568,8 @@ func checkUserTables(ctx context.Context, t *testing.T, tid uint64, ins, del, da
 	isProtoTNBatchEqual(ctx, t, tombstoneObject, tombstone2)
 }
 
-func GetUserTablesInsBatch(t *testing.T, tid uint64, start, end types.TS, c *catalog.Catalog) (dataObject, tombstoneObject *containers.Batch) {
-	collector := logtail.NewIncrementalCollector("", start, end)
+func GetUserTablesInsBatch(t *testing.T, fs fileservice.FileService, tid uint64, start, end types.TS, c *catalog.Catalog) (dataObject, tombstoneObject *containers.Batch) {
+	collector := logtail.NewIncrementalCollector("", fs, start, end)
 	p := &catalog.LoopProcessor{}
 	p.TombstoneFn = func(be *catalog.ObjectEntry) error {
 		if be.GetTable().ID != tid {
@@ -602,12 +603,12 @@ func CheckCheckpointReadWrite(
 	location, _ := writeIncrementalCheckpoint(ctx, t, start, end, c, checkpointBlockRows, checkpointSize, fs)
 	tnData := tnReadCheckpoint(t, location, fs)
 
-	checkTNCheckpointData(ctx, t, tnData, start, end, c)
+	checkTNCheckpointData(ctx, t, tnData, start, end, fs, c)
 	p := &catalog.LoopProcessor{}
 
 	p.TableFn = func(te *catalog.TableEntry) error {
 		ins, del, cnIns, seg, cbs := cnReadCheckpoint(t, te.ID, location, fs)
-		checkCNCheckpointData(context.Background(), t, te.ID, ins, del, cnIns, seg, start, end, c)
+		checkCNCheckpointData(context.Background(), fs, t, te.ID, ins, del, cnIns, seg, start, end, c)
 		for _, cb := range cbs {
 			if cb != nil {
 				cb()
@@ -632,7 +633,7 @@ func (e *TestEngine) CheckReadCNCheckpoint() {
 			ins, del, cnIns, seg, cbs := cnReadCheckpointWithVersion(e.T, tid, ckp.GetLocation(), e.Opts.Fs, ckp.GetVersion())
 			ctx := context.Background()
 			ctx = context.WithValue(ctx, CtxOldVersion{}, int(ckp.GetVersion()))
-			checkCNCheckpointData(ctx, e.T, tid, ins, del, cnIns, seg, ckp.GetStart(), ckp.GetEnd(), e.Catalog)
+			checkCNCheckpointData(ctx, e.Opts.Fs, e.T, tid, ins, del, cnIns, seg, ckp.GetStart(), ckp.GetEnd(), e.Catalog)
 			for _, cb := range cbs {
 				if cb != nil {
 					cb()

@@ -30,6 +30,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/objectio/ioutil"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/ckputil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -133,11 +134,12 @@ func registerCheckpointDataReferVersion(version uint32, schemas []*catalog.Schem
 
 func IncrementalCheckpointDataFactory(
 	sid string,
+	fs fileservice.FileService,
 	start, end types.TS,
 	collectUsage bool,
 ) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewIncrementalCollector(sid, start, end)
+		collector := NewIncrementalCollector(sid, fs, start, end)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -160,10 +162,11 @@ func IncrementalCheckpointDataFactory(
 
 func BackupCheckpointDataFactory(
 	sid string,
+	fs fileservice.FileService,
 	start, end types.TS,
 ) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewBackupCollector(sid, start, end)
+		collector := NewBackupCollector(sid, fs, start, end)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -176,11 +179,12 @@ func BackupCheckpointDataFactory(
 
 func GlobalCheckpointDataFactory(
 	sid string,
+	fs fileservice.FileService,
 	end types.TS,
 	versionInterval time.Duration,
 ) func(c *catalog.Catalog) (*CheckpointData, error) {
 	return func(c *catalog.Catalog) (data *CheckpointData, err error) {
-		collector := NewGlobalCollector(sid, end, versionInterval)
+		collector := NewGlobalCollector(sid, end, fs, versionInterval)
 		defer collector.Close()
 		err = c.RecurLoop(collector)
 		if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
@@ -366,11 +370,13 @@ type CheckpointData struct {
 	meta      map[uint64]*CheckpointMeta
 	locations map[string]objectio.Location
 	bats      [MaxIDX]*containers.Batch
+	sinkers   [MaxIDX]*ioutil.Sinker
 	allocator *mpool.MPool
 }
 
 func NewCheckpointData(
 	sid string,
+	fs fileservice.FileService,
 	mp *mpool.MPool,
 ) *CheckpointData {
 	data := &CheckpointData{
@@ -380,6 +386,7 @@ func NewCheckpointData(
 	}
 	for idx, schema := range checkpointDataSchemas_Curr {
 		data.bats[idx] = makeRespBatchFromSchema(schema, mp)
+		data.sinkers[idx] = ckputil.NewDataSinker(mp, fs)
 	}
 	return data
 }
@@ -427,12 +434,13 @@ type IncrementalCollector struct {
 
 func NewIncrementalCollector(
 	sid string,
+	fs fileservice.FileService,
 	start, end types.TS,
 ) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
 			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(sid, common.CheckpointAllocator),
+			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			start:         start,
 			end:           end,
 		},
@@ -446,11 +454,12 @@ func NewIncrementalCollector(
 
 func NewBackupCollector(
 	sid string,
+	fs fileservice.FileService,
 	start, end types.TS) *IncrementalCollector {
 	collector := &IncrementalCollector{
 		BaseCollector: &BaseCollector{
 			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(sid, common.CheckpointAllocator),
+			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			start:         start,
 			end:           end,
 		},
@@ -469,13 +478,14 @@ type GlobalCollector struct {
 func NewGlobalCollector(
 	sid string,
 	end types.TS,
+	fs fileservice.FileService,
 	versionInterval time.Duration,
 ) *GlobalCollector {
 	versionThresholdTS := types.BuildTS(end.Physical()-versionInterval.Nanoseconds(), end.Logical())
 	collector := &GlobalCollector{
 		BaseCollector: &BaseCollector{
 			LoopProcessor: new(catalog.LoopProcessor),
-			data:          NewCheckpointData(sid, common.CheckpointAllocator),
+			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			end:           end,
 		},
 		versionThershold: versionThresholdTS,
@@ -1385,7 +1395,7 @@ func LoadCheckpointLocations(
 	default:
 	}
 	var err error
-	data := NewCheckpointData(sid, common.CheckpointAllocator)
+	data := NewCheckpointData(sid, fs, common.CheckpointAllocator)
 	defer data.Close()
 
 	var reader *ioutil.BlockReader
@@ -1410,7 +1420,7 @@ func LoadSpecifiedCkpBatch(
 	batchIdx uint16,
 	fs fileservice.FileService,
 ) (data *CheckpointData, err error) {
-	data = NewCheckpointData(sid, common.CheckpointAllocator)
+	data = NewCheckpointData(sid, fs, common.CheckpointAllocator)
 	defer func() {
 		if err != nil {
 			data.Close()

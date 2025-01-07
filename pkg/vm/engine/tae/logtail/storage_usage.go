@@ -905,8 +905,6 @@ func appendToStorageUsageBat(data *CheckpointData, usage UsageData, del bool, mp
 	entranceFunc := func(last *UsageData, batIdx uint16) {
 		vecs := getStorageUsageBatVectors(data.bats[batIdx])
 
-		start := vecs[UsageSize].Length()
-
 		// append new row to batch only when table changed
 		if last.IsZero() || tableChanged(*last) {
 			*last = usage
@@ -916,9 +914,11 @@ func appendToStorageUsageBat(data *CheckpointData, usage UsageData, del bool, mp
 			last.Size += usage.Size
 			updateFunc(vecs, last.Size)
 		}
-
-		end := vecs[UsageSize].Length()
-		updateStorageUsageMeta(data, UsageBatMetaTableId, int32(start), int32(end), del)
+		if data.bats[batIdx].Length() >= DefaultCheckpointBlockRows {
+			cnBatch := containers.ToCNBatch(data.bats[batIdx])
+			data.sinkers[batIdx].Write(context.Background(), cnBatch)
+			data.bats[batIdx].CleanOnlyData()
+		}
 	}
 
 	if del {
@@ -954,15 +954,6 @@ func Objects2Usages(objs []*catalog.ObjectEntry, isGlobal bool) (usages []UsageD
 	}
 
 	return
-}
-
-// prepare for storing the storage usage bat location into ckp table meta
-func updateStorageUsageMeta(data *CheckpointData, tid uint64, start, end int32, del bool) {
-	if del {
-		data.updateTableMeta(tid, StorageUsageDel, start, end)
-	} else {
-		data.updateTableMeta(tid, StorageUsageIns, start, end)
-	}
 }
 
 // putCacheBack2Track correct the margin of error happened in incremental checkpoint

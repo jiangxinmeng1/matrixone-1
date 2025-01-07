@@ -1775,26 +1775,6 @@ func (data *CheckpointData) GetTableIds() []uint64 {
 	return result
 }
 
-func (collector *BaseCollector) LoadAndCollectObject(c *catalog.Catalog, visitObject func(*catalog.ObjectEntry) error) error {
-	if collector.isPrefetch {
-		collector.isPrefetch = false
-	} else {
-		return nil
-	}
-	collector.data.bats[ObjectInfoIDX] = makeRespBatchFromSchema(ObjectInfoSchema, common.CheckpointAllocator)
-	err := collector.loadObjectInfo()
-	if err != nil {
-		return err
-	}
-	p := &catalog.LoopProcessor{}
-	p.ObjectFn = visitObject
-	err = c.RecurLoop(p)
-	if moerr.IsMoErrCode(err, moerr.OkStopCurrRecur) {
-		err = nil
-	}
-	return err
-}
-
 func (data *CheckpointData) GetOneBatch(idx uint16) *containers.Batch {
 	return data.bats[idx]
 }
@@ -1872,15 +1852,11 @@ func (collector *BaseCollector) visitObjectEntry(entry *catalog.ObjectEntry) err
 	}
 	return nil
 }
-func (collector *BaseCollector) loadObjectInfo() error {
-	panic("not support")
-}
+
 func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, mvccNodes []*txnbase.TxnMVCCNode) error {
 	if len(mvccNodes) == 0 {
 		return nil
 	}
-	dataStart := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
-	tombstoneStart := collector.data.bats[TombstoneObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
 
 	for _, node := range mvccNodes {
 		if node.IsAborted() {
@@ -1889,8 +1865,18 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 		create := node.End.Equal(&entry.CreatedAt)
 		if entry.IsTombstone {
 			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, create, false, types.TS{})
+			if collector.data.bats[TombstoneObjectInfoIDX].Length() >= DefaultCheckpointBlockRows {
+				cnBatch := containers.ToCNBatch(collector.data.bats[TombstoneObjectInfoIDX])
+				collector.data.sinkers[TombstoneObjectInfoIDX].Write(context.Background(), cnBatch)
+				collector.data.bats[TombstoneObjectInfoIDX].CleanOnlyData()
+			}
 		} else {
 			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{})
+			if collector.data.bats[ObjectInfoIDX].Length() >= DefaultCheckpointBlockRows {
+				cnBatch := containers.ToCNBatch(collector.data.bats[ObjectInfoIDX])
+				collector.data.sinkers[ObjectInfoIDX].Write(context.Background(), cnBatch)
+				collector.data.bats[ObjectInfoIDX].CleanOnlyData()
+			}
 		}
 		objNode := node
 
@@ -1908,10 +1894,6 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 		}
 
 	}
-	dataEnd := collector.data.bats[ObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
-	collector.data.UpdateDataObjectMeta(entry.GetTable().ID, int32(dataStart), int32(dataEnd))
-	tombstoneEnd := collector.data.bats[TombstoneObjectInfoIDX].GetVectorByName(catalog.ObjectAttr_ObjectStats).Length()
-	collector.data.UpdateTombstoneObjectMeta(entry.GetTable().ID, int32(tombstoneStart), int32(tombstoneEnd))
 	return nil
 }
 

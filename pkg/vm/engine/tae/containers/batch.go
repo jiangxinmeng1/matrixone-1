@@ -244,7 +244,11 @@ func (bat *Batch) Close() {
 		}
 	}
 }
-
+func (bat *Batch) CleanOnlyData() {
+	for _, vec := range bat.Vecs {
+		vec.GetDownstreamVector().CleanOnlyData()
+	}
+}
 func (bat *Batch) Reset() {
 	for i, vec := range bat.Vecs {
 		var newVec Vector

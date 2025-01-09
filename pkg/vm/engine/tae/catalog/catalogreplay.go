@@ -16,6 +16,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
@@ -264,24 +265,36 @@ func (catalog *Catalog) RelayFromSysTableObjects(
 	}
 
 	// replay database catalog
+	var readD, replayD time.Duration
+	tRead := time.Now()
 	if dbBatch := readFunc(ctx, dbTbl, readTxn); dbBatch != nil {
+		readD += time.Since(tRead)
 		defer dbBatch.Close()
+		tReplay := time.Now()
 		catalog.ReplayMODatabase(ctx, txnNode, dbBatch)
+		replayD += time.Since(tReplay)
 	}
 
 	// replay table catalog
+	tRead = time.Now()
 	if tableBatch := readFunc(ctx, tableTbl, readTxn); tableBatch != nil {
+		readD += time.Since(tRead)
 		if err := sortFunc(tableBatch.Vecs, pkgcatalog.MO_TABLES_REL_ID_IDX); err != nil {
 			panic(err)
 		}
 		defer tableBatch.Close()
+		tRead = time.Now()
 		columnBatch := readFunc(ctx, columnTbl, readTxn)
+		readD += time.Since(tRead)
 		if err := sortFunc(columnBatch.Vecs, pkgcatalog.MO_COLUMNS_ATT_RELNAME_ID_IDX); err != nil {
 			panic(err)
 		}
 		defer columnBatch.Close()
+		tReplay := time.Now()
 		catalog.ReplayMOTables(ctx, txnNode, dataFactory, tableBatch, columnBatch)
+		replayD += time.Since(tReplay)
 	}
+	logutil.Infof("open-tae, read cost %v, replay cost %v", readD, replayD)
 	// logutil.Info(catalog.SimplePPString(common.PPL3))
 }
 

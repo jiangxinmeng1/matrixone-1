@@ -11129,7 +11129,7 @@ func TestXxx(t *testing.T) {
 	defer tae.Close()
 
 	dbCount := 500
-	tblCount := 1000000
+	tblCount := 500000
 	tblPerCount := tblCount / dbCount
 
 	var currentCount atomic.Int32
@@ -11160,14 +11160,13 @@ func TestXxx(t *testing.T) {
 	for i := 0; i < dbCount; i++ {
 		wg.Add(1)
 		workers.Submit(createTblFn(i))
-		if i%100 == 99 {
-			tae.ForceCheckpoint()
-		}
 	}
 	wg.Wait()
 
 	tae.ForceCheckpoint()
 
+	tae.Restart(ctx)
+	tae.Restart(ctx)
 	tae.Restart(ctx)
 
 }

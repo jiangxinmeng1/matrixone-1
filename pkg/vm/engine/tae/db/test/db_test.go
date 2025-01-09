@@ -11169,4 +11169,8 @@ func TestXxx(t *testing.T) {
 	tae.Restart(ctx)
 	tae.Restart(ctx)
 
+	logutil.Infof("open-tae, start to sleep")
+
+	time.Sleep(time.Minute)
+
 }

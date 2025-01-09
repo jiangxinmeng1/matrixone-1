@@ -11128,8 +11128,8 @@ func TestXxx(t *testing.T) {
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
 	defer tae.Close()
 
-	dbCount := 1000
-	tblCount := 500000
+	dbCount := 500
+	tblCount := 1000000
 	tblPerCount := tblCount / dbCount
 
 	var currentCount atomic.Int32

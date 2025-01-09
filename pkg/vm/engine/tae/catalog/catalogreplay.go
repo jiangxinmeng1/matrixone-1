@@ -273,6 +273,7 @@ func (catalog *Catalog) RelayFromSysTableObjects(
 		readD += time.Since(tRead)
 		tReplay := time.Now()
 		closeCB = append(closeCB, dbBatch.Close)
+		readD += time.Since(tReplay)
 		catalog.ReplayMODatabase(ctx, txnNode, dbBatch, replayer)
 	}
 

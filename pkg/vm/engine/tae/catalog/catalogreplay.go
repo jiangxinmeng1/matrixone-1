@@ -274,7 +274,7 @@ func (catalog *Catalog) RelayFromSysTableObjects(
 		tReplay := time.Now()
 		closeCB = append(closeCB, dbBatch.Close)
 		readD += time.Since(tReplay)
-		catalog.ReplayMODatabase(ctx, txnNode, dbBatch, replayer)
+		catalog.ReplayMODatabase(ctx, txnNode, dbBatch)
 	}
 
 	// replay table catalog
@@ -301,25 +301,22 @@ func (catalog *Catalog) RelayFromSysTableObjects(
 	return
 }
 
-func (catalog *Catalog) ReplayMODatabase(ctx context.Context, txnNode *txnbase.TxnMVCCNode, bat *containers.Batch, replayer ObjectListReplayer) {
+func (catalog *Catalog) ReplayMODatabase(ctx context.Context, txnNode *txnbase.TxnMVCCNode, bat *containers.Batch) {
 	dbids := vector.MustFixedColNoTypeCheck[uint64](bat.GetVectorByName(pkgcatalog.SystemDBAttr_ID).GetDownstreamVector())
 	tenantIDs := vector.MustFixedColNoTypeCheck[uint32](bat.GetVectorByName(pkgcatalog.SystemDBAttr_AccID).GetDownstreamVector())
 	userIDs := vector.MustFixedColNoTypeCheck[uint32](bat.GetVectorByName(pkgcatalog.SystemDBAttr_Creator).GetDownstreamVector())
 	roleIDs := vector.MustFixedColNoTypeCheck[uint32](bat.GetVectorByName(pkgcatalog.SystemDBAttr_Owner).GetDownstreamVector())
 	createAts := vector.MustFixedColNoTypeCheck[types.Timestamp](bat.GetVectorByName(pkgcatalog.SystemDBAttr_CreateAt).GetDownstreamVector())
 	for i := 0; i < bat.Length(); i++ {
-		replayFn := func() {
-			dbid := dbids[i]
-			name := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_Name).Get(i).([]byte))
-			tenantID := tenantIDs[i]
-			userID := userIDs[i]
-			roleID := roleIDs[i]
-			createAt := createAts[i]
-			createSql := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_CreateSQL).Get(i).([]byte))
-			datType := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_Type).Get(i).([]byte))
-			catalog.onReplayCreateDB(dbid, name, txnNode, tenantID, userID, roleID, createAt, createSql, datType)
-		}
-		replayer.Submit(0, replayFn)
+		dbid := dbids[i]
+		name := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_Name).Get(i).([]byte))
+		tenantID := tenantIDs[i]
+		userID := userIDs[i]
+		roleID := roleIDs[i]
+		createAt := createAts[i]
+		createSql := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_CreateSQL).Get(i).([]byte))
+		datType := string(bat.GetVectorByName(pkgcatalog.SystemDBAttr_Type).Get(i).([]byte))
+		catalog.onReplayCreateDB(dbid, name, txnNode, tenantID, userID, roleID, createAt, createSql, datType)
 	}
 }
 
@@ -409,7 +406,7 @@ func (catalog *Catalog) ReplayMOTables(ctx context.Context, txnNode *txnbase.Txn
 			}
 			catalog.onReplayCreateTable(dbid, tid, schema, txnNode, dataF)
 		}
-		replayer.Submit(0, replayFn)
+		replayer.Submit(dbids[i], replayFn)
 	}
 }
 

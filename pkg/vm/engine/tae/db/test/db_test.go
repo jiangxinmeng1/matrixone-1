@@ -29,6 +29,9 @@ import (
 	"testing"
 	"time"
 
+    "net/http"
+    _ "net/http/pprof"
+
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/common/moerr"
 	"github.com/matrixorigin/matrixone/pkg/common/mpool"
@@ -76,6 +79,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+    go http.ListenAndServe("0.0.0.0:6060", nil)
+}
 
 const (
 	ModuleName                     = "TAEDB"

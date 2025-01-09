@@ -11049,6 +11049,7 @@ func TestRW3(t *testing.T) {
 	ctx := context.Background()
 	opts := config.WithLongScanAndCKPOpts(nil)
 	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
 
 	objCount := 100
 	schema := catalog.MockSchemaAll(1, -1)
@@ -11111,5 +11112,55 @@ func TestRW3(t *testing.T) {
 	wg.Wait()
 
 	tae.CheckRowsByScan(0, true)
+
+}
+
+func TestXxx(t *testing.T) {
+	ctx := context.Background()
+	opts := config.WithLongScanAndCKPOpts(nil)
+	tae := testutil.NewTestEngine(ctx, ModuleName, t, opts)
+	defer tae.Close()
+
+	dbCount := 500
+	tblCount := 500000
+	tblPerCount := tblCount / dbCount
+
+	var currentCount atomic.Int32
+
+	var wg sync.WaitGroup
+	createTblFn := func(i int) func() {
+		return func() {
+			defer wg.Done()
+			txn, err := tae.StartTxn(nil)
+			assert.NoError(t, err)
+			db, err := testutil.CreateDatabase2(ctx, txn, fmt.Sprintf("db%d", i))
+			assert.NoError(t, err)
+			for i := 0; i < tblPerCount; i++ {
+				schema := catalog.MockSchema(15, -1)
+				_, err = testutil.CreateRelation2(ctx, txn, db, schema)
+				assert.NoError(t, err)
+				new := currentCount.Add(1)
+				if new%10000 == 0 {
+					logutil.Infof("lalala create %d/%d tables", new, tblCount)
+				}
+			}
+			assert.NoError(t, txn.Commit(ctx))
+		}
+	}
+
+	workers, err := ants.NewPool(100)
+	assert.NoError(t, err)
+	for i := 0; i < dbCount; i++ {
+		wg.Add(1)
+		workers.Submit(createTblFn(i))
+		if i%100000 == 0 {
+			tae.ForceCheckpoint()
+		}
+	}
+	wg.Wait()
+
+	tae.ForceCheckpoint()
+
+	tae.Restart(ctx)
 
 }

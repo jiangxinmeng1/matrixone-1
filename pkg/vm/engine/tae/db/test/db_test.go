@@ -29,6 +29,8 @@ import (
 	"testing"
 	"time"
 
+	goRuntime "runtime"
+
     "net/http"
     _ "net/http/pprof"
 
@@ -10015,6 +10017,13 @@ func TestGCKP(t *testing.T) {
 	t.Log(tae.Catalog.SimplePPString(3))
 }
 
+/*
+xh
+12
+
+jw
+*/
+
 func TestCKPCollectObject(t *testing.T) {
 	ioutil.RunPipelineTest(
 		func() {
@@ -11168,6 +11177,9 @@ func TestXxx(t *testing.T) {
 	tae.Restart(ctx)
 	tae.Restart(ctx)
 	tae.Restart(ctx)
+	goRuntime.GC()
+	goRuntime.GC()
+	goRuntime.GC()
 
 	logutil.Infof("open-tae, start to sleep")
 

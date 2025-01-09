@@ -11160,7 +11160,7 @@ func TestXxx(t *testing.T) {
 	for i := 0; i < dbCount; i++ {
 		wg.Add(1)
 		workers.Submit(createTblFn(i))
-		if i%100000 == 0 {
+		if i%100 == 99 {
 			tae.ForceCheckpoint()
 		}
 	}

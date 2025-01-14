@@ -64,6 +64,8 @@ type TxnLogtailRespBuilder struct {
 
 	batchToClose []*containers.Batch
 	insertBatch  *roaring.Bitmap
+
+	packer *types.Packer
 }
 
 func NewTxnLogtailRespBuilder(rt *dbutils.Runtime) *TxnLogtailRespBuilder {
@@ -74,10 +76,12 @@ func NewTxnLogtailRespBuilder(rt *dbutils.Runtime) *TxnLogtailRespBuilder {
 		logtails:     &logtails,
 		batchToClose: make([]*containers.Batch, 0),
 		insertBatch:  roaring.New(),
+		packer:       types.NewPacker(),
 	}
 }
 
 func (b *TxnLogtailRespBuilder) Close() {
+	b.packer.Close()
 	for _, bat := range b.batchToClose {
 		bat.Close()
 	}
@@ -116,14 +120,14 @@ func (b *TxnLogtailRespBuilder) visitObject(iobj any) {
 		if b.batches[batchIdx] == nil {
 			b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 		}
-		visitObject(b.batches[batchIdx], obj, node, true, true, b.txn.GetPrepareTS())
+		visitObject(b.packer, b.batches[batchIdx], obj, node, true, true, b.txn.GetPrepareTS())
 		return
 	}
 
 	if b.batches[batchIdx] == nil {
 		b.batches[batchIdx] = makeRespBatchFromSchema(ObjectInfoSchema, common.LogtailAllocator)
 	}
-	visitObject(b.batches[batchIdx], obj, node, false, true, b.txn.GetPrepareTS())
+	visitObject(b.packer, b.batches[batchIdx], obj, node, false, true, b.txn.GetPrepareTS())
 }
 
 func (b *TxnLogtailRespBuilder) visitAppend(ibat any, isTombstone bool) {

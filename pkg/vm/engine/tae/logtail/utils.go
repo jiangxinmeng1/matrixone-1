@@ -43,6 +43,7 @@ const DefaultCheckpointSize = 512 * 1024 * 1024
 
 const (
 	CheckpointVersion12 uint32 = 12
+	CheckpointVersion13 uint32 = 13
 
 	CheckpointCurrentVersion = CheckpointVersion12
 )
@@ -80,6 +81,7 @@ type checkpointDataItem struct {
 }
 
 var checkpointDataSchemas_V12 [MaxIDX]*catalog.Schema
+var checkpointDataSchemas_V13 [MaxIDX]*catalog.Schema
 var checkpointDataSchemas_Curr [MaxIDX]*catalog.Schema
 
 var checkpointDataReferVersions map[uint32][MaxIDX]*checkpointDataItem
@@ -92,11 +94,21 @@ func init() {
 		StorageUsageSchema,
 		ObjectInfoSchema,
 		StorageUsageSchema,
-		ObjectInfoSchema, //15
+		ObjectInfoSchema, //5
+	}
+
+	checkpointDataSchemas_V13 = [MaxIDX]*catalog.Schema{
+		MetaSchema,
+		TNMetaSchema,
+		StorageUsageSchema,
+		ObjectInfoSchema_V2,
+		StorageUsageSchema,
+		ObjectInfoSchema, //5
 	}
 
 	checkpointDataReferVersions = make(map[uint32][MaxIDX]*checkpointDataItem)
 	registerCheckpointDataReferVersion(CheckpointVersion12, checkpointDataSchemas_V12[:])
+	registerCheckpointDataReferVersion(CheckpointVersion13, checkpointDataSchemas_V13[:])
 	checkpointDataSchemas_Curr = checkpointDataSchemas_V12
 }
 
@@ -426,6 +438,8 @@ type BaseCollector struct {
 	}
 
 	UsageMemo *TNUsageMemo
+
+	packer types.Packer
 }
 
 type IncrementalCollector struct {
@@ -443,6 +457,7 @@ func NewIncrementalCollector(
 			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			start:         start,
 			end:           end,
+			packer:        *types.NewPacker(),
 		},
 	}
 	collector.DatabaseFn = collector.VisitDB
@@ -462,6 +477,7 @@ func NewBackupCollector(
 			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			start:         start,
 			end:           end,
+			packer:        *types.NewPacker(),
 		},
 	}
 	// TODO
@@ -487,6 +503,7 @@ func NewGlobalCollector(
 			LoopProcessor: new(catalog.LoopProcessor),
 			data:          NewCheckpointData(sid, fs, common.CheckpointAllocator),
 			end:           end,
+			packer:        *types.NewPacker(),
 		},
 		versionThershold: versionThresholdTS,
 	}
@@ -1005,6 +1022,44 @@ func (data *CheckpointData) FormatData(mp *mpool.MPool) (err error) {
 type blockIndexes struct {
 	fileNum uint16
 	indexes *BlockLocation
+}
+
+func (data *CheckpointData) WriteTo_V2(
+	ctx context.Context,
+	blockRows int,
+	checkpointSize int,
+	fs fileservice.FileService,
+) (CNLocation, TNLocation objectio.Location, checkpointFiles []string, err error) {
+	ranges := ckputil.MakeTableRangeBatch()
+	defer ranges.Clean(data.allocator)
+	checkpointFiles = make([]string, 0)
+	files, inMems := data.sinkers[ObjectInfoIDX].GetResult()
+	if len(inMems) != 0 {
+		panic("logic error")
+	}
+	err = ckputil.CollectTableRanges(ctx, files, ranges, data.allocator, fs)
+	segmentid := objectio.NewSegmentid()
+	fileNum := uint16(0)
+	name := objectio.BuildObjectName(segmentid, fileNum)
+	writer, err := ioutil.NewBlockWriterNew(fs, name, 0, nil, false)
+	if err != nil {
+		return
+	}
+	_, err = writer.WriteBatch(ranges)
+	if err != nil {
+		return
+	}
+	blks, _, err := writer.Sync(ctx)
+	if err != nil {
+		return
+	}
+	if len(blks) != 1 {
+		panic("logic error")
+	}
+	checkpointFiles = append(checkpointFiles, name.String())
+	CNLocation = objectio.BuildLocation(name, blks[0].GetExtent(), 0, blks[0].GetID())
+	TNLocation = CNLocation
+	return
 }
 
 // PXU TODO: pass ctx
@@ -1863,20 +1918,11 @@ func (collector *BaseCollector) fillObjectInfoBatch(entry *catalog.ObjectEntry, 
 			continue
 		}
 		create := node.End.Equal(&entry.CreatedAt)
-		if entry.IsTombstone {
-			visitObject(collector.data.bats[TombstoneObjectInfoIDX], entry, node, create, false, types.TS{})
-			if collector.data.bats[TombstoneObjectInfoIDX].Length() >= DefaultCheckpointBlockRows {
-				cnBatch := containers.ToCNBatch(collector.data.bats[TombstoneObjectInfoIDX])
-				collector.data.sinkers[TombstoneObjectInfoIDX].Write(context.Background(), cnBatch)
-				collector.data.bats[TombstoneObjectInfoIDX].CleanOnlyData()
-			}
-		} else {
-			visitObject(collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{})
-			if collector.data.bats[ObjectInfoIDX].Length() >= DefaultCheckpointBlockRows {
-				cnBatch := containers.ToCNBatch(collector.data.bats[ObjectInfoIDX])
-				collector.data.sinkers[ObjectInfoIDX].Write(context.Background(), cnBatch)
-				collector.data.bats[ObjectInfoIDX].CleanOnlyData()
-			}
+		visitObject(&collector.packer, collector.data.bats[ObjectInfoIDX], entry, node, create, false, types.TS{})
+		if collector.data.bats[ObjectInfoIDX].Length() >= DefaultCheckpointBlockRows {
+			cnBatch := containers.ToCNBatch(collector.data.bats[ObjectInfoIDX])
+			collector.data.sinkers[ObjectInfoIDX].Write(context.Background(), cnBatch)
+			collector.data.bats[ObjectInfoIDX].CleanOnlyData()
 		}
 		objNode := node
 
@@ -1938,10 +1984,12 @@ func (collector *GlobalCollector) VisitObj(entry *catalog.ObjectEntry) error {
 func (collector *BaseCollector) OrphanData() *CheckpointData {
 	data := collector.data
 	collector.data = nil
+	collector.packer.Close()
 	return data
 }
 
 func (collector *BaseCollector) Close() {
+	collector.packer.Close()
 	if collector.data != nil {
 		collector.data.Close()
 	}

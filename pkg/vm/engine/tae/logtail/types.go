@@ -18,6 +18,7 @@ import (
 	pkgcatalog "github.com/matrixorigin/matrixone/pkg/catalog"
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/ckputil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/txn/txnbase"
 )
@@ -54,10 +55,11 @@ var (
 		types.T_TS.ToType(),
 	}
 
-	MetaSchema         *catalog.Schema
-	TNMetaSchema       *catalog.Schema
-	ObjectInfoSchema   *catalog.Schema
-	StorageUsageSchema *catalog.Schema
+	MetaSchema          *catalog.Schema
+	TNMetaSchema        *catalog.Schema
+	ObjectInfoSchema    *catalog.Schema
+	StorageUsageSchema  *catalog.Schema
+	ObjectInfoSchema_V2 *catalog.Schema
 
 	MetaSchemaAttr = []string{
 		SnapshotAttr_TID,
@@ -194,6 +196,19 @@ func init() {
 			}
 		} else {
 			if err := StorageUsageSchema.AppendCol(colname, StorageUsageSchemaTypes[i]); err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	ObjectInfoSchema_V2 = catalog.NewEmptySchema("object_info_v2")
+	for i, colname := range ckputil.TableObjectsAttrs {
+		if i == 0 {
+			if err := ObjectInfoSchema_V2.AppendPKCol(colname, ckputil.TableObjectsTypes[i], 0); err != nil {
+				panic(err)
+			}
+		} else {
+			if err := ObjectInfoSchema_V2.AppendCol(colname, ckputil.TableObjectsTypes[i]); err != nil {
 				panic(err)
 			}
 		}

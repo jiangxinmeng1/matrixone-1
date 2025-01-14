@@ -86,6 +86,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
 	"github.com/matrixorigin/matrixone/pkg/util/fault"
 	v2 "github.com/matrixorigin/matrixone/pkg/util/metric/v2"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/ckputil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/catalog"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/containers"
@@ -200,6 +201,8 @@ type TableLogtailRespBuilder struct {
 	tombstoneMetaBatch *containers.Batch
 	dataInsBatches     map[uint32]*containers.BatchWithVersion // schema version -> data batch
 	dataDelBatches     map[uint32]*containers.BatchWithVersion
+
+	packer *types.Packer
 }
 
 func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end types.TS, tbl *catalog.TableEntry) *TableLogtailRespBuilder {
@@ -217,6 +220,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 	b.tid = tbl.ID
 	b.dname = tbl.GetDB().GetName()
 	b.tname = tbl.GetLastestSchemaLocked(false).Name
+	b.packer = types.NewPacker()
 
 	b.dataInsBatches = make(map[uint32]*containers.BatchWithVersion)
 	b.dataDelBatches = make(map[uint32]*containers.BatchWithVersion)
@@ -226,6 +230,7 @@ func NewTableLogtailRespBuilder(ctx context.Context, ckp string, start, end type
 }
 
 func (b *TableLogtailRespBuilder) Close() {
+	b.packer.Close()
 	for _, vec := range b.dataInsBatches {
 		if vec != nil {
 			vec.Close()
@@ -268,9 +273,9 @@ func (b *TableLogtailRespBuilder) visitObjMeta(e *catalog.ObjectEntry) (bool, er
 	var objectMVCCNode *catalog.ObjectMVCCNode
 	for _, node := range mvccNodes {
 		if e.IsTombstone {
-			visitObject(b.tombstoneMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
+			visitObject(b.packer, b.tombstoneMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		} else {
-			visitObject(b.dataMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
+			visitObject(b.packer, b.dataMetaBatch, e, node, node.End.Equal(&e.CreatedAt), false, types.TS{})
 		}
 	}
 	return b.skipObjectData(e, objectMVCCNode), nil
@@ -295,27 +300,33 @@ func (b *TableLogtailRespBuilder) visitObjData(e *catalog.ObjectEntry) error {
 	}
 	return nil
 }
-func visitObject(batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNode *txnbase.TxnMVCCNode, create bool, push bool, committs types.TS) {
-	var rowid types.Rowid
-	batch.GetVectorByName(catalog.PhyAddrColumnName).Append(rowid, false)
-	if push {
-		batch.GetVectorByName(objectio.DefaultCommitTS_Attr).Append(committs, false)
+func visitObject(packer *types.Packer, batch *containers.Batch, entry *catalog.ObjectEntry, txnMVCCNode *txnbase.TxnMVCCNode, create bool, push bool, committs types.TS) {
+	batch.GetVectorByName(ckputil.TableObjectsAttr_Accout).Append(entry.GetTable().GetDB().GetTenantID(), false)
+	batch.GetVectorByName(ckputil.TableObjectsAttr_DB).Append(entry.GetTable().GetDB().ID, false)
+	batch.GetVectorByName(ckputil.TableObjectsAttr_Table).Append(entry.GetTable().ID, false)
+	batch.GetVectorByName(ckputil.TableObjectsAttr_ID).Append(entry.ObjectStats[:], false)
+	batch.GetVectorByName(ckputil.TableObjectsAttr_ObjectType).Append(entry.IsTombstone, false)
+	packer.Reset()
+	ckputil.EncodeCluser(packer, entry.GetTable().ID, entry.IsTombstone, entry.ID())
+	cluster := make([]byte, 0)
+	batch.GetVectorByName(ckputil.TableObjectsAttr_Cluster).Append(cluster, false)
+	if create {
+		if push {
+			batch.GetVectorByName(ckputil.TableObjectsAttr_CreateTS).Append(committs, false)
+			batch.GetVectorByName(ckputil.TableObjectsAttr_DeleteTS).Append(types.TS{}, false)
+		} else {
+			batch.GetVectorByName(ckputil.TableObjectsAttr_CreateTS).Append(entry.CreatedAt, false)
+			batch.GetVectorByName(ckputil.TableObjectsAttr_DeleteTS).Append(types.TS{}, false)
+		}
 	} else {
-		batch.GetVectorByName(objectio.DefaultCommitTS_Attr).Append(txnMVCCNode.End, false)
+		if push {
+			batch.GetVectorByName(ckputil.TableObjectsAttr_CreateTS).Append(entry.DeletedAt, false)
+			batch.GetVectorByName(ckputil.TableObjectsAttr_DeleteTS).Append(committs, false)
+		} else {
+			batch.GetVectorByName(ckputil.TableObjectsAttr_CreateTS).Append(entry.DeletedAt, false)
+			batch.GetVectorByName(ckputil.TableObjectsAttr_DeleteTS).Append(entry.CreatedAt, false)
+		}
 	}
-	entry.ObjectMVCCNode.AppendTuple(entry.ID(), batch)
-	if push {
-		txnMVCCNode.AppendTupleWithCommitTS(batch, committs)
-	} else {
-		txnMVCCNode.AppendTuple(batch)
-	}
-	if push {
-		entry.EntryMVCCNode.AppendTupleWithCommitTS(batch, committs)
-	} else {
-		entry.EntryMVCCNode.AppendObjectTuple(batch, create)
-	}
-	batch.GetVectorByName(SnapshotAttr_DBID).Append(entry.GetTable().GetDB().ID, false)
-	batch.GetVectorByName(SnapshotAttr_TID).Append(entry.GetTable().ID, false)
 }
 
 type TableRespKind int

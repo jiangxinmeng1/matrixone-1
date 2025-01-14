@@ -1598,7 +1598,15 @@ func (data *CheckpointData) replayMetaBatch(version uint32) {
 	data.locations = make(map[string]objectio.Location)
 	buildMeta(bat, data.locations, data.meta)
 }
-
+func (data *CheckpointData) readAll_V2(
+	ctx context.Context,
+	version uint32,
+	service fileservice.FileService,
+) (err error) {
+	locationVec:=data.bats[MetaIDX]
+	locat
+	return
+}
 func (data *CheckpointData) readAll(
 	ctx context.Context,
 	version uint32,

@@ -134,7 +134,7 @@ func TestCompatibility1(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(5), newEntry.GetEntryCount())
 	newEntry.ForEachEntry(func(entry *entry.Entry) {
-		logutil.Infof("lalala dsn %d", entry.DSN)
+		logutil.Infof("dsn %d", entry.DSN)
 	})
 }
 

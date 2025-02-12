@@ -25,6 +25,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/util/fault"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/ckputil"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/index"
 	"go.uber.org/zap"
 
@@ -294,7 +295,7 @@ func GetCheckpointData(
 	fs fileservice.FileService,
 	location objectio.Location,
 	version uint32,
-) (*CheckpointData, error) {
+) (CKPData, error) {
 	select {
 	case <-ctx.Done():
 		return nil, context.Cause(ctx)
@@ -420,7 +421,7 @@ func LoadCheckpointEntriesFromKey(
 	version uint32,
 	softDeletes *map[string]bool,
 	baseTS *types.TS,
-) ([]*objectio.BackupObject, *CheckpointData, error) {
+) ([]*objectio.BackupObject, CKPData, error) {
 	locations := make([]*objectio.BackupObject, 0)
 	data, err := GetCheckpointData(ctx, sid, fs, location, version)
 	if err != nil {
@@ -432,54 +433,56 @@ func LoadCheckpointEntriesFromKey(
 		NeedCopy: true,
 	})
 
-	for _, location = range data.locations {
+	for _, location = range data.GetLocations() {
 		locations = append(locations, &objectio.BackupObject{
 			Location: location,
 			NeedCopy: true,
 		})
 	}
 
-	collectObject := func(bat *containers.Batch) {
-		for i := 0; i < bat.Length(); i++ {
-			var objectStats objectio.ObjectStats
-			buf := bat.GetVectorByName(ObjectAttr_ObjectStats).Get(i).([]byte)
-			objectStats.UnMarshal(buf)
-			deletedAt := bat.GetVectorByName(EntryNode_DeleteAt).Get(i).(types.TS)
-			createAt := bat.GetVectorByName(EntryNode_CreateAt).Get(i).(types.TS)
-			commitAt := bat.GetVectorByName(txnbase.SnapshotAttr_CommitTS).Get(i).(types.TS)
-			isAblk := objectStats.GetAppendable()
-			if objectStats.Extent().End() == 0 {
-				// tn obj is in the batch too
-				continue
-			}
+	collectObject := func(
+		account uint32,
+		dbid, tid uint64,
+		objectType int8,
+		objectStats objectio.ObjectStats,
+		createAt, deletedAt types.TS,
+		rowID types.Rowid,
+	) {
+		isAblk := objectStats.GetAppendable()
+		if objectStats.Extent().End() == 0 {
+			// tn obj is in the batch too
+			return
+		}
 
-			if deletedAt.IsEmpty() && isAblk {
-				// no flush, no need to copy
-				continue
-			}
+		if deletedAt.IsEmpty() && isAblk {
+			// no flush, no need to copy
+			return
+		}
+		commitAt := createAt
+		if !deletedAt.IsEmpty() {
+			commitAt = deletedAt
+		}
 
-			bo := &objectio.BackupObject{
-				Location: objectStats.ObjectLocation(),
-				CrateTS:  createAt,
-				DropTS:   deletedAt,
-			}
-			if baseTS.IsEmpty() || (!baseTS.IsEmpty() &&
-				(createAt.GE(baseTS) || commitAt.GE(baseTS))) {
-				bo.NeedCopy = true
-			}
-			locations = append(locations, bo)
-			if !deletedAt.IsEmpty() {
-				if softDeletes != nil {
-					if !(*softDeletes)[objectStats.ObjectName().String()] {
-						(*softDeletes)[objectStats.ObjectName().String()] = true
-					}
+		bo := &objectio.BackupObject{
+			Location: objectStats.ObjectLocation(),
+			CrateTS:  createAt,
+			DropTS:   deletedAt,
+		}
+		if baseTS.IsEmpty() || (!baseTS.IsEmpty() &&
+			(createAt.GE(baseTS) || commitAt.GE(baseTS))) {
+			bo.NeedCopy = true
+		}
+		locations = append(locations, bo)
+		if !deletedAt.IsEmpty() {
+			if softDeletes != nil {
+				if !(*softDeletes)[objectStats.ObjectName().String()] {
+					(*softDeletes)[objectStats.ObjectName().String()] = true
 				}
 			}
 		}
 	}
 
-	collectObject(data.bats[ObjectInfoIDX])
-	collectObject(data.bats[TombstoneObjectInfoIDX])
+	data.ForEachRow(collectObject)
 	return locations, data, nil
 }
 
@@ -536,35 +539,40 @@ func ReWriteCheckpointAndBlockFromKey(
 
 	initData := func(
 		od *map[string]*objData,
-		idx uint16,
+		objectType int8,
 		dataType objectio.DataMetaType,
 	) *containers.Batch {
-		objInfoData := data.bats[idx]
-		objInfoStats := objInfoData.GetVectorByName(ObjectAttr_ObjectStats)
-		objInfoTid := objInfoData.GetVectorByName(SnapshotAttr_TID)
-		objInfoDelete := objInfoData.GetVectorByName(EntryNode_DeleteAt)
-		objInfoCreate := objInfoData.GetVectorByName(EntryNode_CreateAt)
-		objInfoCommit := objInfoData.GetVectorByName(txnbase.SnapshotAttr_CommitTS)
 
-		for i := 0; i < objInfoData.Length(); i++ {
-			stats := objectio.NewObjectStats()
-			stats.UnMarshal(objInfoStats.Get(i).([]byte))
-			appendable := stats.GetAppendable()
-			deleteAt := objInfoDelete.Get(i).(types.TS)
-			commitTS := objInfoCommit.Get(i).(types.TS)
-			createAt := objInfoCreate.Get(i).(types.TS)
-			tid := objInfoTid.Get(i).(uint64)
-			if commitTS.LT(&ts) {
-				panic(any(fmt.Sprintf("commitTs less than ts: %v-%v", commitTS.ToString(), ts.ToString())))
-			}
-			if deleteAt.IsEmpty() {
-				continue
-			}
-			if createAt.GE(&ts) {
-				panic(any(fmt.Sprintf("createAt equal to ts: %v-%v", createAt.ToString(), ts.ToString())))
-			}
-			addObjectToObjectData(stats, appendable, i, tid, dataType, od)
-		}
+		i := 0
+		data.ForEachRow(
+			func(
+				account uint32,
+				dbid, tid uint64,
+				objectType int8,
+				stats objectio.ObjectStats,
+				createAt, deleteAt types.TS,
+				rowID types.Rowid,
+			) {
+				if objectType == ckputil.ObjectType_Data {
+					appendable := stats.GetAppendable()
+					commitTS := createAt
+					if !deleteAt.IsEmpty() {
+						commitTS = deleteAt
+					}
+					if commitTS.LT(&ts) {
+						panic(any(fmt.Sprintf("commitTs less than ts: %v-%v", commitTS.ToString(), ts.ToString())))
+					}
+					if deleteAt.IsEmpty() {
+						return
+					}
+					if createAt.GE(&ts) {
+						panic(any(fmt.Sprintf("createAt equal to ts: %v-%v", createAt.ToString(), ts.ToString())))
+					}
+					addObjectToObjectData(&stats, appendable, i, tid, dataType, od)
+					i++
+				}
+			},
+		)
 		return objInfoData
 	}
 
@@ -595,8 +603,8 @@ func ReWriteCheckpointAndBlockFromKey(
 		return objInfoData
 	}
 
-	objInfoData := initData(&objectsData, ObjectInfoIDX, objectio.SchemaData)
-	tombstoneInfoData := initData(&tombstonesData, TombstoneObjectInfoIDX, objectio.SchemaTombstone)
+	objInfoData := initData(&objectsData, ckputil.ObjectType_Data, objectio.SchemaData)
+	tombstoneInfoData := initData(&tombstonesData, ckputil.ObjectType_Tombstone, objectio.SchemaTombstone)
 	initData2(&tombstonesData2, TombstoneObjectInfoIDX, objectio.SchemaTombstone)
 
 	phaseNumber = 3

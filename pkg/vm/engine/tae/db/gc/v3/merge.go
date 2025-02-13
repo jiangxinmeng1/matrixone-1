@@ -52,7 +52,7 @@ func MergeCheckpoint(
 	pool *mpool.MPool,
 	fs fileservice.FileService,
 ) (deleteFiles, newFiles []string, checkpointEntry *checkpoint.CheckpointEntry, ckpData *logtail.CheckpointData, err error) {
-	ckpData = logtail.NewCheckpointData(sid, pool)
+	ckpData = logtail.NewCheckpointDataWithVersion(logtail.CheckpointVersion12, pool)
 	datas := make([]*logtail.CheckpointData, 0)
 	deleteFiles = make([]string, 0)
 	for _, ckpEntry := range ckpEntries {

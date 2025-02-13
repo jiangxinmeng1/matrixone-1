@@ -27,6 +27,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/objectio/ioutil"
 	"github.com/matrixorigin/matrixone/pkg/pb/api"
+	"github.com/matrixorigin/matrixone/pkg/pb/plan"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/common"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
 )
@@ -89,7 +90,7 @@ func NewCheckpointEntry(
 		end:       end,
 		state:     ST_Pending,
 		entryType: typ,
-		version:   logtail.CheckpointCurrentVersion,
+		version:   logtail.CheckpointVersion13, //TODO
 		bornTime:  time.Now(),
 		doneC:     make(chan struct{}),
 	}
@@ -622,5 +623,47 @@ func (e *CheckpointEntry) GetData(
 			mp,
 			fs,
 		)
+	}
+}
+
+func (e *CheckpointEntry) GetLoadBatchDataFn(
+	fs fileservice.FileService,
+) func(
+	ctx context.Context,
+	_ []string,
+	_ *plan.Expr,
+	mp *mpool.MPool,
+	bat *batch.Batch,
+) (end bool, err error) {
+	return func(
+		ctx context.Context,
+		_ []string,
+		_ *plan.Expr,
+		mp *mpool.MPool,
+		bat *batch.Batch,
+	) (end bool, err error) {
+		if e.version <= logtail.CheckpointVersion12 {
+			replayer := logtail.NewCheckpointReplayer(e.GetLocation(), mp)
+			defer replayer.Close()
+			if err = replayer.ReadMetaForV12(ctx, fs); err != nil {
+				return
+			}
+			if err = replayer.ReadDataForV12(ctx, fs); err != nil {
+				return
+			}
+			return replayer.LoadBatchData(
+				ctx,
+				mp,
+				bat,
+			)
+		} else {
+			return logtail.LoadBatchData(
+				ctx,
+				e.GetLocation(),
+				mp,
+				bat,
+				fs,
+			)
+		}
 	}
 }

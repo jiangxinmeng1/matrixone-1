@@ -234,7 +234,7 @@ func MergeCheckpoint(
 	checkpointEntry.SetLocation(cnLocation, tnLocation)
 	checkpointEntry.SetLSN(ckpEntries[len(ckpEntries)-1].LSN(), ckpEntries[len(ckpEntries)-1].GetTruncateLsn())
 	checkpointEntry.SetState(checkpoint.ST_Finished)
-	checkpointEntry.SetVersion(logtail.CheckpointCurrentVersion)
+	checkpointEntry.SetVersion(logtail.CheckpointVersion13)
 	newFiles = append(newFiles, name)
 	return
 }

@@ -554,6 +554,38 @@ func GetCKPData(
 	return
 }
 
+// TODO remove it
+func LoadBatchData(
+	ctx context.Context,
+	loc objectio.Location,
+	mp *mpool.MPool,
+	bat *batch.Batch,
+	fs fileservice.FileService,
+) (end bool, err error) {
+	var data *CheckpointData
+	if bat == nil {
+		panic("logic error")
+	}
+	if data, err = GetCKPData(
+		ctx,
+		loc,
+		mp,
+		fs,
+	); err != nil {
+		return
+	}
+	dataBatch := containers.ToCNBatch(data.bats[ObjectInfoIDX])
+	if _, err = bat.Append(ctx, mp, dataBatch); err != nil {
+		return
+	}
+	tombstoneBatch := containers.ToCNBatch(data.bats[TombstoneObjectInfoIDX])
+	if _, err = bat.Append(ctx, mp, tombstoneBatch); err != nil {
+		return
+	}
+	end = true
+	return
+}
+
 type CheckpointReplayer struct {
 	location objectio.Location
 	mp       *mpool.MPool
@@ -874,6 +906,8 @@ func (replayer *CheckpointReplayer) ForEachRow(
 	}
 	return nil
 }
+
+// TODO: remove it
 func (replayer *CheckpointReplayer) OrphanCKPData(mp *mpool.MPool) (data *CheckpointData, err error) {
 	data = NewCheckpointDataWithVersion(CheckpointVersion12, mp)
 	data.bats[ObjectInfoIDX] = replayer.objBatches
@@ -881,6 +915,27 @@ func (replayer *CheckpointReplayer) OrphanCKPData(mp *mpool.MPool) (data *Checkp
 	replayer.objBatches = nil
 	replayer.tombstoneBatch = nil
 	return data, nil
+}
+
+// TODO: remove it
+func (replayer *CheckpointReplayer) LoadBatchData(
+	ctx context.Context,
+	mp *mpool.MPool,
+	bat *batch.Batch,
+) (end bool, err error) {
+	if bat == nil {
+		panic("logic error")
+	}
+	dataBatch := containers.ToCNBatch(replayer.objBatches)
+	if _, err = bat.Append(ctx, mp, dataBatch); err != nil {
+		return
+	}
+	tombstoneBatch := containers.ToCNBatch(replayer.tombstoneBatch)
+	if _, err = bat.Append(ctx, mp, tombstoneBatch); err != nil {
+		return
+	}
+	end = true
+	return
 }
 func (replayer *CheckpointReplayer) Close() {
 	if replayer.metaBatch != nil {

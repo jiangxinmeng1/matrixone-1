@@ -17,13 +17,15 @@ package gc
 import (
 	"context"
 	"fmt"
-	"github.com/matrixorigin/matrixone/pkg/common/malloc"
 	"unsafe"
+
+	"github.com/matrixorigin/matrixone/pkg/common/malloc"
 
 	"github.com/matrixorigin/matrixone/pkg/container/types"
 	"github.com/matrixorigin/matrixone/pkg/container/vector"
 	"github.com/matrixorigin/matrixone/pkg/objectio"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine"
+	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/db/checkpoint"
 	"github.com/matrixorigin/matrixone/pkg/vm/engine/tae/logtail"
 
 	"github.com/matrixorigin/matrixone/pkg/common/bitmap"
@@ -66,6 +68,7 @@ type CheckpointBasedGCJob struct {
 	pitr             *logtail.PitrInfo
 	ts               *types.TS
 	globalCkpLoc     objectio.Location
+	gckp             *checkpoint.CheckpointEntry
 
 	result struct {
 		filesToGC  []string
@@ -76,6 +79,7 @@ type CheckpointBasedGCJob struct {
 func NewCheckpointBasedGCJob(
 	ts *types.TS,
 	globalCkpLoc objectio.Location,
+	gckp *checkpoint.CheckpointEntry,
 	sourcer engine.BaseReader,
 	pitr *logtail.PitrInfo,
 	accountSnapshots map[uint32][]types.TS,
@@ -92,6 +96,7 @@ func NewCheckpointBasedGCJob(
 		accountSnapshots: accountSnapshots,
 		pitr:             pitr,
 		ts:               ts,
+		gckp:             gckp,
 		globalCkpLoc:     globalCkpLoc,
 	}
 	for _, opt := range opts {
@@ -143,7 +148,7 @@ func (e *CheckpointBasedGCJob) Execute(ctx context.Context) error {
 		e.config.coarseEstimateRows,
 		e.config.coarseProbility,
 		buffer,
-		e.globalCkpLoc,
+		e.gckp,
 		e.ts,
 		&transObjects,
 		e.mp,
@@ -196,7 +201,7 @@ func MakeBloomfilterCoarseFilter(
 	rowCount int,
 	probability float64,
 	buffer containers.IBatchBuffer,
-	location objectio.Location,
+	gckp *checkpoint.CheckpointEntry,
 	ts *types.TS,
 	transObjects *map[string]*ObjectEntry,
 	mp *mpool.MPool,
@@ -205,24 +210,19 @@ func MakeBloomfilterCoarseFilter(
 	FilterFn,
 	error,
 ) {
-	reader, err := logtail.MakeGlobalCheckpointDataReader(ctx, "", fs, location, 0)
-	if err != nil {
-		return nil, err
-	}
+	loadFn := gckp.GetLoadBatchDataFn(fs)
 	bf, err := BuildBloomfilter(
 		ctx,
 		rowCount,
 		probability,
 		2,
-		reader.LoadBatchData,
+		loadFn,
 		buffer,
 		mp,
 	)
 	if err != nil {
-		reader.Close()
 		return nil, err
 	}
-	reader.Close()
 	return func(
 		ctx context.Context,
 		bm *bitmap.Bitmap,

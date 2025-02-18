@@ -288,6 +288,9 @@ func (d *BackupDeltaLocDataSource) GetTombstones(
 	return
 }
 
+/*
+zzx rk->x jy->rr gpzc,sc
+*/
 func GetCheckpointData(
 	ctx context.Context,
 	sid string,

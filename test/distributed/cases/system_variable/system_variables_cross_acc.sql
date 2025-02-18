@@ -1,47 +1,48 @@
-create account acc_idx ADMIN_NAME 'root' IDENTIFIED BY '123456';
+*************************** 1. row ***************************
+         statement_id: 01949268-5a6d-7b03-a913-65ff1d957ace
+       transaction_id: b868ec69d201f442181d23f7565c508c
+           session_id: 01949268-276e-7d3d-82ab-7a01f9b2e3bd
+              account: 019491d4-e376-7d5c-baa1-7d80cd4ae745
+                 user: admin
+                 host: 172.20.191.134:46124
+             database: luke
+            statement: execute __mo_stmt_id_4 // UPDATE `file` SET `upload_end_time`=?,`update_time`=? WHERE file.id in (?) ; 1737623100 ; 1737623100 ; 1882320706000621568
+        statement_tag: 
+statement_fingerprint: 
+            node_uuid: 61326233-6630-6530-3662-326133353635
+            node_type: CN
+           request_at: 2025-01-23 09:05:00.013715
+          response_at: 2025-01-23 09:09:00.002488
+             duration: 239988773101
+               status: Success
+             err_code: 0
+                error: 
+            exec_plan: {"steps":[{"graphData":{"nodes":[{"id":"3","name":"Multi Update","title":"multi_update","labels":[{"name":"Apply","value":[]}],"statistics":{"Time":[{"name":"Time Consumed","value":241308,"unit":"ns"},{"name":"Wait Time","value":239987990735,"unit":"ns"},{"name":"Scan Time","value":0,"unit":"ns"},{"name":"Insert Time","value":239988095341,"unit":"ns"},{"name":"Wait Lock Time","value":0,"unit":"ns"}],"Memory":[{"name":"Memory Size","value":0,"unit":"byte"}],"Throughput":[{"name":"Input Rows","value":1,"unit":"count"},{"name":"Output Rows","value":1,"unit":"count"},{"name":"Input Size","value":463,"unit":"byte"},{"name":"Output Size","value":463,"unit":"byte"}],"IO":[{"name":"Disk IO","value":0,"unit":"byte"},{"name":"Scan Bytes","value":0,"unit":"byte"},{"name":"S3 List Count","value":0,"unit":"count"},{"name":"S3 Head Count","value":0,"unit":"count"},{"name":"S3 Put Count","value":0,"unit":"count"},{"name":"S3 Get Count","value":0,"unit":"count"},{"name":"S3 Delete Count","value":0,"unit":"count"},{"name":"S3 DeleteMul Count","value":0,"unit":"count"},{"name":"FileService Cache Read","value":0,"unit":"count"},{"name":"FileService Cache Hit","value":0,"unit":"count"},{"name":"FileService Cache Memory Read","value":0,"unit":"count"},{"name":"FileService Cache Memory Hit","value":0,"unit":"count"},{"name":"FileService Cache Disk Read","value":0,"unit":"count"},{"name":"FileService Cache Disk Hit","value":0,"unit":"count"},{"name":"FileService Cache Remote Read","value":0,"unit":"count"},{"name":"FileService Cache Remote Hit","value":0,"unit":"count"}],"Network":[{"name":"Network","value":0,"unit":"byte"}]},"stats":{"blocknum":1,"outcnt":1.4000000000000001,"cost":1.4000000000000001,"hashmapsize":0,"rowsize":100},"totalStats":{"name":"Time spent","value":241308,"unit":"ns"}},{"id":"2","name":"Lock Operator","title":"lock_op","labels":[{"name":"Lock op","value":[]}],"statistics":{"Time":[{"name":"Time Consumed","value":111137,"unit":"ns"},{"name":"Wait Time","value":239987745433,"unit":"ns"},{"name":"Scan Time","value":0,"unit":"ns"},{"name":"Insert Time","value":0,"unit":"ns"},{"name":"Wait Lock Time","value":239987525839,"unit":"ns"}],"Memory":[{"name":"Memory Size","value":463,"unit":"byte"}],"Throughput":[{"name":"Input Rows","value":1,"unit":"count"},{"name":"Output Rows","value":1,"unit":"count"},{"name":"Input Size","value":463,"unit":"byte"},{"name":"Output Size","value":463,"unit":"byte"}],"IO":[{"name":"Disk IO","value":0,"unit":"byte"},{"name":"Scan Bytes","value":0,"unit":"byte"},{"name":"S3 List Count","value":0,"unit":"count"},{"name":"S3 Head Count","value":0,"unit":"count"},{"name":"S3 Put Count","value":0,"unit":"count"},{"name":"S3 Get Count","value":0,"unit":"count"},{"name":"S3 Delete Count","value":0,"unit":"count"},{"name":"S3 DeleteMul Count","value":0,"unit":"count"},{"name":"FileService Cache Read","value":0,"unit":"count"},{"name":"FileService Cache Hit","value":0,"unit":"count"},{"name":"FileService Cache Memory Read","value":0,"unit":"count"},{"name":"FileService Cache Memory Hit","value":0,"unit":"count"},{"name":"FileService Cache Disk Read","value":0,"unit":"count"},{"name":"FileService Cache Disk Hit","value":0,"unit":"count"},{"name":"FileService Cache Remote Read","value":0,"unit":"count"},{"name":"FileService Cache Remote Hit","value":0,"unit":"count"}],"Network":[{"name":"Network","value":0,"unit":"byte"}]},"stats":{"blocknum":1,"outcnt":1.4000000000000001,"cost":1.4000000000000001,"hashmapsize":0,"rowsize":100},"totalStats":{"name":"Time spent","value":111137,"unit":"ns"}},{"id":"1","name":"Project","title":"file.id, file.filename, file.size, file.type, file.job_id, file.creator, file.uid, file.path, file.virtual_path, file.task_id, file.task_log_id, file.uri, file.folder_id, file.last_modify_time, file.upload_start_time, cast(? AS BIGINT), file.create_time, cast(? AS BIGINT), file.__mo_rowid","labels":[{"name":"List of expressions","value":["file.id","file.filename","file.size","file.type","file.job_id","file.creator","file.uid","file.path","file.virtual_path","file.task_id","file.task_log_id","file.uri","file.folder_id","file.last_modify_time","file.upload_start_time","cast(? AS BIGINT)","file.create_time","cast(? AS BIGINT)","file.__mo_rowid"]}],"statistics":{"Time":[{"name":"Time Consumed","value":5107,"unit":"ns"},{"name":"Wait Time","value":0,"unit":"ns"},{"name":"Scan Time","value":0,"unit":"ns"},{"name":"Insert Time","value":0,"unit":"ns"},{"name":"Wait Lock Time","value":0,"unit":"ns"}],"Memory":[{"name":"Memory Size","value":463,"unit":"byte"}],"Throughput":[{"name":"Input Rows","value":1,"unit":"count"},{"name":"Output Rows","value":1,"unit":"count"},{"name":"Input Size","value":447,"unit":"byte"},{"name":"Output Size","value":463,"unit":"byte"}],"IO":[{"name":"Disk IO","value":0,"unit":"byte"},{"name":"Scan Bytes","value":0,"unit":"byte"},{"name":"S3 List Count","value":0,"unit":"count"},{"name":"S3 Head Count","value":0,"unit":"count"},{"name":"S3 Put Count","value":0,"unit":"count"},{"name":"S3 Get Count","value":0,"unit":"count"},{"name":"S3 Delete Count","value":0,"unit":"count"},{"name":"S3 DeleteMul Count","value":0,"unit":"count"},{"name":"FileService Cache Read","value":0,"unit":"count"},{"name":"FileService Cache Hit","value":0,"unit":"count"},{"name":"FileService Cache Memory Read","value":0,"unit":"count"},{"name":"FileService Cache Memory Hit","value":0,"unit":"count"},{"name":"FileService Cache Disk Read","value":0,"unit":"count"},{"name":"FileService Cache Disk Hit","value":0,"unit":"count"},{"name":"FileService Cache Remote Read","value":0,"unit":"count"},{"name":"FileService Cache Remote Hit","value":0,"unit":"count"}],"Network":[{"name":"Network","value":0,"unit":"byte"}]},"stats":{"blocknum":1,"outcnt":1.4000000000000001,"cost":1.4000000000000001,"hashmapsize":0,"rowsize":100},"totalStats":{"name":"Time spent","value":5107,"unit":"ns"}},{"id":"0","name":"Table Scan","title":"luke.file","labels":[{"name":"Full table name","value":"luke.file"},{"name":"Columns","value":["id","filename","size","type","job_id","creator","uid","path","virtual_path","task_id","task_log_id","uri","folder_id","last_modify_time","upload_start_time","create_time","__mo_rowid"]},{"name":"Total columns","value":19},{"name":"Scan columns","value":17},{"name":"Block Filter conditions","value":["(file.id = cast(? AS BIGINT))"]},{"name":"Filter conditions","value":["(file.id = cast(? AS BIGINT))"]}],"statistics":{"Time":[{"name":"Time Consumed","value":81479,"unit":"ns"},{"name":"Wait Time","value":0,"unit":"ns"},{"name":"Scan Time","value":0,"unit":"ns"},{"name":"Insert Time","value":0,"unit":"ns"},{"name":"Wait Lock Time","value":0,"unit":"ns"}],"Memory":[{"name":"Memory Size","value":895,"unit":"byte"}],"Throughput":[{"name":"Input Rows","value":1,"unit":"count"},{"name":"Output Rows","value":1,"unit":"count"},{"name":"Input Size","value":447,"unit":"byte"},{"name":"Output Size","value":447,"unit":"byte"}],"IO":[{"name":"Disk IO","value":0,"unit":"byte"},{"name":"Scan Bytes","value":447,"unit":"byte"},{"name":"S3 List Count","value":0,"unit":"count"},{"name":"S3 Head Count","value":0,"unit":"count"},{"name":"S3 Put Count","value":0,"unit":"count"},{"name":"S3 Get Count","value":0,"unit":"count"},{"name":"S3 Delete Count","value":0,"unit":"count"},{"name":"S3 DeleteMul Count","value":0,"unit":"count"},{"name":"FileService Cache Read","value":17,"unit":"count"},{"name":"FileService Cache Hit","value":17,"unit":"count"},{"name":"FileService Cache Memory Read","value":17,"unit":"count"},{"name":"FileService Cache Memory Hit","value":17,"unit":"count"},{"name":"FileService Cache Disk Read","value":0,"unit":"count"},{"name":"FileService Cache Disk Hit","value":0,"unit":"count"},{"name":"FileService Cache Remote Read","value":0,"unit":"count"},{"name":"FileService Cache Remote Hit","value":0,"unit":"count"}],"Network":[{"name":"Network","value":0,"unit":"byte"}]},"stats":{"blocknum":1,"outcnt":1.4000000000000001,"cost":1.4000000000000001,"hashmapsize":1,"rowsize":0},"totalStats":{"name":"Time spent","value":81479,"unit":"ns"}}],"edges":[{"id":"E2","src":"2","dst":"3","output":1,"unit":"count"},{"id":"E1","src":"1","dst":"2","output":1,"unit":"count"},{"id":"E0","src":"0","dst":"1","output":1,"unit":"count"}],"labels":[],"global":{"statistics":{"Time":[{"name":"Time Consumed","value":439031,"unit":"ns"},{"name":"Wait Time","value":479975736168,"unit":"ns"}],"Memory":[{"name":"Memory Size","value":1821,"unit":"byte"}],"Throughput":[{"name":"Input Rows","value":4,"unit":"count"},{"name":"Output Rows","value":4,"unit":"count"},{"name":"Input Size","value":1820,"unit":"byte"},{"name":"Output Size","value":1836,"unit":"byte"}],"IO":[{"name":"Disk IO","value":0,"unit":"byte"},{"name":"Scan Bytes","value":447,"unit":"byte"},{"name":"S3 List Count","value":0,"unit":"count"},{"name":"S3 Head Count","value":0,"unit":"count"},{"name":"S3 Put Count","value":0,"unit":"count"},{"name":"S3 Get Count","value":0,"unit":"count"},{"name":"S3 Delete Count","value":0,"unit":"count"},{"name":"S3 DeleteMul Count","value":0,"unit":"count"}],"Network":[{"name":"Network","value":0,"unit":"byte"}]},"totalStats":{"name":"Time spent","value":439031,"unit":"ns"}}},"step":0,"description":"","state":"success","stats":{}}],"code":0,"message":"","uuid":"01949268-5a6d-7b03-a913-65ff1d957ace","PhyPlan":{"version":"1.0","scope":[{"Magic":"Merge","Mcpu":1,"Receiver":[{"Idx":1}],"PreScopes":[{"Magic":"Merge","Mcpu":1,"Receiver":[{"Idx":0}],"PreScopes":[{"Magic":"Remote","Mcpu":1,"DataSource":{"SchemaName":"luke","TableName":"file","Columns":["id","filename","size","type","job_id","creator","uid","path","virtual_path","task_id","task_log_id","uri","folder_id","last_modify_time","upload_start_time","create_time","__mo_rowid"]},"RootOperator":{"OpName":"Connector","NodeIdx":2,"Status":0,"toMergeReceiver":[{"Idx":0}],"OpStats":{"CallCount":2,"TimeConsumed":66696},"Children":[{"OpName":"Projection","NodeIdx":1,"Status":3,"OpStats":{"CallCount":2,"TimeConsumed":5107,"MemorySize":463,"InputRows":1,"InputSize":447,"OutputRows":1,"OutputSize":463},"Children":[{"OpName":"Projection","NodeIdx":0,"Status":2,"OpStats":{"CallCount":2,"TimeConsumed":1072,"MemorySize":447,"OutputRows":1,"OutputSize":447},"Children":[{"OpName":"Filter","NodeIdx":0,"Status":0,"OpStats":{"CallCount":2,"TimeConsumed":8588,"MemorySize":1},"Children":[{"OpName":"TableScan","NodeIdx":0,"Status":1,"OpStats":{"CallCount":2,"TimeConsumed":71819,"MemorySize":447,"InputRows":1,"InputSize":447,"CacheRead":17,"CacheHit":17,"CacheMemoryRead":17,"CacheMemoryHit":17}}]}]}]}]},"PrepareTimeConsumed":33165}],"RootOperator":{"OpName":"Connector","NodeIdx":3,"Status":0,"toMergeReceiver":[{"Idx":1}],"OpStats":{"CallCount":2,"TimeConsumed":136224},"Children":[{"OpName":"Projection","NodeIdx":2,"Status":2,"OpStats":{"CallCount":2,"TimeConsumed":9962,"MemorySize":463,"OutputRows":1,"OutputSize":463},"Children":[{"OpName":"LockOp","NodeIdx":2,"Status":1,"OpStats":{"CallCount":2,"TimeConsumed":18582,"WaitTimeConsumed":239987525547,"InputRows":1,"InputSize":463,"OperatorMetrics":{"3":239987525839}},"Children":[{"OpName":"Merge","NodeIdx":2,"Status":0,"OpStats":{"CallCount":2,"TimeConsumed":15897,"WaitTimeConsumed":219886}}]}]}]},"PrepareTimeConsumed":1670}],"RootOperator":{"OpName":"MultiUpdate","NodeIdx":3,"Status":3,"OpStats":{"CallCount":2,"TimeConsumed":85106,"InputRows":1,"InputSize":463,"OutputRows":1,"OutputSize":463,"WrittenRows":1,"DeletedRows":1,"OperatorMetrics":{"1":239988095341}},"Children":[{"OpName":"Merge","NodeIdx":3,"Status":0,"OpStats":{"CallCount":2,"TimeConsumed":19978,"WaitTimeConsumed":239987990735}}]},"PrepareTimeConsumed":5360}]},"NewPlanStats":{"ParseStage":{"ParseDuration":6555,"ParseStartTime":"2025-01-23T09:05:00.013715473Z"},"PlanStage":{"PlanDuration":0,"PlanStartTime":"0001-01-01T00:00:00Z","BuildPlanS3Request":{},"BuildPlanStatsIOConsumption":0,"BuildPlanStatsS3":{},"BuildPlanStatsDuration":0,"BuildPlanStatsInCacheDuration":0,"BuildPlanResolveVarDuration":0},"CompileStage":{"CompileDuration":0,"CompileStartTime":"0001-01-01T00:00:00Z","CompileS3Request":{},"CompileExpandRangesS3":{},"CompileTableScanDuration":0},"PrepareRunStage":{"CompilePreRunOnceDuration":406448,"CompilePreRunOnceWaitLock":304959,"ScopePrepareDuration":40195,"ScopePrepareS3Request":{},"BuildReaderDuration":31293},"ExecuteStage":{"ExecutionDuration":239988649598,"ExecutionStartTime":"2025-01-23T09:05:00.013778622Z","ExecutionEndTime":"2025-01-23T09:09:00.00242821Z","OutputDuration":0},"OtherStage":{"TxnIncrStatementS3":{}},"IOAccessTimeConsumption":23372,"S3FSPrefetchFileIOMergerTimeConsumption":0,"LocalFSReadIOMergerTimeConsumption":0,"S3FSReadIOMergerTimeConsumption":0,"WaitActive":0}}
 
-# scope global
--- @session:id=1
-select @@max_connections;
-select @@global.max_connections;
-show variables like 'max_connections';
-show global variables like 'max_connections';
--- @session
+            rows_read: 1
+           bytes_scan: 447
+                stats: [5,563898,1821.000,0.000244,0,78,1,1,0.0451,0,0]
+       statement_type: Update
+           query_type: DML
+              role_id: 2
+      sql_source_type: external_sql
+           aggr_count: 0
+         result_count: 0
+        connection_id: 2145825357
+                   cu: 0.0451
+1 row in set (20.05 sec)
 
--- @session:id=2&user=acc_idx:root&password=123456
-select @@max_connections;
-select @@global.max_connections;
-show variables like 'max_connections';
-show global variables like 'max_connections';
--- @session
+SELECT * FROM statement_info WHERE `database` = 'luke' and request_at >= '2025-02-10 09:05:00.013715' and duration > 102145825357 LIMIT 1\G;
 
--- @session:id=1
-set global max_connections = 152;
-select @@max_connections;
-select @@global.max_connections;
-show variables like 'max_connections';
-show global variables like 'max_connections';
--- @session
+SELECT * FROM statement_info WHERE `database` = 'moi_test' and request_at >= '2025-02-10 09:05:00.013715' and duration > 2145825357 LIMIT 1;
 
--- @session:id=2&user=acc_idx:root&password=123456
-# do not affect existing session of other account
-select @@max_connections;
-select @@global.max_connections;
-show variables like 'max_connections';
-show global variables like 'max_connections';
--- @session
-
--- @session:id=3&user=acc_idx:root&password=123456
-# do not affect new session of other account
-select @@max_connections;
-select @@global.max_connections;
-show variables like 'max_connections';
-show global variables like 'max_connections';
--- @session
-
--- @session:id=1
-# reset
-set global max_connections = 151;
--- @session
-
-drop account acc_idx;
+SELECT
+        user_id,
+        AVG(duration) as job_avg_duration
+    FROM
+        index_workflow_jobs
+    WHERE
+        status = 2
+        AND duration != 0
+        AND duration IS NOT NULL
+    GROUP BY user_id;

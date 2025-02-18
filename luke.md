@@ -24,9 +24,9 @@ sql2 := "INSERT INTO `task_log` (`task_id`,`creator`,`status`,`create_time`,`upd
 ## 二、耗时较长的SQL语句及解决方案
 ### （一）`SELECT * FROM connector_job WHERE task_log_id =1889857505604173828;`
 
-### （二）`SELECT * FROM `file` WHERE file.task_id = 1890754962524667904;`
-对于`SELECT * FROM `connector_job` WHERE task_log_id =1889857505604173828;`和`SELECT * FROM `file` WHERE file.task_id = 1890754962524667904;`这两条单表查询语句，通过在`connector_job`表的`task_log_id`字段和`file`表的`task_id`字段上添加索引，可以显著提高查询速度。索引能够减少表扫描的行数，快速定位到符合条件的数据。
-### （三）`SELECT file.uid, count(*) as count, sum(size) as size_by_bytes, sum(connector_job.upload_end_time - connector_job.created_at) as latency FROM `file` Left Join connector_job on file.job_id = connector_job.id WHERE file.type not in (2) GROUP BY `file`.`uid`;`
+### （二）`SELECT * FROM file WHERE file.task_id = 1890754962524667904;`
+对于`SELECT * FROM connector_job WHERE task_log_id =1889857505604173828;`和`SELECT * FROM file WHERE file.task_id = 1890754962524667904;`这两条单表查询语句，通过在`connector_job`表的`task_log_id`字段和`file`表的`task_id`字段上添加索引，可以显著提高查询速度。索引能够减少表扫描的行数，快速定位到符合条件的数据。
+### （三）`SELECT file.uid, count(*) as count, sum(size) as size_by_bytes, sum(connector_job.upload_end_time - connector_job.created_at) as latency FROM file Left Join connector_job on file.job_id = connector_job.id WHERE file.type not in (2) GROUP BY file.uid;`
 ```
  Project                                                                                                                                                                                                                                                           |
 |   Analyze: timeConsumed=19ms waitTime=1026ms inputRows=966184 outputRows=966184 InputSize=77mb OutputSize=77mb MemorySize=2mb                                                                                                                                     |
